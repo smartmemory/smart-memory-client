@@ -14,7 +14,14 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    
+
+    # softprops/action-gh-release uploads assets to the Releases API; the
+    # default GITHUB_TOKEN scope is contents:read which fails with
+    # "Resource not accessible by integration". Granting contents:write
+    # here scopes the existing token to release-write for this job only.
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
