@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-05-04
+
+### Changed
+
+- **Track core 0.9.0 release.** Tier 1 + Tier 2 audit-half work in core (ONTO-RECONCILE-1 Phase 4) ships under core 0.9.0. The HTTP API surface this client targets is unchanged, so the SDK itself ships no behavior changes for this release — bump establishes a tracking version pair for the new core baseline.
+
 ### Changed — BREAKING (SDK-CONSISTENCY-1)
 
 - **`client.get(item_id)` now raises instead of returning `None`.** Returns `MemoryItem` on success. Raises `SmartMemoryNotFoundError` (404), `SmartMemoryPermissionError` (401/403), `SmartMemoryServerError` (5xx), or `SmartMemoryClientError` (transport/other). Callers that relied on `if not (item := client.get(id)): ...` must switch to `try/except SmartMemoryNotFoundError`.
