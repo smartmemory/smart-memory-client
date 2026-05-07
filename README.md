@@ -1,5 +1,7 @@
 # SmartMemory Python Client
 
+**Version:** 0.7.0
+
 Official Python client for the [SmartMemory Service](https://github.com/smartmemory/smart-memory-service) API.
 
 [![PyPI version](https://badge.fury.io/py/smartmemory-client.svg)](https://badge.fury.io/py/smartmemory-client)
@@ -511,3 +513,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 ---
 
 **Made with ❤️ by the SmartMemory Team**
+
+## Documentation
+
+Full SmartMemory documentation: https://docs.smartmemory.ai
