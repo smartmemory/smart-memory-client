@@ -77,7 +77,9 @@ class TestCreateDecision:
         assert body["evidence_ids"] == ["mem_1", "mem_2"]
 
     @patch("smartmemory_client.client.httpx.request")
-    def test_create_decision_with_expertise_fields(self, mock_req, client, mock_response):
+    def test_create_decision_with_expertise_fields(
+        self, mock_req, client, mock_response
+    ):
         """CORE-EXPERTISE-1 Phase 1 — rejected_alternatives, rationale, constraints
         flow into the request payload AND back out of the response into the caller.
         """
@@ -112,7 +114,9 @@ class TestCreateDecision:
         assert result["constraints"] == ["mobile <v3.2", "no shared store"]
 
     @patch("smartmemory_client.client.httpx.request")
-    def test_get_decision_surfaces_expertise_fields(self, mock_req, client, mock_response):
+    def test_get_decision_surfaces_expertise_fields(
+        self, mock_req, client, mock_response
+    ):
         """get_decision() must surface the three new fields back to the caller."""
         mock_req.return_value = mock_response(
             {
@@ -130,7 +134,9 @@ class TestCreateDecision:
         assert result["constraints"] == ["mobile <v3.2"]
 
     @patch("smartmemory_client.client.httpx.request")
-    def test_create_decision_omits_expertise_fields_when_unset(self, mock_req, client, mock_response):
+    def test_create_decision_omits_expertise_fields_when_unset(
+        self, mock_req, client, mock_response
+    ):
         """Backward-compat: omitting the new kwargs leaves them out of the payload."""
         mock_req.return_value = mock_response(
             {"decision_id": "dec_old", "content": "Pre-expertise", "status": "active"}
