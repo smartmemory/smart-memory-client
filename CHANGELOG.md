@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (CORE-EXPERTISE-1 Phase 1, 2026-05-07)
+
+- **`SmartMemoryClient.create_decision()` accepts `rejected_alternatives`, `rationale`, `constraints`.** Three new optional kwargs forwarded to `POST /memory/decisions/create` as snake_case payload keys; omitted entirely when unset (no `null`-leakage). 2 new contract tests in `tests/test_decision_methods.py`. Feature folder: `smart-memory-docs/docs/features/CORE-EXPERTISE-1/phase-1-decision-schema/`.
+
 ## [0.7.0] — 2026-05-04
 
 ### Changed

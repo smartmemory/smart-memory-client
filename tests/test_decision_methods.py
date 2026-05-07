@@ -76,6 +76,73 @@ class TestCreateDecision:
         assert body["tags"] == ["framework", "ui"]
         assert body["evidence_ids"] == ["mem_1", "mem_2"]
 
+    @patch("smartmemory_client.client.httpx.request")
+    def test_create_decision_with_expertise_fields(self, mock_req, client, mock_response):
+        """CORE-EXPERTISE-1 Phase 1 — rejected_alternatives, rationale, constraints
+        flow into the request payload AND back out of the response into the caller.
+        """
+        mock_req.return_value = mock_response(
+            {
+                "decision_id": "dec_exp",
+                "content": "Use JWT",
+                "status": "active",
+                "rejected_alternatives": ["session tokens", "OAuth"],
+                "rationale": "Stateless plus mobile coverage",
+                "constraints": ["mobile <v3.2", "no shared store"],
+            }
+        )
+
+        result = client.create_decision(
+            "Use JWT",
+            decision_type="choice",
+            rejected_alternatives=["session tokens", "OAuth"],
+            rationale="Stateless plus mobile coverage",
+            constraints=["mobile <v3.2", "no shared store"],
+        )
+
+        # Outbound: payload contains the snake_case keys.
+        body = mock_req.call_args[1]["json"]
+        assert body["rejected_alternatives"] == ["session tokens", "OAuth"]
+        assert body["rationale"] == "Stateless plus mobile coverage"
+        assert body["constraints"] == ["mobile <v3.2", "no shared store"]
+
+        # Inbound: response surfaces the three fields back to the caller.
+        assert result["rejected_alternatives"] == ["session tokens", "OAuth"]
+        assert result["rationale"] == "Stateless plus mobile coverage"
+        assert result["constraints"] == ["mobile <v3.2", "no shared store"]
+
+    @patch("smartmemory_client.client.httpx.request")
+    def test_get_decision_surfaces_expertise_fields(self, mock_req, client, mock_response):
+        """get_decision() must surface the three new fields back to the caller."""
+        mock_req.return_value = mock_response(
+            {
+                "decision_id": "dec_exp",
+                "content": "Use JWT",
+                "status": "active",
+                "rejected_alternatives": ["session tokens"],
+                "rationale": "Stateless",
+                "constraints": ["mobile <v3.2"],
+            }
+        )
+        result = client.get_decision("dec_exp")
+        assert result["rejected_alternatives"] == ["session tokens"]
+        assert result["rationale"] == "Stateless"
+        assert result["constraints"] == ["mobile <v3.2"]
+
+    @patch("smartmemory_client.client.httpx.request")
+    def test_create_decision_omits_expertise_fields_when_unset(self, mock_req, client, mock_response):
+        """Backward-compat: omitting the new kwargs leaves them out of the payload."""
+        mock_req.return_value = mock_response(
+            {"decision_id": "dec_old", "content": "Pre-expertise", "status": "active"}
+        )
+
+        client.create_decision("Pre-expertise")
+
+        body = mock_req.call_args[1]["json"]
+        assert "rejected_alternatives" not in body
+        assert "rationale" not in body
+        assert "constraints" not in body
+
 
 class TestGetDecision:
     @patch("smartmemory_client.client.httpx.request")

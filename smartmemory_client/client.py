@@ -2663,6 +2663,9 @@ class SmartMemoryClient:
         tags: Optional[List[str]] = None,
         source_trace_id: Optional[str] = None,
         source_session_id: Optional[str] = None,
+        rejected_alternatives: Optional[List[str]] = None,
+        rationale: Optional[str] = None,
+        constraints: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Create a new decision with provenance tracking.
 
@@ -2675,6 +2678,9 @@ class SmartMemoryClient:
             tags: Additional tags.
             source_trace_id: ReasoningTrace ID that produced this decision.
             source_session_id: Conversation session ID.
+            rejected_alternatives: Alternatives considered and dropped (CORE-EXPERTISE-1).
+            rationale: Why this decision over the alternatives (CORE-EXPERTISE-1).
+            constraints: Decision-scoped hard limits (CORE-EXPERTISE-1).
 
         Returns:
             Created decision dict with decision_id, content, confidence, status.
@@ -2694,6 +2700,12 @@ class SmartMemoryClient:
             body["source_trace_id"] = source_trace_id
         if source_session_id:
             body["source_session_id"] = source_session_id
+        if rejected_alternatives:
+            body["rejected_alternatives"] = rejected_alternatives
+        if rationale is not None:
+            body["rationale"] = rationale
+        if constraints:
+            body["constraints"] = constraints
         return self._request("POST", "/memory/decisions/create", json_body=body)
 
     def get_decision(self, decision_id: str) -> Dict[str, Any]:
