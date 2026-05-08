@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (CORE-EXPERTISE-1 Phase 4b, 2026-05-08)
+
+- **README gains "Expertise Layer" API section.** Shows `client.create_decision(..., rejected_alternatives=, rationale=, constraints=)` for capture and `client.search(query, expertise=True)` returning the typed dict for recall. Links to the canonical 1-pager. No code change.
+
 ### Added (CORE-EXPERTISE-1 Phase 4a, 2026-05-08)
 
 - **`SmartMemoryClient.search(..., expertise=False)` parameter added.** When `True`, returns `Dict[str, List[MemoryItem]]` keyed by expertise type (decision/constraint/learned/opinion/reasoning/observation), each bucket capped at `top_k`. Default returns `List[MemoryItem]` — no breaking change. Forwarded as `expertise: true` in the POST body; response parsing branches on the flag (parses `{results: {<bucket>: [...]}}`). Contract: `smart-memory-docs/docs/features/CORE-EXPERTISE-1/expertise-search-contract.json`.

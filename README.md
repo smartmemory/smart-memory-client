@@ -111,6 +111,31 @@ fixtures will inject them automatically.
 
 ## API Reference
 
+### Expertise Layer
+
+SmartMemory's [expertise layer](https://docs.smartmemory.ai/smartmemory/concepts/expertise-vs-knowledge) — `decision`, `constraint`, `learned`, `opinion`, `reasoning`, `observation` — has dedicated capture and recall surfaces in this SDK.
+
+#### Capture
+
+```python
+client.create_decision(
+    title="Adopt FalkorDB",
+    rejected_alternatives=["Neo4j", "Memgraph"],
+    rationale="Smallest ops surface; vector-native; permissive license.",
+    constraints=["Must support Cypher subset"],
+)
+```
+
+#### Recall (partitioned by expertise type)
+
+```python
+results = client.search("graph database choice", expertise=True)
+# Dict[str, List[MemoryItem]] keyed by:
+# decision / constraint / learned / opinion / reasoning / observation
+```
+
+Default `client.search(query)` returns `List[MemoryItem]` (flat) — no breaking change. Setting `expertise=True` switches the response shape; the SDK parses it into the typed dict.
+
 ### Memory Operations
 
 #### Add Memory
