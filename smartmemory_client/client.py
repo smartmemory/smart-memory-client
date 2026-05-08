@@ -467,7 +467,8 @@ class SmartMemoryClient:
         multi_hop: bool = False,
         max_hops: int = 3,
         budget_ms: int = 1500,
-    ) -> List[MemoryItem]:
+        expertise: bool = False,
+    ):
         """
         Search for memory items using semantic matching.
 
@@ -482,9 +483,14 @@ class SmartMemoryClient:
             channel_weights: Per-channel weight multipliers for RRF fusion (CORE-SEARCH-2a).
                            Keys: entity-graph, ssg-traversal, semantic, regex-text, contains, keyword-bm25.
                            Values: float multipliers (default varies by channel).
+            expertise: When True (CORE-EXPERTISE-1 Phase 4a), returns a typed dict
+                      keyed by expertise type instead of a flat list.
 
         Returns:
-            List of MemoryItem objects
+            By default, ``List[MemoryItem]``.
+            When ``expertise=True``, returns a ``Dict[str, List[MemoryItem]]`` keyed
+            by expertise type (``decision``, ``constraint``, ``learned``, ``opinion``,
+            ``reasoning``, ``observation``); each bucket holds up to ``top_k`` items.
 
         Example:
             ```python
@@ -524,6 +530,8 @@ class SmartMemoryClient:
             body_dict["multi_hop"] = True
             body_dict["max_hops"] = max_hops
             body_dict["budget_ms"] = budget_ms
+        if expertise:
+            body_dict["expertise"] = True
 
         # SELF-IMPROVE-6: use _request_raw to capture X-Search-Session-Id header
         import httpx
@@ -553,7 +561,17 @@ class SmartMemoryClient:
             raise SmartMemoryClientError(f"Request failed: {str(e)}")
 
         if not response_data:
-            return []
+            return {} if expertise else []
+
+        # CORE-EXPERTISE-1 Phase 4a: dict-of-lists shape when expertise=True.
+        if expertise:
+            inner = response_data.get("results", {}) if isinstance(response_data, dict) else {}
+            buckets: Dict[str, List[MemoryItem]] = {}
+            for bucket_name, items in inner.items():
+                buckets[bucket_name] = [
+                    MemoryItem.from_dict(item) for item in items if isinstance(item, dict)
+                ]
+            return buckets
 
         # Convert response to MemoryItem objects
         results: List[MemoryItem] = []
