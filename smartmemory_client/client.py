@@ -565,11 +565,17 @@ class SmartMemoryClient:
 
         # CORE-EXPERTISE-1 Phase 4a: dict-of-lists shape when expertise=True.
         if expertise:
-            inner = response_data.get("results", {}) if isinstance(response_data, dict) else {}
+            inner = (
+                response_data.get("results", {})
+                if isinstance(response_data, dict)
+                else {}
+            )
             buckets: Dict[str, List[MemoryItem]] = {}
             for bucket_name, items in inner.items():
                 buckets[bucket_name] = [
-                    MemoryItem.from_dict(item) for item in items if isinstance(item, dict)
+                    MemoryItem.from_dict(item)
+                    for item in items
+                    if isinstance(item, dict)
                 ]
             return buckets
 
