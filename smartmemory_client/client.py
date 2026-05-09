@@ -468,6 +468,7 @@ class SmartMemoryClient:
         max_hops: int = 3,
         budget_ms: int = 1500,
         expertise: bool = False,
+        cite: bool = False,
     ):
         """
         Search for memory items using semantic matching.
@@ -532,6 +533,8 @@ class SmartMemoryClient:
             body_dict["budget_ms"] = budget_ms
         if expertise:
             body_dict["expertise"] = True
+        if cite:
+            body_dict["cite"] = True  # RECALL-CITATIONS-1
 
         # SELF-IMPROVE-6: use _request_raw to capture X-Search-Session-Id header
         import httpx
@@ -559,6 +562,14 @@ class SmartMemoryClient:
             )
         except Exception as e:
             raise SmartMemoryClientError(f"Request failed: {str(e)}")
+
+        # RECALL-CITATIONS-1: when cite=True, response is wrapped
+        # `{results: <existing>, citations: [...]}`. Unwrap and stash citations
+        # on the client for callers that want them via `last_citations`.
+        self._last_citations: List[Dict[str, Any]] = []
+        if cite and isinstance(response_data, dict) and "citations" in response_data:
+            self._last_citations = list(response_data.get("citations") or [])
+            response_data = response_data.get("results", response_data)
 
         if not response_data:
             return {} if expertise else []
@@ -605,6 +616,16 @@ class SmartMemoryClient:
         Use this with submit_result_feedback() to report which results were used.
         """
         return getattr(self, "_last_search_session_id", None)
+
+    @property
+    def last_citations(self) -> List[Dict[str, Any]]:
+        """Citations array from the most recent ``search(cite=True)`` call.
+
+        Each entry has shape ``{n, item_id, item_type, preview, score, footnote_marker}``
+        per the RECALL-CITATIONS-1 contract. Empty list when no citations were
+        requested or no results were returned.
+        """
+        return list(getattr(self, "_last_citations", []) or [])
 
     def get_working_context(
         self,

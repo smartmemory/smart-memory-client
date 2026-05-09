@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (RECALL-CITATIONS-1, 2026-05-10)
+
+- **`SmartMemoryClient.search(cite=True)`** opts into the citation-ready response. The wire response is `{results, citations}`; the client unwraps `results` (callers continue to receive `List[MemoryItem]`) and exposes the citation array via the new `client.last_citations` property. Each citation has shape `{n, item_id, item_type, preview, score, footnote_marker}` per the RECALL-CITATIONS-1 contract. `last_citations` is `[]` when `cite=False` or when there are no results.
+
 ### Changed (CORE-EXPERTISE-1 Phase 4b, 2026-05-08)
 
 - **README gains "Expertise Layer" API section.** Shows `client.create_decision(..., rejected_alternatives=, rationale=, constraints=)` for capture and `client.search(query, expertise=True)` returning the typed dict for recall. Links to the canonical 1-pager. No code change.
