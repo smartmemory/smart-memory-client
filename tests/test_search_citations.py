@@ -1,4 +1,5 @@
 """Tests for RECALL-CITATIONS-1 — Python SDK search(cite=True)."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -25,10 +26,23 @@ class TestSearchCite:
 
     def test_cite_false_returns_flat_list(self):
         items = [
-            {"item_id": "id-1", "content": "alpha", "memory_type": "semantic", "score": 0.9},
-            {"item_id": "id-2", "content": "bravo", "memory_type": "semantic", "score": 0.8},
+            {
+                "item_id": "id-1",
+                "content": "alpha",
+                "memory_type": "semantic",
+                "score": 0.9,
+            },
+            {
+                "item_id": "id-2",
+                "content": "bravo",
+                "memory_type": "semantic",
+                "score": 0.8,
+            },
         ]
-        with patch("smartmemory_client.client.httpx.request", return_value=_mock_response(items)):
+        with patch(
+            "smartmemory_client.client.httpx.request",
+            return_value=_mock_response(items),
+        ):
             results = self.client.search("anything")
         assert isinstance(results, list)
         assert len(results) == 2
@@ -38,16 +52,45 @@ class TestSearchCite:
     def test_cite_true_unwraps_results_and_exposes_citations(self):
         wrapped = {
             "results": [
-                {"item_id": f"id-{i}", "content": f"c-{i}", "memory_type": "semantic", "score": 1.0 - i * 0.1}
+                {
+                    "item_id": f"id-{i}",
+                    "content": f"c-{i}",
+                    "memory_type": "semantic",
+                    "score": 1.0 - i * 0.1,
+                }
                 for i in range(5)
             ],
             "citations": [
-                {"n": 1, "item_id": "id-0", "item_type": "semantic", "preview": "c-0", "score": 1.0, "footnote_marker": "[^1]"},
-                {"n": 2, "item_id": "id-1", "item_type": "semantic", "preview": "c-1", "score": 0.9, "footnote_marker": "[^2]"},
-                {"n": 3, "item_id": "id-2", "item_type": "semantic", "preview": "c-2", "score": 0.8, "footnote_marker": "[^3]"},
+                {
+                    "n": 1,
+                    "item_id": "id-0",
+                    "item_type": "semantic",
+                    "preview": "c-0",
+                    "score": 1.0,
+                    "footnote_marker": "[^1]",
+                },
+                {
+                    "n": 2,
+                    "item_id": "id-1",
+                    "item_type": "semantic",
+                    "preview": "c-1",
+                    "score": 0.9,
+                    "footnote_marker": "[^2]",
+                },
+                {
+                    "n": 3,
+                    "item_id": "id-2",
+                    "item_type": "semantic",
+                    "preview": "c-2",
+                    "score": 0.8,
+                    "footnote_marker": "[^3]",
+                },
             ],
         }
-        with patch("smartmemory_client.client.httpx.request", return_value=_mock_response(wrapped)) as mock_req:
+        with patch(
+            "smartmemory_client.client.httpx.request",
+            return_value=_mock_response(wrapped),
+        ) as mock_req:
             results = self.client.search("anything", cite=True)
 
         # Verify cite=true was sent in the body
@@ -63,11 +106,21 @@ class TestSearchCite:
         assert len(cites) == 3
         assert cites[0]["footnote_marker"] == "[^1]"
         assert cites[0]["item_id"] == "id-0"
-        assert {"n", "item_id", "item_type", "preview", "score", "footnote_marker"} == set(cites[0].keys())
+        assert {
+            "n",
+            "item_id",
+            "item_type",
+            "preview",
+            "score",
+            "footnote_marker",
+        } == set(cites[0].keys())
 
     def test_cite_true_no_results_returns_empty_citations(self):
         wrapped = {"results": [], "citations": []}
-        with patch("smartmemory_client.client.httpx.request", return_value=_mock_response(wrapped)):
+        with patch(
+            "smartmemory_client.client.httpx.request",
+            return_value=_mock_response(wrapped),
+        ):
             results = self.client.search("no-hit", cite=True)
         assert results == []
         assert self.client.last_citations == []
