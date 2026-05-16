@@ -94,6 +94,7 @@ def test_user(service_url, service_available):
         from service_common.services.auth_service import AuthService
         from service_common.repositories.factories import create_auth_repository
         from service_common.models.auth import SignupRequest
+        from service_common.auth.jwt_singleton import get_jwt_manager
     except ImportError:
         pytest.skip(
             "service_common not available — integration tests require monorepo context"
@@ -104,7 +105,10 @@ def test_user(service_url, service_available):
     password = "TestPassword123!"
 
     repo = create_auth_repository()
-    auth_service = AuthService(repo)
+    # AuthService now requires a JWTManager (mirrors service.py:377). Use the
+    # process singleton — same instance the running service signs tokens with,
+    # so fixture-minted sessions validate against /auth/me.
+    auth_service = AuthService(repo, get_jwt_manager())
     user_response, tokens = auth_service.signup(
         SignupRequest(
             email=email, password=password, full_name=f"Test User {unique_id}"
