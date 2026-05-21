@@ -563,24 +563,27 @@ class SmartMemoryClient:
         except Exception as e:
             raise SmartMemoryClientError(f"Request failed: {str(e)}")
 
-        # RECALL-CITATIONS-1: when cite=True, response is wrapped
-        # `{results: <existing>, citations: [...]}`. Unwrap and stash citations
-        # on the client for callers that want them via `last_citations`.
+        # CORE-RECALL-LINEAGE-1 — `/memory/search` now always returns a
+        # SearchResponse envelope: `{results, group_roots, citations?}`. Unwrap
+        # the envelope ONCE to recover the bucket/list-shaped results, and stash
+        # `group_roots` + `citations` on the client for `last_*` accessors.
+        # RECALL-CITATIONS-1: cite=True attaches `citations` as a sibling key
+        # (no longer double-wraps as it did pre-LINEAGE-1).
         self._last_citations: List[Dict[str, Any]] = []
-        if cite and isinstance(response_data, dict) and "citations" in response_data:
-            self._last_citations = list(response_data.get("citations") or [])
-            response_data = response_data.get("results", response_data)
+        self._last_group_roots: Dict[str, Dict[str, Any]] = {}
+        if isinstance(response_data, dict) and "results" in response_data:
+            self._last_group_roots = dict(response_data.get("group_roots") or {})
+            if cite:
+                self._last_citations = list(response_data.get("citations") or [])
+            response_data = response_data.get("results")
 
         if not response_data:
             return {} if expertise else []
 
         # CORE-EXPERTISE-1 Phase 4a: dict-of-lists shape when expertise=True.
         if expertise:
-            inner = (
-                response_data.get("results", {})
-                if isinstance(response_data, dict)
-                else {}
-            )
+            # After envelope unwrap, response_data IS the bucket map directly.
+            inner = response_data if isinstance(response_data, dict) else {}
             buckets: Dict[str, List[MemoryItem]] = {}
             for bucket_name, items in inner.items():
                 buckets[bucket_name] = [
@@ -626,6 +629,19 @@ class SmartMemoryClient:
         requested or no results were returned.
         """
         return list(getattr(self, "_last_citations", []) or [])
+
+    @property
+    def last_group_roots(self) -> Dict[str, Dict[str, Any]]:
+        """CORE-RECALL-LINEAGE-1 — `group_roots` map from the most recent
+        ``search()`` call.
+
+        Keys are lineage root item_ids that appear in some result's
+        ``lineage_roots`` but are not themselves in the result list. Each value
+        is a ``GroupRootStub`` dict: ``{item_id, accessible, content_preview?,
+        memory_type?, origin?}``. Empty dict when no out-of-result roots exist
+        (the common case for queries that match canonicals directly).
+        """
+        return dict(getattr(self, "_last_group_roots", {}) or {})
 
     def get_working_context(
         self,

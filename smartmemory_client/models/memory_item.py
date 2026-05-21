@@ -39,6 +39,16 @@ class MemoryItem:
     entities: Optional[List[Dict[str, Any]]] = None
     relations: Optional[List[Dict[str, Any]]] = None
 
+    # CORE-ORIGIN-1 — tier-aware provenance string set on the server (`api:add`,
+    # `evolver:episodic_to_semantic`, etc.). Mirrored from the API response.
+    origin: Optional[str] = None
+
+    # CORE-RECALL-LINEAGE-1 — canonical item_ids this item derives from.
+    # Always populated on `/memory/search` results (self-reference `[item_id]`
+    # for canonicals; K entries for K-source derivations). Empty list on other
+    # endpoints that don't run the walker.
+    lineage_roots: List[str] = field(default_factory=list)
+
     def __getitem__(self, key: str) -> Any:
         """Dict-like access for compatibility."""
         return getattr(self, key)
@@ -85,6 +95,9 @@ class MemoryItem:
             # Extracted data
             entities=data.get("entities"),
             relations=data.get("relations"),
+            # CORE-ORIGIN-1 / CORE-RECALL-LINEAGE-1
+            origin=data.get("origin"),
+            lineage_roots=list(data.get("lineage_roots") or []),
         )
 
     def __repr__(self) -> str:
