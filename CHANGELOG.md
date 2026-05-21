@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (CORE-RECALL-LINEAGE-1 Phase 3, 2026-05-22) — SearchResponse envelope unwrap
+
+- **`SmartMemoryClient.search()`** now always unwraps the `{results, group_roots, citations?}` envelope. Callers continue to receive `List[MemoryItem]` — no signature change. The envelope siblings are exposed on the client instance:
+  - `client.last_group_roots: Dict[str, GroupRootStub]` — canonicals that didn't match the query, keyed by root_id. Each stub: `{item_id, accessible, content_preview?, memory_type?, origin?}`.
+  - `client.last_citations: List[Citation]` — unchanged from RECALL-CITATIONS-1; now sourced from the envelope sibling instead of the legacy double-wrap.
+- **`MemoryItem`** dataclass gains `origin: Optional[str]` and `lineage_roots: List[str]`. `from_dict` reads both. Backwards-compatible with old (pre-envelope) responses — missing keys default to `None` / `[]`.
+- Pre-envelope service responses (bare list) still parse correctly during rollout — the client tolerates both shapes.
+
 ### Added (RECALL-CITATIONS-1, 2026-05-10)
 
 - **`SmartMemoryClient.search(cite=True)`** opts into the citation-ready response. The wire response is `{results, citations}`; the client unwraps `results` (callers continue to receive `List[MemoryItem]`) and exposes the citation array via the new `client.last_citations` property. Each citation has shape `{n, item_id, item_type, preview, score, footnote_marker}` per the RECALL-CITATIONS-1 contract. `last_citations` is `[]` when `cite=False` or when there are no results.
