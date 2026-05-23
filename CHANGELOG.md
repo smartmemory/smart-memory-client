@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (CORE-DECISION-PROVENANCE-LOOKUP-1, 2026-05-23) — `list_decisions(provenance_memory_id=...)`
+
+- **`list_decisions()`** gains an optional `provenance_memory_id` kwarg. When set, the SDK passes it through to `GET /memory/decisions?provenance_memory_id=<id>` and returns only active decisions whose provenance subgraph contains that memory. Other filters (`domain`, `decision_type`, `min_confidence`, `limit`) compose in-query — the SDK never sees a truncated-below-limit result. Backwards-compatible; existing callers see no behavior change.
+
+
 ### Changed (CORE-RECALL-LINEAGE-1 Phase 3, 2026-05-22) — SearchResponse envelope unwrap
 
 - **`SmartMemoryClient.search()`** now always unwraps the `{results, group_roots, citations?}` envelope. Callers continue to receive `List[MemoryItem]` — no signature change. The envelope siblings are exposed on the client instance:

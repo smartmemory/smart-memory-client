@@ -2786,6 +2786,7 @@ class SmartMemoryClient:
         decision_type: Optional[str] = None,
         min_confidence: float = 0.0,
         limit: int = 50,
+        provenance_memory_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """List active decisions with optional filters.
 
@@ -2794,6 +2795,11 @@ class SmartMemoryClient:
             decision_type: Filter by type (inference, preference, etc.).
             min_confidence: Minimum confidence threshold.
             limit: Maximum results.
+            provenance_memory_id: When set, returns only decisions whose provenance
+                subgraph contains this memory id (CORE-DECISION-PROVENANCE-LOOKUP-1).
+                Filters compose in-query so the response never silently truncates
+                below ``limit`` when more matches exist. Unknown or out-of-scope
+                memory ids return an empty list (never 404) to avoid existence leakage.
 
         Returns:
             List of decision dicts.
@@ -2803,6 +2809,8 @@ class SmartMemoryClient:
             params["domain"] = domain
         if decision_type:
             params["decision_type"] = decision_type
+        if provenance_memory_id is not None:
+            params["provenance_memory_id"] = provenance_memory_id
         result = self._request("GET", "/memory/decisions", params=params)
         return result.get("decisions", [])
 
