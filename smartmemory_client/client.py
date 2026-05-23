@@ -2727,6 +2727,7 @@ class SmartMemoryClient:
         rejected_alternatives: Optional[List[str]] = None,
         rationale: Optional[str] = None,
         constraints: Optional[List[str]] = None,
+        agent_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create a new decision with provenance tracking.
 
@@ -2767,7 +2768,59 @@ class SmartMemoryClient:
             body["rationale"] = rationale
         if constraints:
             body["constraints"] = constraints
+        if agent_id is not None:
+            body["agent_id"] = agent_id
         return self._request("POST", "/memory/decisions/create", json_body=body)
+
+    def create_opinion(
+        self,
+        content: str,
+        *,
+        confidence: Optional[float] = None,
+        subject: Optional[str] = None,
+        subject_type: Optional[str] = None,
+        disposition: Optional[Dict[str, Any]] = None,
+        formed_from: Optional[List[str]] = None,
+        domain: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create a new opinion with optional agent attribution.
+
+        Mirrors POST /memory/opinions/create. ``agent_id`` is auto-populated
+        server-side from the request scope when the caller is an agent-typed
+        user (CORE-AGENT-ATTRIBUTION-1); supply it explicitly to override.
+
+        Args:
+            content: Opinion content (required).
+            confidence: Initial confidence score (0.0-1.0).
+            subject: Subject the opinion is about.
+            subject_type: Type tag for the subject.
+            disposition: Disposition payload (dict).
+            formed_from: Source memory ids that contributed to the opinion.
+            domain: Domain tag for filtered retrieval.
+            agent_id: Producing agent id. If omitted and the caller's scope is
+                agent-typed, the server fills this from ``resolve_agent_id()``.
+
+        Returns:
+            Created opinion dict with opinion_id, content, subject, confidence,
+            agent_id, domain.
+        """
+        body: Dict[str, Any] = {"content": content}
+        if confidence is not None:
+            body["confidence"] = confidence
+        if subject is not None:
+            body["subject"] = subject
+        if subject_type is not None:
+            body["subject_type"] = subject_type
+        if disposition is not None:
+            body["disposition"] = disposition
+        if formed_from is not None:
+            body["formed_from"] = formed_from
+        if domain is not None:
+            body["domain"] = domain
+        if agent_id is not None:
+            body["agent_id"] = agent_id
+        return self._request("POST", "/memory/opinions/create", json_body=body)
 
     def get_decision(self, decision_id: str) -> Dict[str, Any]:
         """Retrieve a decision by ID.
@@ -2787,6 +2840,7 @@ class SmartMemoryClient:
         min_confidence: float = 0.0,
         limit: int = 50,
         provenance_memory_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """List active decisions with optional filters.
 
@@ -2811,6 +2865,8 @@ class SmartMemoryClient:
             params["decision_type"] = decision_type
         if provenance_memory_id is not None:
             params["provenance_memory_id"] = provenance_memory_id
+        if agent_id is not None:
+            params["agent_id"] = agent_id
         result = self._request("GET", "/memory/decisions", params=params)
         return result.get("decisions", [])
 
