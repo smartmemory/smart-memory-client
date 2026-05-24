@@ -1134,6 +1134,67 @@ class SmartMemoryClient:
             json_body={"recall_profile": recall_profile},
         )
 
+    def get_evaluation(
+        self,
+        agent_id: str,
+        dimension: str,
+        domain: str,
+    ) -> Dict[str, Any]:
+        """Get the current evaluation for an agent on a given (dimension, domain) slot.
+
+        CORE-AGENT-2 S03-T10. Returns ``{evaluation: dict | null}``.
+        ``null`` means no evaluation has been written yet (cold-start) — not an error.
+
+        Args:
+            agent_id: Agent identifier.
+            dimension: Performance dimension (e.g. ``"decision_volume"``).
+            domain: Domain string (e.g. ``"python"``).
+
+        Returns:
+            Response dict with ``evaluation`` key containing the current evaluation
+            dict or ``None`` on cold-start.
+
+        Raises:
+            SmartMemoryNotFoundError: if ``agent_id`` is not found in the current tenant.
+            SmartMemoryClientError: on any other HTTP error.
+        """
+        return self._request(
+            "GET",
+            f"/memory/agents/{agent_id}/evaluation",
+            params={"dimension": dimension, "domain": domain},
+        )
+
+    def list_evaluation_history(
+        self,
+        agent_id: str,
+        dimension: str,
+        domain: str,
+        limit: int = 20,
+    ) -> Dict[str, Any]:
+        """Get evaluation history for an agent on a given (dimension, domain) slot.
+
+        CORE-AGENT-2 S03-T10. Returns ``{history: [dict, ...]}`` sorted most-recent-first.
+        No ``include_history`` flag — use this method when history is needed.
+
+        Args:
+            agent_id: Agent identifier.
+            dimension: Performance dimension.
+            domain: Domain string.
+            limit: Maximum records (default 20).
+
+        Returns:
+            Response dict with ``history`` key containing a list of evaluation dicts.
+
+        Raises:
+            SmartMemoryNotFoundError: if ``agent_id`` is not found in the current tenant.
+            SmartMemoryClientError: on any other HTTP error.
+        """
+        return self._request(
+            "GET",
+            f"/memory/agents/{agent_id}/evaluation/history",
+            params={"dimension": dimension, "domain": domain, "limit": limit},
+        )
+
     def summary(self) -> Dict[str, Any]:
         """Get summary statistics about the memory system."""
         return self._request("GET", "/memory/summary")
