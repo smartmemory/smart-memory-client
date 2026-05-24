@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (CORE-AGENT-2, 2026-05-24) — `get_evaluation()` + `list_evaluation_history()`
+
+- **`client.get_evaluation(agent_id, dimension, domain)`** — wraps `GET /memory/agents/{agent_id}/evaluation`. Returns `dict | None`; cold-start (no evaluation written yet) returns `None` cleanly per the contract (`200 {evaluation: null}` from the service). Raises `SmartMemoryNotFoundError` (404) for cross-tenant / unknown agent.
+- **`client.list_evaluation_history(agent_id, dimension, domain, limit=...)`** — wraps `GET /memory/agents/{agent_id}/evaluation/history`. Returns a list of historical evaluation rows in supersession order.
+- 8 new tests in `tests/test_client_evaluation.py` (happy / 404 / cold-start / pagination).
+
+Source: `smart-memory-docs/docs/features/CORE-AGENT-2/report.md`. Contract: `smart-memory-docs/docs/features/CORE-AGENT-2/evaluation-contract.json`.
+
 ### Added (CORE-DECISION-PROVENANCE-LOOKUP-1, 2026-05-23) — `list_decisions(provenance_memory_id=...)`
 
 - **`list_decisions()`** gains an optional `provenance_memory_id` kwarg. When set, the SDK passes it through to `GET /memory/decisions?provenance_memory_id=<id>` and returns only active decisions whose provenance subgraph contains that memory. Other filters (`domain`, `decision_type`, `min_confidence`, `limit`) compose in-query — the SDK never sees a truncated-below-limit result. Backwards-compatible; existing callers see no behavior change.
