@@ -129,7 +129,9 @@ class TestListEvaluationHistory:
         }
         mock_req.return_value = _mock_response(payload)
 
-        result = client.list_evaluation_history("agent_abc", "decision_volume", "python")
+        result = client.list_evaluation_history(
+            "agent_abc", "decision_volume", "python"
+        )
         assert "history" in result
         assert len(result["history"]) == 2
 
@@ -152,7 +154,9 @@ class TestListEvaluationHistory:
         """Custom limit is forwarded."""
         mock_req.return_value = _mock_response({"history": []})
 
-        client.list_evaluation_history("agent_abc", "decision_volume", "python", limit=5)
+        client.list_evaluation_history(
+            "agent_abc", "decision_volume", "python", limit=5
+        )
 
         call = mock_req.call_args
         params = call[1].get("params", {})
