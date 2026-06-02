@@ -1334,6 +1334,38 @@ class SmartMemoryClient:
         params = {"dry_run": dry_run, "disambiguate": disambiguate}
         return self._request("POST", "/memory/graph/resolve-aliases", params=params)
 
+    def dedup_entities(
+        self, dry_run: bool = False, require_structural_confirmation: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Dedup cross-extractor fragmented entity nodes (CORE-GRAPH-CANONICAL-DEDUP-1).
+
+        Collapses same-name entity-node fragments (the same entity split across >1
+        node because two extractors disagreed on its type -> divergent canonical_key
+        -> the write-time dedup missed them) into one node, precision-first, over the
+        caller's workspace graph. Unblocks ensemble alias disambiguation. Opt-in,
+        default-off. Recommended ensemble sequence: dedup_entities() then
+        resolve_aliases(disambiguate=True).
+
+        Args:
+            dry_run: If true, compute the dedup plan and report counts without
+                mutating the graph.
+            require_structural_confirmation: If true (default), a same-name pair
+                merges only on T0 (same Wikidata QID), T1 (same canonical_key), or
+                T2 (>= tau_min shared typed entity-neighbors). If false, exact
+                same-name clusters merge on name alone once T0/T1 fail (riskier
+                disjoint-edge-tail recovery).
+
+        Returns:
+            Dedup results (merged_clusters, merged_nodes, redirected_edges,
+            abstained_clusters, dry_run, workspace_id, user_id).
+        """
+        params = {
+            "dry_run": dry_run,
+            "require_structural_confirmation": require_structural_confirmation,
+        }
+        return self._request("POST", "/memory/graph/dedup-entities", params=params)
+
     def ground(
         self, item_id: str, source_url: str, validation: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:

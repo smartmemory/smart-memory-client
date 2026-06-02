@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (CORE-GRAPH-CANONICAL-DEDUP-1, 2026-06-03) — `dedup_entities()` (0.7.7)
+
+- **`client.dedup_entities(dry_run=False, require_structural_confirmation=True)`** — POSTs
+  `/memory/graph/dedup-entities` (both flags as query params). Opt-in graph-maintenance op that collapses
+  same-name cross-extractor entity-node fragments into one node, unblocking ensemble alias disambiguation.
+  Returns `merged_clusters / merged_nodes / redirected_edges / abstained_clusters / dry_run / workspace_id /
+  user_id`. Contract:
+  `smart-memory-docs/docs/features/CORE-GRAPH-CANONICAL-DEDUP-1/dedup-entities-contract.json`.
+
 ### Added (CORE-GRAPH-ALIAS-DISAMBIG-1, 2026-06-03) — `resolve_aliases(disambiguate=...)` (0.7.6)
 
 - **`client.resolve_aliases(dry_run=False, disambiguate=False)`** threads the new opt-in collision-

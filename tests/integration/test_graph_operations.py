@@ -246,3 +246,30 @@ class TestResolveAliases:
         assert report["dry_run"] is False
         assert isinstance(report["resolved"], int)
         assert isinstance(report["abstained"], int)
+
+    def test_dedup_entities_dry_run(self, authenticated_client):
+        """dry_run=True returns the contract-shaped EntityDedupReport without mutating the graph.
+
+        CORE-GRAPH-CANONICAL-DEDUP-1. Contract: dedup-entities-contract.json."""
+        client = authenticated_client
+
+        report = client.dedup_entities(dry_run=True)
+        assert isinstance(report, dict)
+        assert isinstance(report["merged_clusters"], int)
+        assert isinstance(report["merged_nodes"], int)
+        assert isinstance(report["redirected_edges"], int)
+        assert isinstance(report["abstained_clusters"], int)
+        assert report["dry_run"] is True
+        assert report["redirected_edges"] == 0  # dry_run never mutates
+        assert "workspace_id" in report
+        assert "user_id" in report
+
+    def test_dedup_entities_default_no_dry_run(self, authenticated_client):
+        """Default call (dry_run=False, require_structural_confirmation=True) echoes dry_run=False."""
+        client = authenticated_client
+
+        report = client.dedup_entities()
+        assert isinstance(report, dict)
+        assert report["dry_run"] is False
+        assert isinstance(report["merged_clusters"], int)
+        assert isinstance(report["abstained_clusters"], int)
