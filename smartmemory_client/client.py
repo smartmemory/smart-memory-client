@@ -1311,7 +1311,7 @@ class SmartMemoryClient:
         """
         return self._request("GET", "/memory/clustering/stats")
 
-    def resolve_aliases(self, dry_run: bool = False) -> Dict[str, Any]:
+    def resolve_aliases(self, dry_run: bool = False, disambiguate: bool = False) -> Dict[str, Any]:
         """
         Merge fragmented single-token entity aliases into their canonical.
 
@@ -1322,12 +1322,16 @@ class SmartMemoryClient:
         Args:
             dry_run: If true, compute the resolve/abstain plan and report counts
                 without mutating the graph.
+            disambiguate: Opt-in (CORE-GRAPH-ALIAS-DISAMBIG-1, default False). Also
+                recover colliding surfaces by structural typed-neighbor overlap —
+                merge only on a confident, clear winner, else keep abstaining (never
+                mis-merge). Extractor-dependent; helps LLM-extracted graphs.
 
         Returns:
             Resolve results (resolved, abstained, redirected_edges, ambiguous,
-            dry_run, workspace_id, user_id).
+            disambiguated, dry_run, workspace_id, user_id).
         """
-        params = {"dry_run": dry_run}
+        params = {"dry_run": dry_run, "disambiguate": disambiguate}
         return self._request("POST", "/memory/graph/resolve-aliases", params=params)
 
     def ground(

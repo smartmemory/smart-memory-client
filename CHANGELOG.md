@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (CORE-GRAPH-ALIAS-DISAMBIG-1, 2026-06-03) — `resolve_aliases(disambiguate=...)` (0.7.6)
+
+- **`client.resolve_aliases(dry_run=False, disambiguate=False)`** threads the new opt-in collision-
+  disambiguation flag (default off) as a query param; response gains `disambiguated`. Contract:
+  `docs/features/CORE-GRAPH-ALIAS-DISAMBIG-1/disambiguate-contract.json`.
+
 ### Added (CORE-GRAPH-ALIAS-RESOLVE-2, 2026-06-02) — `resolve_aliases(dry_run=...)`
 
 - **`client.resolve_aliases(dry_run=False)`** wraps `POST /memory/graph/resolve-aliases`.
