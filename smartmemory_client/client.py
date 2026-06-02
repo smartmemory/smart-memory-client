@@ -471,6 +471,9 @@ class SmartMemoryClient:
         cite: bool = False,
         include_consolidated: bool = False,
         consolidation_first: bool = False,
+        decompose: bool = False,
+        semantic_hops: bool = False,
+        include_reference: bool = False,
     ):
         """
         Search for memory items using semantic matching.
@@ -493,6 +496,12 @@ class SmartMemoryClient:
             consolidation_first: When True (NEURO-1d), surface a consolidated summary above
                       the scattered source memories it consolidates — best for synthesis
                       queries ("what is known about X?"). Opt-in; implies include_consolidated.
+            decompose: When True, the server decomposes a compound query into sub-queries
+                      and fuses their results (SearchRequest.decompose).
+            semantic_hops: When True with multi_hop, use LLM-driven hop planning
+                      (CORE-MULTIHOP-2 / SearchRequest.semantic_hops).
+            include_reference: When True, include reference data on returned items
+                      (CORE-PROPS-1 Phase 6 / SearchRequest.include_reference).
 
         Returns:
             By default, ``List[MemoryItem]``.
@@ -546,6 +555,12 @@ class SmartMemoryClient:
             body_dict["include_consolidated"] = True  # CORE-CONSOLIDATE-1
         if consolidation_first:
             body_dict["consolidation_first"] = True  # NEURO-1d
+        if decompose:
+            body_dict["decompose"] = True
+        if semantic_hops:
+            body_dict["semantic_hops"] = True  # CORE-MULTIHOP-2
+        if include_reference:
+            body_dict["include_reference"] = True  # CORE-PROPS-1 Phase 6
 
         # SELF-IMPROVE-6: use _request_raw to capture X-Search-Session-Id header
         import httpx
@@ -567,12 +582,18 @@ class SmartMemoryClient:
             self._last_search_session_id = response.headers.get("X-Search-Session-Id")
             response_data = response.json()
         except httpx.HTTPStatusError as e:
+            # Mirror _request: surface a typed subclass carrying status_code/detail
+            # so callers can branch on SmartMemoryNotFoundError/PermissionError/etc.
+            status = e.response.status_code if hasattr(e, "response") else 0
             error_detail = e.response.text if hasattr(e, "response") else str(e)
-            raise SmartMemoryClientError(
-                f"Request failed: {e} - Detail: {error_detail}"
-            )
+            exc_cls = _exception_for_status(status)
+            raise exc_cls(
+                f"Request failed: {e} - Detail: {error_detail}",
+                status_code=status,
+                detail=error_detail,
+            ) from e
         except Exception as e:
-            raise SmartMemoryClientError(f"Request failed: {str(e)}")
+            raise SmartMemoryClientError(f"Request failed: {str(e)}") from e
 
         # CORE-RECALL-LINEAGE-1 — `/memory/search` now always returns a
         # SearchResponse envelope: `{results, group_roots, citations?}`. Unwrap
@@ -1021,7 +1042,14 @@ class SmartMemoryClient:
             link_type: Type of link (RELATED, CAUSES, FOLLOWS, etc.)
 
         Returns:
-            True if successful
+            True if the link was created.
+
+        Raises:
+            SmartMemoryNotFoundError: 404 — source or target item does not exist.
+            SmartMemoryPermissionError: 401/403 — caller cannot write the link.
+            SmartMemoryValidationError: 400/409/422 — invalid link request.
+            SmartMemoryServerError: 5xx — the link write failed server-side.
+            SmartMemoryClientError: any other transport or unexpected failure.
 
         Example:
             ```python
@@ -1036,13 +1064,11 @@ class SmartMemoryClient:
             "link_type": link_type,
         }
 
-        try:
-            self._request("POST", "/memory/link", json_body=body_dict)
-            return True
-        except Exception as e:
-            # Link endpoint may not exist or be disabled - fail gracefully
-            logger.debug(f"Link operation not supported or failed: {e}")
-            return False
+        # Let _request's typed exceptions propagate (matching get/update/delete as of
+        # 0.6.0). Previously every failure — 404, auth, 5xx, network — was collapsed
+        # into a silent ``return False`` logged only at DEBUG, hiding real errors.
+        self._request("POST", "/memory/link", json_body=body_dict)
+        return True
 
     def add_edge(
         self,
@@ -1284,6 +1310,25 @@ class SmartMemoryClient:
             Clustering statistics
         """
         return self._request("GET", "/memory/clustering/stats")
+
+    def resolve_aliases(self, dry_run: bool = False) -> Dict[str, Any]:
+        """
+        Merge fragmented single-token entity aliases into their canonical.
+
+        Resolves unambiguous single-token entity surfaces (e.g. "Hudson") into
+        their multi-token canonical (e.g. "Rock Hudson") over the caller's
+        workspace graph, abstaining on collisions (>=2 candidates).
+
+        Args:
+            dry_run: If true, compute the resolve/abstain plan and report counts
+                without mutating the graph.
+
+        Returns:
+            Resolve results (resolved, abstained, redirected_edges, ambiguous,
+            dry_run, workspace_id, user_id).
+        """
+        params = {"dry_run": dry_run}
+        return self._request("POST", "/memory/graph/resolve-aliases", params=params)
 
     def ground(
         self, item_id: str, source_url: str, validation: Optional[Dict[str, Any]] = None
@@ -3400,22 +3445,20 @@ class SmartMemoryClient:
         return self._request("POST", "/memory/summary/generate", json_body=body)
 
     def summary_latest(self) -> Optional[Dict[str, Any]]:
-        """Return the most recent snapshot for the current workspace."""
+        """Return the most recent snapshot for the current workspace, or
+        ``None`` if none exists. Other errors (auth, 5xx) propagate."""
         try:
             return self._request("GET", "/memory/summary/latest")
-        except SmartMemoryClientError as e:
-            if "404" in str(e):
-                return None
-            raise
+        except SmartMemoryNotFoundError:
+            return None
 
     def summary_get(self, snapshot_id: str) -> Optional[Dict[str, Any]]:
-        """Return a specific snapshot by id, or ``None`` if not found."""
+        """Return a specific snapshot by id, or ``None`` if not found.
+        Other errors (auth, 5xx) propagate."""
         try:
             return self._request("GET", f"/memory/summary/{snapshot_id}")
-        except SmartMemoryClientError as e:
-            if "404" in str(e):
-                return None
-            raise
+        except SmartMemoryNotFoundError:
+            return None
 
     def summary_list(
         self,
@@ -3436,17 +3479,16 @@ class SmartMemoryClient:
         from_snapshot_id: str,
         to_snapshot_id: str,
     ) -> Optional[Dict[str, Any]]:
-        """Return the SnapshotDelta between two snapshots."""
+        """Return the SnapshotDelta between two snapshots, or ``None`` if
+        either snapshot is not found. Other errors (auth, 5xx) propagate."""
         try:
             return self._request(
                 "GET",
                 "/memory/summary/delta",
                 params={"from": from_snapshot_id, "to": to_snapshot_id},
             )
-        except SmartMemoryClientError as e:
-            if "404" in str(e):
-                return None
-            raise
+        except SmartMemoryNotFoundError:
+            return None
 
     def summary_delete(self, snapshot_id: str) -> None:
         """Admin-only. Delete a snapshot. Raises on 403/404/500."""

@@ -206,3 +206,43 @@ class TestSummaryOperations:
         health = client.health_check()
         assert health is not None
         assert health.get("status") == "healthy"
+
+
+@pytest.mark.integration
+class TestResolveAliases:
+    """CORE-GRAPH-ALIAS-RESOLVE-2: resolve fragmented single-token entity aliases.
+
+    Exercises the real POST /memory/graph/resolve-aliases route via the SDK.
+    Skips automatically when the service is unavailable (authenticated_client
+    depends on the service_available fixture).
+    """
+
+    def test_resolve_aliases_dry_run(self, authenticated_client):
+        """dry_run=True returns the contract-shaped report without mutating the graph."""
+        client = authenticated_client
+
+        report = client.resolve_aliases(dry_run=True)
+        assert report is not None
+        assert isinstance(report, dict)
+
+        # Contract shape: resolve-aliases-contract.json
+        assert isinstance(report["resolved"], int)
+        assert isinstance(report["abstained"], int)
+        assert isinstance(report["redirected_edges"], int)
+        assert isinstance(report["ambiguous"], list)
+        assert report["dry_run"] is True
+        # dry_run never mutates → no edges redirected
+        assert report["redirected_edges"] == 0
+        # Echoed scope context
+        assert "workspace_id" in report
+        assert "user_id" in report
+
+    def test_resolve_aliases_default_no_dry_run(self, authenticated_client):
+        """Default call (dry_run=False) returns a report echoing dry_run=False."""
+        client = authenticated_client
+
+        report = client.resolve_aliases()
+        assert isinstance(report, dict)
+        assert report["dry_run"] is False
+        assert isinstance(report["resolved"], int)
+        assert isinstance(report["abstained"], int)

@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (CORE-GRAPH-ALIAS-RESOLVE-2, 2026-06-02) — `resolve_aliases(dry_run=...)`
+
+- **`client.resolve_aliases(dry_run=False)`** wraps `POST /memory/graph/resolve-aliases`.
+  Merges unambiguous single-token entity aliases ("Hudson") into their multi-token
+  canonical ("Rock Hudson") over the caller's workspace graph, abstaining on collisions.
+  `dry_run` is sent as a **query parameter** (mirrors `cluster()` / the `/clustering/run`
+  precedent), not a JSON body. Returns the parsed report dict: `resolved`, `abstained`,
+  `redirected_edges`, `ambiguous`, `dry_run`, `workspace_id`, `user_id`.
+- Tests: `tests/integration/test_graph_operations.py::TestResolveAliases` (real-service
+  dry-run + default call; auto-skip when the service is unavailable).
+  Contract: `smart-memory-docs/docs/features/CORE-GRAPH-ALIAS-RESOLVE-2/resolve-aliases-contract.json`.
+
 ### Added (NEURO-1d, 2026-06-02) — `search(consolidation_first=...)` + `include_consolidated=...`
 
 - **`client.search(..., consolidation_first=True)`** surfaces a consolidated summary above the
