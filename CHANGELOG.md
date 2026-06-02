@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (NEURO-1d, 2026-06-02) — `search(consolidation_first=...)` + `include_consolidated=...`
+
+- **`client.search(..., consolidation_first=True)`** surfaces a consolidated summary above the
+  scattered source memories it consolidates — best for synthesis queries ("what is known about X?").
+  Opt-in; implies `include_consolidated`. **`include_consolidated=True`** includes consolidated
+  source memories (normally hidden). Both default off → request body omits the keys, so existing
+  callers are byte-identical on the wire.
+- Tests: `tests/test_client.py::TestSearchConsolidationParams` (body serialization + default-omit).
+  Contract: `smart-memory-docs/docs/features/CORE-SEARCH-1/search-contract.json`.
+
 ### Added (CORE-AGENT-2, 2026-05-24) — `get_evaluation()` + `list_evaluation_history()`
 
 - **`client.get_evaluation(agent_id, dimension, domain)`** — wraps `GET /memory/agents/{agent_id}/evaluation`. Returns `dict | None`; cold-start (no evaluation written yet) returns `None` cleanly per the contract (`200 {evaluation: null}` from the service). Raises `SmartMemoryNotFoundError` (404) for cross-tenant / unknown agent.

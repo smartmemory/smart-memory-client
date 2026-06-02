@@ -469,6 +469,8 @@ class SmartMemoryClient:
         budget_ms: int = 1500,
         expertise: bool = False,
         cite: bool = False,
+        include_consolidated: bool = False,
+        consolidation_first: bool = False,
     ):
         """
         Search for memory items using semantic matching.
@@ -486,6 +488,11 @@ class SmartMemoryClient:
                            Values: float multipliers (default varies by channel).
             expertise: When True (CORE-EXPERTISE-1 Phase 4a), returns a typed dict
                       keyed by expertise type instead of a flat list.
+            include_consolidated: When True (CORE-CONSOLIDATE-1), include consolidated
+                      source memories (normally hidden) in results.
+            consolidation_first: When True (NEURO-1d), surface a consolidated summary above
+                      the scattered source memories it consolidates — best for synthesis
+                      queries ("what is known about X?"). Opt-in; implies include_consolidated.
 
         Returns:
             By default, ``List[MemoryItem]``.
@@ -535,6 +542,10 @@ class SmartMemoryClient:
             body_dict["expertise"] = True
         if cite:
             body_dict["cite"] = True  # RECALL-CITATIONS-1
+        if include_consolidated:
+            body_dict["include_consolidated"] = True  # CORE-CONSOLIDATE-1
+        if consolidation_first:
+            body_dict["consolidation_first"] = True  # NEURO-1d
 
         # SELF-IMPROVE-6: use _request_raw to capture X-Search-Session-Id header
         import httpx

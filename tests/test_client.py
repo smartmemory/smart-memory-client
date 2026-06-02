@@ -1,7 +1,51 @@
 """Tests for SmartMemory Client"""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 from smartmemory_client import SmartMemoryClient, SmartMemoryClientError
+
+
+def _mock_search_response():
+    """A minimal SearchResponse envelope (CORE-RECALL-LINEAGE-1) for body-assertion tests."""
+    resp = MagicMock()
+    resp.headers.get.return_value = None
+    resp.json.return_value = {"results": [], "group_roots": {}}
+    resp.raise_for_status.return_value = None
+    return resp
+
+
+class TestSearchConsolidationParams:
+    """NEURO-1d / CORE-CONSOLIDATE-1: the SDK serializes consolidation params into the POST body.
+
+    The consolidation_first *behavior* is proven by the core integration test; the SDK's
+    responsibility is body serialization, which is what these assert."""
+
+    @patch("smartmemory_client.client.httpx.request")
+    def test_consolidation_first_serialized(self, mock_req):
+        mock_req.return_value = _mock_search_response()
+        client = SmartMemoryClient("http://localhost:9001", api_key="t")
+        client.search("what is known about X", consolidation_first=True)
+        body = mock_req.call_args[1]["json"]
+        assert body["consolidation_first"] is True
+
+    @patch("smartmemory_client.client.httpx.request")
+    def test_include_consolidated_serialized(self, mock_req):
+        mock_req.return_value = _mock_search_response()
+        client = SmartMemoryClient("http://localhost:9001", api_key="t")
+        client.search("X", include_consolidated=True)
+        body = mock_req.call_args[1]["json"]
+        assert body["include_consolidated"] is True
+
+    @patch("smartmemory_client.client.httpx.request")
+    def test_consolidation_params_omitted_by_default(self, mock_req):
+        """Default off → keys absent from the body (matches the route's default-off contract)."""
+        mock_req.return_value = _mock_search_response()
+        client = SmartMemoryClient("http://localhost:9001", api_key="t")
+        client.search("X")
+        body = mock_req.call_args[1]["json"]
+        assert "consolidation_first" not in body
+        assert "include_consolidated" not in body
 
 
 def test_client_initialization():
