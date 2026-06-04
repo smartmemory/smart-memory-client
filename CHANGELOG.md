@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Deprecated (SEC-AUTH-REVOCATION-1 token-prefix, 2026-06-04) — raw-JWT api_key (0.7.8)
+
+- **`SmartMemoryClient(api_key="eyJ…")` now emits a `DeprecationWarning`.** A raw JWT in the
+  `api_key` slot (or `SMARTMEMORY_API_KEY`) is not scoped or revocable per-key. Mint a proper key
+  via `POST /memory/api-keys` and use the new `sm_live_…` / `sm_test_…` prefixes (legacy `sk_…`
+  still works). Properly-prefixed keys emit no warning. Fixed a latent `import warnings` shadowing
+  in `__init__` surfaced by this change.
+
 ### Added (CORE-GRAPH-CANONICAL-DEDUP-1, 2026-06-03) — `dedup_entities()` (0.7.7)
 
 - **`client.dedup_entities(dry_run=False, require_structural_confirmation=True)`** — POSTs

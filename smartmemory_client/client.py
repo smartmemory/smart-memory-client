@@ -14,6 +14,7 @@ For more information, see: https://github.com/smartmemory/smart-memory-client
 
 import logging
 import os
+import warnings
 from typing import Any, Dict, List, Optional, Union
 import httpx
 
@@ -184,6 +185,16 @@ class SmartMemoryClient:
             logger.info(f"Using JWT token (length: {len(resolved_token)})")
         elif resolved_api_key:
             self._api_key = resolved_api_key
+            # SEC-AUTH-REVOCATION-1: a raw JWT in SMARTMEMORY_API_KEY is not scoped
+            # or revocable per-key. Steer callers to minted sm_live_/sm_test_ keys.
+            if resolved_api_key.startswith("eyJ"):
+                warnings.warn(
+                    "SMARTMEMORY_API_KEY appears to be a raw JWT. JWTs are not "
+                    "scoped or revocable per-key. Mint an API key via "
+                    "POST /memory/api-keys and use sm_live_/sm_test_ prefixed keys.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
             logger.info(f"Using API key: {resolved_api_key[:10]}...")
         else:
             logger.warning("No auth credentials provided. Use login() to authenticate.")
@@ -198,8 +209,6 @@ class SmartMemoryClient:
             or "team_default_demo"
         )
         if team_id is not None and not workspace_id:
-            import warnings
-
             warnings.warn(
                 "The 'team_id' parameter is deprecated and will be removed in v0.5.0. "
                 "Use 'workspace_id' instead.",
