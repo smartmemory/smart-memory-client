@@ -1,0 +1,74 @@
+name: Sync to core release
+
+# The SDK joined the unified product line: core's VERSION is the single source of
+# truth and this package COPIES it verbatim on every core release, then ships at
+# that number. (The SDK does not pin or import core — it just tracks the shared
+# product version so all five packages always carry the identical number.)
+on:
+  repository_dispatch:
+    types: [core-released]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Product version to copy (e.g. 1.4.25)'
+        required: true
+        type: string
+
+concurrency:
+  group: sync-core
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # PAT so the release we create triggers publish.yml.
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 0
+
+      - name: Copy product version into VERSION
+        id: bump
+        env:
+          PRODUCT_VERSION: ${{ github.event.client_payload.version || github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, re, pathlib, sys
+          v = os.environ["PRODUCT_VERSION"].strip()
+          if not re.fullmatch(r"\d+\.\d+\.\d+", v):
+              sys.exit(f"::error::Bad version '{v}'")
+          pathlib.Path("VERSION").write_text(v)
+          cl = pathlib.Path("CHANGELOG.md")
+          if cl.exists():
+              c = cl.read_text()
+              entry = (f"\n### Changed (auto, lockstep) — track product version {v} ({v})\n"
+                       f"- Version copied from the smartmemory-core release (single-source lockstep).\n")
+              if "## [Unreleased]" in c:
+                  cl.write_text(c.replace("## [Unreleased]", "## [Unreleased]" + entry, 1))
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"version={v}\n")
+          print(f"smartmemory-client -> {v} (copied)")
+          PY
+
+      - name: Commit, push, release
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          V: ${{ steps.bump.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "smartmem-dev[bot]"
+          git config user.email "smartmem-dev@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "Already at $V; nothing to do."
+            exit 0
+          fi
+          git add -A
+          git commit -m "chore(version): track product version $V (single-source lockstep)"
+          git push origin HEAD:main
+          gh release create "v$V" --title "v$V" --notes "Unified product release $V."
+          echo "✅ Released smartmemory-client v$V (publish.yml will ship to PyPI)."
