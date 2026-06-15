@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added (ONTO-HITL-CONSUMER-1) — ontology HITL queue methods
+- `list_ontology_hitl(status='open', kind=None, limit=50)` → `GET /memory/ontology/hitl`
+  (`kind` omitted when None). `resolve_ontology_hitl(item_id, action, note=None)` →
+  `POST /memory/ontology/hitl/{id}/resolve`. 404 → `SmartMemoryNotFoundError` (missing/cross-tenant),
+  422 → `SmartMemoryValidationError`. Tests: `tests/test_ontology_hitl_methods.py` (7/7). Codex review clean.
+
 ### Changed (auto, lockstep) — track product version 1.4.32 (1.4.32)
 - Version copied from the smartmemory-core release (single-source lockstep).
 

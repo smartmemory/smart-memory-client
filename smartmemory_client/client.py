@@ -1784,6 +1784,50 @@ class SmartMemoryClient:
             "POST", f"/memory/ontology/registry/{registry_id}/rollback", json_body=body
         )
 
+    def list_ontology_hitl(
+        self,
+        status: str = "open",
+        kind: Optional[str] = None,
+        limit: int = 50,
+    ) -> Dict[str, Any]:
+        """List ontology HITL queue items for the caller's workspace (ONTO-HITL-CONSUMER-1).
+
+        Args:
+            status: Filter by status (``open`` or ``resolved``).
+            kind: Optional kind filter (``missing_in_graph`` / ``missing_in_registry``
+                / ``name_conflict_unresolvable``).
+            limit: Max rows (1-500).
+
+        Returns:
+            Dict with ``items``, ``count``, ``open_count``.
+        """
+        params: Dict[str, Any] = {"status": status, "limit": limit}
+        if kind is not None:
+            params["kind"] = kind
+        return self._request("GET", "/memory/ontology/hitl", params=params)
+
+    def resolve_ontology_hitl(
+        self, item_id: str, action: str, note: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Resolve one ontology HITL queue item (ONTO-HITL-CONSUMER-1).
+
+        Args:
+            item_id: The HITL item id.
+            action: One of ``accepted`` / ``dismissed`` / ``deferred``.
+            note: Optional free-text note.
+
+        Returns:
+            Dict with the updated ``item``.
+
+        Raises:
+            SmartMemoryNotFoundError: if the id is not in the caller's workspace (404).
+            SmartMemoryValidationError: if ``action`` is invalid (422).
+        """
+        body: Dict[str, Any] = {"action": action, "note": note}
+        return self._request(
+            "POST", f"/memory/ontology/hitl/{item_id}/resolve", json_body=body
+        )
+
     def export_registry(
         self,
         registry_id: str,
