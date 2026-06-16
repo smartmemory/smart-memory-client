@@ -1619,12 +1619,14 @@ class SmartMemoryClient:
         openai_key: Optional[str] = None,
         anthropic_key: Optional[str] = None,
         groq_key: Optional[str] = None,
+        gemini_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Update user's LLM provider API keys."""
         body = {
             "openai_key": openai_key,
             "anthropic_key": anthropic_key,
             "groq_key": groq_key,
+            "gemini_key": gemini_key,
         }
         return self._request("PATCH", "/auth/llm-keys", json_body=body)
 

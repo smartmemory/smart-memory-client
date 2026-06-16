@@ -128,7 +128,14 @@ class TestClientFullCoverage:
         mock_request.assert_called_with(
             "PATCH",
             "/auth/llm-keys",
-            json_body={"openai_key": "key", "anthropic_key": None, "groq_key": None},
+            json_body={"openai_key": "key", "anthropic_key": None, "groq_key": None, "gemini_key": None},
+        )
+
+        client.update_llm_keys(gemini_key="gk")
+        mock_request.assert_called_with(
+            "PATCH",
+            "/auth/llm-keys",
+            json_body={"openai_key": None, "anthropic_key": None, "groq_key": None, "gemini_key": "gk"},
         )
 
         client.get_llm_keys()

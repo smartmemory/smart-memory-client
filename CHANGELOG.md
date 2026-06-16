@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added (CORE-LLM-GEMINI-1) — Gemini provider key
+- `update_llm_keys()` gains a `gemini_key` parameter and sends `gemini_key` in the
+  `PATCH /auth/llm-keys` body, mirroring openai/anthropic/groq. Body assertion updated +
+  new `gemini_key` round-trip assertion in `tests/test_client_full_coverage.py` (15/15).
+
 ### Added (ONTO-HITL-CONSUMER-1) — ontology HITL queue methods
 - `list_ontology_hitl(status='open', kind=None, limit=50)` → `GET /memory/ontology/hitl`
   (`kind` omitted when None). `resolve_ontology_hitl(item_id, action, note=None)` →
