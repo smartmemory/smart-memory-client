@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed (lockstep) — track smartmemory-core==1.4.33 (1.4.33)
+- Version copied from smartmemory-core 1.4.33 release (single-source lockstep; no client code change). Core delivers CORE-RELATION-RULER-1 (EntityRuler cold-start seed ROM).
+
 ### Added (CORE-LLM-GEMINI-1) — Gemini provider key
 - `update_llm_keys()` gains a `gemini_key` parameter and sends `gemini_key` in the
   `PATCH /auth/llm-keys` body, mirroring openai/anthropic/groq. Body assertion updated +
