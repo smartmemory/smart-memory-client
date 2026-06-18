@@ -3172,6 +3172,44 @@ class SmartMemoryClient:
             "GET", f"/memory/decisions/{decision_id}/causal-chain", params=params
         )
 
+    def create_pending_decision(
+        self,
+        content: str,
+        requirements: List[Dict[str, Any]],
+        domain: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        agent_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create a pending decision (Acceptance Case) with unresolved requirements.
+
+        Each requirement: {"description": str, "requirement_type": str, "query_hint": str|None}.
+        Returns the decision incl. server-generated requirement_ids.
+        """
+        body: Dict[str, Any] = {"content": content, "requirements": requirements}
+        if domain:
+            body["domain"] = domain
+        if tags:
+            body["tags"] = tags
+        if agent_id is not None:
+            body["agent_id"] = agent_id
+        return self._request("POST", "/memory/decisions/pending/create", json_body=body)
+
+    def resolve_requirement(self, decision_id: str, requirement_id: str, memory_id: str) -> Dict[str, Any]:
+        """Mark one requirement on a pending decision resolved by a memory item."""
+        return self._request(
+            "POST",
+            f"/memory/decisions/pending/{decision_id}/resolve",
+            json_body={"requirement_id": requirement_id, "memory_id": memory_id},
+        )
+
+    def try_activate_decision(self, decision_id: str) -> Dict[str, Any]:
+        """Try to activate a pending decision (no-op if requirements remain)."""
+        return self._request("POST", f"/memory/decisions/pending/{decision_id}/activate")
+
+    def list_pending_decisions(self, limit: int = 50) -> Dict[str, Any]:
+        """List pending decisions awaiting more evidence."""
+        return self._request("GET", "/memory/decisions/pending", params={"limit": limit})
+
     # =========================================================================
     # Procedure Evolution (CFS-3b)
     # =========================================================================
