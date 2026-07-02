@@ -1136,12 +1136,8 @@ class SmartMemoryClient:
                 print(f"{neighbor['item_id']}: {neighbor['link_type']}")
             ```
         """
-        try:
-            result = self._request("GET", f"/memory/{item_id}/neighbors")
-            return result.get("neighbors", [])
-        except Exception as e:
-            logger.warning(f"Error getting neighbors: {e}")
-            return []
+        result = self._request("GET", f"/memory/{item_id}/neighbors")
+        return result.get("neighbors", [])
 
     def get_lineage(self, item_id: str) -> Dict[str, Any]:
         """Get the supersession lineage chain for a memory item."""
@@ -2776,7 +2772,7 @@ class SmartMemoryClient:
             "min_quality_score": min_quality_score,
             "use_llm_detection": use_llm_detection,
         }
-        return self._request("POST", "/memory/reasoning-traces/extract", json_body=body)
+        return self._request("POST", "/memory/reasoning/traces/extract", json_body=body)
 
     def store_reasoning_trace(
         self, trace: Dict[str, Any], artifact_ids: Optional[List[str]] = None
@@ -2812,7 +2808,7 @@ class SmartMemoryClient:
             "trace": trace,
             "artifact_ids": artifact_ids,
         }
-        return self._request("POST", "/memory/reasoning-traces/store", json_body=body)
+        return self._request("POST", "/memory/reasoning/traces/store", json_body=body)
 
     def query_reasoning(
         self, query: str, artifact_id: Optional[str] = None, limit: int = 10
@@ -2848,7 +2844,7 @@ class SmartMemoryClient:
             "artifact_id": artifact_id,
             "limit": limit,
         }
-        return self._request("POST", "/memory/reasoning-traces/query", json_body=body)
+        return self._request("POST", "/memory/reasoning/traces/query", json_body=body)
 
     def get_reasoning_trace(self, trace_id: str) -> Dict[str, Any]:
         """
@@ -2860,7 +2856,7 @@ class SmartMemoryClient:
         Returns:
             Full reasoning trace with steps, task_context, artifact_ids
         """
-        return self._request("GET", f"/memory/reasoning-traces/{trace_id}")
+        return self._request("GET", f"/memory/reasoning/traces/{trace_id}")
 
     # =========================================================================
     # Synthesis Evolution (Opinions & Observations)
