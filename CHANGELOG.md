@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added (2026-07-02) — URL contract coverage
+- Added `tests/test_url_contracts.py`, a table-driven pytest module that mocks
+  the SDK transport and asserts exact verb/path contracts for the main public
+  memory CRUD, search, ingest, decision, code, plan, reasoning trace, and
+  summary snapshot client methods against the service route surface.
+
 ### Changed (auto, lockstep) — track product version 1.4.36 (1.4.36)
 - Version copied from the smartmemory-core release (single-source lockstep).
 
