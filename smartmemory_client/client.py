@@ -1339,7 +1339,9 @@ class SmartMemoryClient:
         """
         return self._request("GET", "/memory/clustering/stats")
 
-    def resolve_aliases(self, dry_run: bool = False, disambiguate: bool = False) -> Dict[str, Any]:
+    def resolve_aliases(
+        self, dry_run: bool = False, disambiguate: bool = False
+    ) -> Dict[str, Any]:
         """
         Merge fragmented single-token entity aliases into their canonical.
 
@@ -3213,7 +3215,9 @@ class SmartMemoryClient:
             body["agent_id"] = agent_id
         return self._request("POST", "/memory/decisions/pending/create", json_body=body)
 
-    def resolve_requirement(self, decision_id: str, requirement_id: str, memory_id: str) -> Dict[str, Any]:
+    def resolve_requirement(
+        self, decision_id: str, requirement_id: str, memory_id: str
+    ) -> Dict[str, Any]:
         """Mark one requirement on a pending decision resolved by a memory item."""
         return self._request(
             "POST",
@@ -3223,11 +3227,15 @@ class SmartMemoryClient:
 
     def try_activate_decision(self, decision_id: str) -> Dict[str, Any]:
         """Try to activate a pending decision (no-op if requirements remain)."""
-        return self._request("POST", f"/memory/decisions/pending/{decision_id}/activate")
+        return self._request(
+            "POST", f"/memory/decisions/pending/{decision_id}/activate"
+        )
 
     def list_pending_decisions(self, limit: int = 50) -> Dict[str, Any]:
         """List pending decisions awaiting more evidence."""
-        return self._request("GET", "/memory/decisions/pending", params={"limit": limit})
+        return self._request(
+            "GET", "/memory/decisions/pending", params={"limit": limit}
+        )
 
     # =========================================================================
     # Procedure Evolution (CFS-3b)

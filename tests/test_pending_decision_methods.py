@@ -30,7 +30,9 @@ def mock_response():
 class TestPendingLifecycle:
     @patch("httpx.Client.request")
     def test_create_pending(self, mock_req, client, mock_response):
-        mock_req.return_value = mock_response({"decision_id": "dec_1", "status": "pending"})
+        mock_req.return_value = mock_response(
+            {"decision_id": "dec_1", "status": "pending"}
+        )
         out = client.create_pending_decision(
             "case", [{"description": "x", "requirement_type": "proof"}], domain="gtm"
         )
@@ -40,7 +42,9 @@ class TestPendingLifecycle:
         assert args[0][1] == "http://localhost:9001/memory/decisions/pending/create"
         body = args[1]["json"]
         assert body["content"] == "case"
-        assert body["requirements"] == [{"description": "x", "requirement_type": "proof"}]
+        assert body["requirements"] == [
+            {"description": "x", "requirement_type": "proof"}
+        ]
         assert body["domain"] == "gtm"
 
     @patch("httpx.Client.request")

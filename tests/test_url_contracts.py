@@ -3,6 +3,7 @@
 Path fixes in this change: none. The covered client methods already match the
 service routes under ../smart-memory-service/memory_service/api/routes/.
 """
+
 from unittest.mock import MagicMock, patch
 
 import httpx

@@ -16,7 +16,9 @@ BASE_URL = "http://localhost:9001"
 
 
 def _client():
-    return SmartMemoryClient(base_url=BASE_URL, api_key="sm_test_key", workspace_id="ws1")
+    return SmartMemoryClient(
+        base_url=BASE_URL, api_key="sm_test_key", workspace_id="ws1"
+    )
 
 
 def _ok(payload):

@@ -44,7 +44,13 @@ class TestListOntologyHitl:
     @patch("httpx.Client.request")
     def test_list_basic(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response(
-            {"items": [{"id": "h1", "kind": "name_conflict_unresolvable", "status": "open"}], "count": 1, "open_count": 1}
+            {
+                "items": [
+                    {"id": "h1", "kind": "name_conflict_unresolvable", "status": "open"}
+                ],
+                "count": 1,
+                "open_count": 1,
+            }
         )
         result = client.list_ontology_hitl()
         assert result["count"] == 1
@@ -56,7 +62,9 @@ class TestListOntologyHitl:
 
     @patch("httpx.Client.request")
     def test_list_with_filters(self, mock_req, client, mock_response):
-        mock_req.return_value = mock_response({"items": [], "count": 0, "open_count": 0})
+        mock_req.return_value = mock_response(
+            {"items": [], "count": 0, "open_count": 0}
+        )
         client.list_ontology_hitl(status="resolved", kind="missing_in_graph", limit=10)
         params = mock_req.call_args[1]["params"]
         assert params == {"status": "resolved", "limit": 10, "kind": "missing_in_graph"}
@@ -72,7 +80,15 @@ class TestListOntologyHitl:
 class TestResolveOntologyHitl:
     @patch("httpx.Client.request")
     def test_resolve_basic(self, mock_req, client, mock_response):
-        mock_req.return_value = mock_response({"item": {"id": "h1", "status": "resolved", "resolution_action": "accepted"}})
+        mock_req.return_value = mock_response(
+            {
+                "item": {
+                    "id": "h1",
+                    "status": "resolved",
+                    "resolution_action": "accepted",
+                }
+            }
+        )
         result = client.resolve_ontology_hitl("h1", "accepted", note="done")
         assert result["item"]["status"] == "resolved"
         body = mock_req.call_args[1]["json"]
