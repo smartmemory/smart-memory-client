@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed (auto, lockstep) — track product version 1.4.37 (1.4.37)
+- Version copied from the smartmemory-core release (single-source lockstep).
+
 ### Changed (2026-07-03) — persistent httpx.Client for connection reuse
 - **`SmartMemoryClient` now holds one `httpx.Client` (`self._client`)** for keep-alive
   connection pooling across its many per-method calls, replacing per-call module-level
