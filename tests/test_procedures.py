@@ -46,7 +46,7 @@ def _error_response(status_code: int, body: str = "") -> MagicMock:
 class TestListProcedures:
     """Tests for list_procedures()."""
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_happy_path(self, mock_request, client):
         expected = {
             "workspace_id": "ws-1",
@@ -94,7 +94,7 @@ class TestListProcedures:
         assert len(result["procedures"]) == 2
         mock_request.assert_called_once()
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_with_all_params(self, mock_request, client):
         mock_request.return_value = _ok_response({"procedures": [], "total_count": 0})
 
@@ -112,7 +112,7 @@ class TestListProcedures:
         assert params["sort_by"] == "success_rate"
         assert params["sort_order"] == "asc"
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_uses_defaults(self, mock_request, client):
         mock_request.return_value = _ok_response({"procedures": [], "total_count": 0})
 
@@ -125,7 +125,7 @@ class TestListProcedures:
         assert params["sort_order"] == "desc"
         assert "sort_by" not in params  # None values should be omitted
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_omits_none_sort_by(self, mock_request, client):
         mock_request.return_value = _ok_response({"procedures": [], "total_count": 0})
 
@@ -135,7 +135,7 @@ class TestListProcedures:
         params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
         assert "sort_by" not in params
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_400_raises_error(self, mock_request, client):
         """400 returned when sort_by is invalid."""
         mock_request.return_value = _error_response(400, "Invalid sort_by value")
@@ -143,7 +143,7 @@ class TestListProcedures:
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.list_procedures(sort_by="invalid_field")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_500_raises_error(self, mock_request, client):
         mock_request.return_value = _error_response(500, "Internal Server Error")
 
@@ -154,7 +154,7 @@ class TestListProcedures:
 class TestGetProcedure:
     """Tests for get_procedure()."""
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_happy_path(self, mock_request, client):
         expected = {
             "id": "proc-1",
@@ -191,7 +191,7 @@ class TestGetProcedure:
         assert "recent_matches" in result
         mock_request.assert_called_once()
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_with_include_matches_true(self, mock_request, client):
         mock_request.return_value = _ok_response({"id": "proc-1", "recent_matches": []})
 
@@ -202,7 +202,7 @@ class TestGetProcedure:
         assert params["include_matches"] is True
         assert params["match_limit"] == 50
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_with_include_matches_false(self, mock_request, client):
         mock_request.return_value = _ok_response({"id": "proc-1"})
 
@@ -212,7 +212,7 @@ class TestGetProcedure:
         params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params", {})
         assert params["include_matches"] is False
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_uses_defaults(self, mock_request, client):
         mock_request.return_value = _ok_response({"id": "proc-1", "recent_matches": []})
 
@@ -223,7 +223,7 @@ class TestGetProcedure:
         assert params["include_matches"] is True
         assert params["match_limit"] == 20
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_404_raises_error(self, mock_request, client):
         """404 returned when procedure does not exist."""
         mock_request.return_value = _error_response(
@@ -233,7 +233,7 @@ class TestGetProcedure:
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.get_procedure("nonexistent")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_500_raises_error(self, mock_request, client):
         mock_request.return_value = _error_response(500, "Internal Server Error")
 

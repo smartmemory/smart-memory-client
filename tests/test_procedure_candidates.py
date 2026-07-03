@@ -55,7 +55,7 @@ def _error_response(status_code: int, body: str = "") -> MagicMock:
 class TestListProcedureCandidates:
     """Tests for list_procedure_candidates()."""
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_happy_path(self, mock_request, client):
         expected = {
             "workspace_id": "ws-1",
@@ -114,7 +114,7 @@ class TestListProcedureCandidates:
         assert len(result["candidates"]) == 2
         mock_request.assert_called_once()
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_with_all_params(self, mock_request, client):
         mock_request.return_value = _ok_response(
             {"candidates": [], "candidate_count": 0}
@@ -134,7 +134,7 @@ class TestListProcedureCandidates:
         assert kwargs["params"]["days_back"] == 14
         assert kwargs["params"]["limit"] == 10
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_empty_candidates(self, mock_request, client):
         expected = {
             "workspace_id": "ws-1",
@@ -148,14 +148,14 @@ class TestListProcedureCandidates:
         assert result["candidate_count"] == 0
         assert result["candidates"] == []
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_404_not_found(self, mock_request, client):
         mock_request.return_value = _error_response(404, "Not found")
 
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.list_procedure_candidates()
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_400_bad_request(self, mock_request, client):
         """Test 400 error for invalid parameters."""
         mock_request.return_value = _error_response(400, "Invalid min_score value")
@@ -163,7 +163,7 @@ class TestListProcedureCandidates:
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.list_procedure_candidates(min_score=-1.0)
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_500_server_error(self, mock_request, client):
         mock_request.return_value = _error_response(500, "Internal server error")
 
@@ -179,7 +179,7 @@ class TestListProcedureCandidates:
 class TestPromoteProcedureCandidate:
     """Tests for promote_procedure_candidate()."""
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_happy_path(self, mock_request, client):
         expected = {
             "status": "success",
@@ -201,7 +201,7 @@ class TestPromoteProcedureCandidate:
         assert result["procedure_id"] == "proc-new-123"
         mock_request.assert_called_once()
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_minimal_params(self, mock_request, client):
         expected = {
             "status": "success",
@@ -224,7 +224,7 @@ class TestPromoteProcedureCandidate:
         assert body["preferred_profile"] == "quick_extract"
         assert body["remove_working_items"] is False
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_with_remove_working_items(self, mock_request, client):
         expected = {
             "status": "success",
@@ -242,14 +242,14 @@ class TestPromoteProcedureCandidate:
 
         assert result["items_removed"] == 5
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_404_cluster_not_found(self, mock_request, client):
         mock_request.return_value = _error_response(404, "Candidate cluster not found")
 
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.promote_procedure_candidate(cluster_id="nonexistent")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_400_dismissed_cluster(self, mock_request, client):
         mock_request.return_value = _error_response(
             400, "Cannot promote a dismissed candidate"
@@ -258,7 +258,7 @@ class TestPromoteProcedureCandidate:
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.promote_procedure_candidate(cluster_id="dismissed-cluster")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_500_server_error(self, mock_request, client):
         mock_request.return_value = _error_response(500, "Internal server error")
 
@@ -274,7 +274,7 @@ class TestPromoteProcedureCandidate:
 class TestDismissProcedureCandidate:
     """Tests for dismiss_procedure_candidate()."""
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_happy_path(self, mock_request, client):
         expected = {
             "status": "success",
@@ -289,7 +289,7 @@ class TestDismissProcedureCandidate:
         assert result["status"] == "success"
         mock_request.assert_called_once()
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_already_dismissed(self, mock_request, client):
         expected = {
             "status": "success",
@@ -302,7 +302,7 @@ class TestDismissProcedureCandidate:
 
         assert result["message"] == "Candidate was already dismissed"
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_500_server_error(self, mock_request, client):
         mock_request.return_value = _error_response(500, "Failed to dismiss candidate")
 

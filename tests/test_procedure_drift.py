@@ -49,7 +49,7 @@ def _error_response(status_code: int, body: str = "") -> MagicMock:
 # list_drift_events
 # ---------------------------------------------------------------------------
 class TestListDriftEvents:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_defaults(self, mock_req, client):
         expected = {"workspace_id": "ws1", "record_count": 0, "records": []}
         mock_req.return_value = _ok_response(expected)
@@ -58,7 +58,7 @@ class TestListDriftEvents:
         _, kwargs = mock_req.call_args
         assert kwargs["params"] == {"limit": 100}
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_all_filters(self, mock_req, client):
         mock_req.return_value = _ok_response(
             {"workspace_id": "ws1", "record_count": 1, "records": [{}]}
@@ -80,7 +80,7 @@ class TestListDriftEvents:
         assert params["end_date"] == "2026-02-13"
         assert params["limit"] == 50
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_none_params_omitted(self, mock_req, client):
         mock_req.return_value = _ok_response(
             {"workspace_id": "ws1", "record_count": 0, "records": []}
@@ -90,7 +90,7 @@ class TestListDriftEvents:
         assert "procedure_id" not in kwargs["params"]
         assert "resolved" not in kwargs["params"]
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_500_raises(self, mock_req, client):
         mock_req.return_value = _error_response(500)
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
@@ -101,7 +101,7 @@ class TestListDriftEvents:
 # get_drift_event
 # ---------------------------------------------------------------------------
 class TestGetDriftEvent:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_happy_path(self, mock_req, client):
         expected = {
             "event_id": "evt-1",
@@ -119,13 +119,13 @@ class TestGetDriftEvent:
         assert result == expected
         mock_req.assert_called_once()
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_404_raises(self, mock_req, client):
         mock_req.return_value = _error_response(404, "Not found")
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.get_drift_event("nonexistent")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_500_raises(self, mock_req, client):
         mock_req.return_value = _error_response(500)
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
@@ -136,7 +136,7 @@ class TestGetDriftEvent:
 # resolve_drift_event
 # ---------------------------------------------------------------------------
 class TestResolveDriftEvent:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_with_note(self, mock_req, client):
         expected = {"status": "resolved", "event_id": "evt-1", "resolved": True}
         mock_req.return_value = _ok_response(expected)
@@ -147,7 +147,7 @@ class TestResolveDriftEvent:
         _, kwargs = mock_req.call_args
         assert kwargs["json"] == {"note": "Schema updated intentionally"}
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_without_note(self, mock_req, client):
         mock_req.return_value = _ok_response(
             {"status": "resolved", "event_id": "evt-1", "resolved": True}
@@ -156,13 +156,13 @@ class TestResolveDriftEvent:
         _, kwargs = mock_req.call_args
         assert kwargs["json"] == {}
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_404_raises(self, mock_req, client):
         mock_req.return_value = _error_response(404)
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.resolve_drift_event("nonexistent")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_400_raises(self, mock_req, client):
         mock_req.return_value = _error_response(400, "Bad request")
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
@@ -173,7 +173,7 @@ class TestResolveDriftEvent:
 # sweep_drift
 # ---------------------------------------------------------------------------
 class TestSweepDrift:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_happy_path(self, mock_req, client):
         expected = {
             "workspace_id": "ws1",
@@ -186,7 +186,7 @@ class TestSweepDrift:
         assert result == expected
         mock_req.assert_called_once()
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_500_raises(self, mock_req, client):
         mock_req.return_value = _error_response(500)
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
@@ -197,7 +197,7 @@ class TestSweepDrift:
 # list_schema_snapshots
 # ---------------------------------------------------------------------------
 class TestListSchemaSnapshots:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_happy_path(self, mock_req, client):
         expected = {
             "workspace_id": "ws1",
@@ -222,13 +222,13 @@ class TestListSchemaSnapshots:
         assert result["record_count"] == 2
         mock_req.assert_called_once()
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_404_raises(self, mock_req, client):
         mock_req.return_value = _error_response(404)
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.list_schema_snapshots("nonexistent")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_500_raises(self, mock_req, client):
         mock_req.return_value = _error_response(500)
         with pytest.raises(SmartMemoryClientError, match="Request failed"):

@@ -5,6 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed (2026-07-03) — persistent httpx.Client for connection reuse
+- **`SmartMemoryClient` now holds one `httpx.Client` (`self._client`)** for keep-alive
+  connection pooling across its many per-method calls, replacing per-call module-level
+  `httpx.request` / `httpx.get`. Added `close()`, and the context-manager `__exit__`
+  (previously a `pass` stub) + `__del__` now close the pool.
+- **`verify_ssl` is now actually honored.** The old module-level calls never passed `verify=`,
+  so the constructor arg was dead config; it now reaches the pooled client.
+- **Test mock target moved** from `smartmemory_client.client.httpx.request` to
+  `httpx.Client.request` across all 19 mocking test files (201 patch sites). Positional
+  `call_args[0]` assertions are unaffected: the patched class method is a non-descriptor
+  MagicMock, so no `self` is injected into the recorded args.
+- New `tests/test_client_lifecycle.py` (pool identity, verify_ssl wiring, pooled-call routing,
+  idempotent close, context-manager teardown). CI tier: 288 passed.
+
 ### Added (2026-07-02) — URL contract coverage
 - Added `tests/test_url_contracts.py`, a table-driven pytest module that mocks
   the SDK transport and asserts exact verb/path contracts for the main public

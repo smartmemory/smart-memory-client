@@ -41,7 +41,7 @@ def _error_response(status_code, text="error"):
 
 
 class TestListOntologyHitl:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_list_basic(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response(
             {"items": [{"id": "h1", "kind": "name_conflict_unresolvable", "status": "open"}], "count": 1, "open_count": 1}
@@ -54,14 +54,14 @@ class TestListOntologyHitl:
         assert call[1]["params"]["limit"] == 50
         assert "kind" not in call[1]["params"]  # omitted when None
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_list_with_filters(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response({"items": [], "count": 0, "open_count": 0})
         client.list_ontology_hitl(status="resolved", kind="missing_in_graph", limit=10)
         params = mock_req.call_args[1]["params"]
         assert params == {"status": "resolved", "limit": 10, "kind": "missing_in_graph"}
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_list_server_error(self, mock_req, client):
         mock_req.return_value = _error_response(500)
         with pytest.raises(SmartMemoryServerError) as exc:
@@ -70,7 +70,7 @@ class TestListOntologyHitl:
 
 
 class TestResolveOntologyHitl:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_resolve_basic(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response({"item": {"id": "h1", "status": "resolved", "resolution_action": "accepted"}})
         result = client.resolve_ontology_hitl("h1", "accepted", note="done")
@@ -79,21 +79,21 @@ class TestResolveOntologyHitl:
         assert body["action"] == "accepted"
         assert body["note"] == "done"
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_resolve_not_found(self, mock_req, client):
         mock_req.return_value = _error_response(404, "not found")
         with pytest.raises(SmartMemoryNotFoundError) as exc:
             client.resolve_ontology_hitl("nonexistent", "accepted")
         assert exc.value.status_code == 404
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_resolve_invalid_action_422(self, mock_req, client):
         mock_req.return_value = _error_response(422, "invalid action")
         with pytest.raises(SmartMemoryValidationError) as exc:
             client.resolve_ontology_hitl("h1", "bogus")
         assert exc.value.status_code == 422
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_resolve_server_error(self, mock_req, client):
         mock_req.return_value = _error_response(500)
         with pytest.raises(SmartMemoryServerError):

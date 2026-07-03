@@ -49,7 +49,7 @@ def _resp(
 
 
 class TestHappyPaths:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_generate_returns_payload(self, mock_req, client):
         payload = {
             "snapshot_id": "snap_abc",
@@ -66,19 +66,19 @@ class TestHappyPaths:
         assert call.args[0] == "POST"
         assert "/memory/summary/generate" in call.args[1]
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_latest_returns_payload(self, mock_req, client):
         mock_req.return_value = _resp(200, json_data={"snapshot_id": "snap_latest"})
         out = client.summary_latest()
         assert out == {"snapshot_id": "snap_latest"}
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_get_returns_payload(self, mock_req, client):
         mock_req.return_value = _resp(200, json_data={"snapshot_id": "snap_g"})
         out = client.summary_get("snap_g")
         assert out == {"snapshot_id": "snap_g"}
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_list_returns_array(self, mock_req, client):
         mock_req.return_value = _resp(
             200,
@@ -90,7 +90,7 @@ class TestHappyPaths:
         out = client.summary_list(limit=2)
         assert len(out) == 2
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_delta_returns_payload(self, mock_req, client):
         mock_req.return_value = _resp(
             200,
@@ -103,7 +103,7 @@ class TestHappyPaths:
         out = client.summary_delta("a", "b")
         assert out["entities_added"] == 3
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_delete_returns_none_on_204(self, mock_req, client):
         # 204 — _request returns None
         r = MagicMock(spec=httpx.Response)
@@ -122,22 +122,22 @@ class TestHappyPaths:
 
 
 class TestNotFound:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_latest_returns_none_on_404(self, mock_req, client):
         mock_req.return_value = _resp(404, body="No snapshots")
         assert client.summary_latest() is None
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_get_returns_none_on_404(self, mock_req, client):
         mock_req.return_value = _resp(404, body="not found")
         assert client.summary_get("nope") is None
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_delta_returns_none_on_404(self, mock_req, client):
         mock_req.return_value = _resp(404, body="not found")
         assert client.summary_delta("a", "b") is None
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_delete_raises_on_404(self, mock_req, client):
         mock_req.return_value = _resp(404, body="not found")
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
@@ -150,19 +150,19 @@ class TestNotFound:
 
 
 class TestErrorPaths:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_generate_409_lock_held(self, mock_req, client):
         mock_req.return_value = _resp(409, body='{"detail":{"reason":"lock_held"}}')
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.summary_generate()
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_delete_403_non_admin(self, mock_req, client):
         mock_req.return_value = _resp(403, body="Admin access required")
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.summary_delete("snap_x")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_generate_500(self, mock_req, client):
         mock_req.return_value = _resp(500, body="Internal Server Error")
         with pytest.raises(SmartMemoryClientError, match="Request failed"):

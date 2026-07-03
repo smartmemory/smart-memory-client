@@ -20,7 +20,7 @@ def client():
 class TestGetProcedureEvolution:
     """Tests for get_procedure_evolution method."""
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_get_procedure_evolution_success(self, mock_request, client):
         """Test successful evolution history retrieval."""
         mock_response = MagicMock()
@@ -59,7 +59,7 @@ class TestGetProcedureEvolution:
         assert call_args[0][0] == "GET"
         assert "/memory/procedures/proc_123/evolution" in call_args[0][1]
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_get_procedure_evolution_with_pagination(self, mock_request, client):
         """Test evolution history with pagination parameters."""
         mock_response = MagicMock()
@@ -79,7 +79,7 @@ class TestGetProcedureEvolution:
         assert call_args[1]["params"]["limit"] == 5
         assert call_args[1]["params"]["offset"] == 5
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_get_procedure_evolution_not_found(self, mock_request, client):
         """Test 404 error for non-existent procedure."""
         mock_response = MagicMock()
@@ -97,7 +97,7 @@ class TestGetProcedureEvolution:
 class TestGetProcedureEvolutionEvent:
     """Tests for get_procedure_evolution_event method."""
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_get_evolution_event_success(self, mock_request, client):
         """Test successful single event retrieval."""
         mock_response = MagicMock()
@@ -148,7 +148,7 @@ class TestGetProcedureEvolutionEvent:
         call_args = mock_request.call_args
         assert "/memory/procedures/proc_123/evolution/evt_001" in call_args[0][1]
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_get_evolution_event_not_found(self, mock_request, client):
         """Test 404 error for non-existent event."""
         mock_response = MagicMock()
@@ -166,7 +166,7 @@ class TestGetProcedureEvolutionEvent:
 class TestGetProcedureConfidenceTrajectory:
     """Tests for get_procedure_confidence_trajectory method."""
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_get_confidence_trajectory_success(self, mock_request, client):
         """Test successful confidence trajectory retrieval."""
         mock_response = MagicMock()
@@ -215,7 +215,7 @@ class TestGetProcedureConfidenceTrajectory:
         call_args = mock_request.call_args
         assert "/memory/procedures/proc_123/confidence-trajectory" in call_args[0][1]
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_get_confidence_trajectory_empty(self, mock_request, client):
         """Test trajectory for procedure with no events."""
         mock_response = MagicMock()
@@ -231,7 +231,7 @@ class TestGetProcedureConfidenceTrajectory:
         assert result["procedure_id"] == "proc_new"
         assert result["data_points"] == []
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_get_confidence_trajectory_not_found(self, mock_request, client):
         """Test 404 error for non-existent procedure."""
         mock_response = MagicMock()
@@ -249,7 +249,7 @@ class TestGetProcedureConfidenceTrajectory:
 class TestErrorHandling:
     """Tests for error handling across evolution methods."""
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_server_error_500(self, mock_request, client):
         """Test 500 server error handling."""
         mock_response = MagicMock()
@@ -263,7 +263,7 @@ class TestErrorHandling:
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.get_procedure_evolution("proc_123")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_bad_request_400(self, mock_request, client):
         """Test 400 bad request handling."""
         mock_response = MagicMock()

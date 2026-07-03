@@ -59,28 +59,28 @@ def _called_method(mock_request: MagicMock) -> str:
 class TestReasoningTraceURLs:
     """Every reasoning-trace method must hit /memory/reasoning/traces/* (slash)."""
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_extract_reasoning_url(self, mock_request: MagicMock, client: SmartMemoryClient):
         mock_request.return_value = _ok({"has_reasoning": True})
         client.extract_reasoning("Thought: x. Conclusion: y.")
         assert _called_method(mock_request) == "POST"
         assert _called_url(mock_request) == f"{BASE_URL}/memory/reasoning/traces/extract"
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_store_reasoning_trace_url(self, mock_request: MagicMock, client: SmartMemoryClient):
         mock_request.return_value = _ok({"trace_id": "t1"})
         client.store_reasoning_trace({"trace_id": "t1", "steps": []})
         assert _called_method(mock_request) == "POST"
         assert _called_url(mock_request) == f"{BASE_URL}/memory/reasoning/traces/store"
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_query_reasoning_url(self, mock_request: MagicMock, client: SmartMemoryClient):
         mock_request.return_value = _ok({"results": []})
         client.query_reasoning("why did I choose python?")
         assert _called_method(mock_request) == "POST"
         assert _called_url(mock_request) == f"{BASE_URL}/memory/reasoning/traces/query"
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_get_reasoning_trace_url(self, mock_request: MagicMock, client: SmartMemoryClient):
         mock_request.return_value = _ok({"trace_id": "abc"})
         client.get_reasoning_trace("abc")
@@ -91,13 +91,13 @@ class TestReasoningTraceURLs:
 class TestGetNeighborsPropagatesErrors:
     """get_neighbors must NOT swallow backend errors into []."""
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_server_error_propagates(self, mock_request: MagicMock, client: SmartMemoryClient):
         mock_request.return_value = _error(500)
         with pytest.raises(SmartMemoryServerError):
             client.get_neighbors("item-1")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_success_returns_neighbors(self, mock_request: MagicMock, client: SmartMemoryClient):
         mock_request.return_value = _ok({"neighbors": [{"item_id": "n1"}]})
         assert client.get_neighbors("item-1") == [{"item_id": "n1"}]

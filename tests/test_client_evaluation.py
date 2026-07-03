@@ -40,7 +40,7 @@ def _mock_response(json_data, status_code=200):
 
 
 class TestGetEvaluation:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_get_evaluation_returns_dict(self, mock_req, client):
         """200 {evaluation: {...}} → returns the inner dict."""
         payload = {
@@ -64,7 +64,7 @@ class TestGetEvaluation:
         call = mock_req.call_args
         assert "/memory/agents/agent_abc/evaluation" in str(call)
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_get_evaluation_cold_start_returns_null_body(self, mock_req, client):
         """200 {evaluation: null} cold-start is returned as-is (dict with null)."""
         mock_req.return_value = _mock_response({"evaluation": None})
@@ -74,7 +74,7 @@ class TestGetEvaluation:
         assert result is not None
         assert result.get("evaluation") is None
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_get_evaluation_404_raises(self, mock_req, client):
         """404 from service raises SmartMemoryNotFoundError (or base client error)."""
         mock_req.return_value = _mock_response(
@@ -84,7 +84,7 @@ class TestGetEvaluation:
         with pytest.raises((SmartMemoryClientError, SmartMemoryNotFoundError)):
             client.get_evaluation("foreign_agent", "decision_volume", "python")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_get_evaluation_passes_params(self, mock_req, client):
         """Verify dimension and domain are passed as query params."""
         mock_req.return_value = _mock_response({"evaluation": None})
@@ -104,7 +104,7 @@ class TestGetEvaluation:
 
 
 class TestListEvaluationHistory:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_list_history_returns_list(self, mock_req, client):
         """200 {history: [...]} → returns the response dict."""
         payload = {
@@ -138,7 +138,7 @@ class TestListEvaluationHistory:
         call = mock_req.call_args
         assert "/memory/agents/agent_abc/evaluation/history" in str(call)
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_list_history_default_limit(self, mock_req, client):
         """Default limit of 20 is passed as query param."""
         mock_req.return_value = _mock_response({"history": []})
@@ -149,7 +149,7 @@ class TestListEvaluationHistory:
         params = call[1].get("params", {})
         assert params.get("limit") == 20
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_list_history_custom_limit(self, mock_req, client):
         """Custom limit is forwarded."""
         mock_req.return_value = _mock_response({"history": []})
@@ -162,7 +162,7 @@ class TestListEvaluationHistory:
         params = call[1].get("params", {})
         assert params.get("limit") == 5
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_list_history_404_raises(self, mock_req, client):
         """404 raises SmartMemoryClientError."""
         mock_req.return_value = _mock_response(

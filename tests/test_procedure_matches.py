@@ -47,7 +47,7 @@ def _error_response(status_code: int, body: str = "") -> MagicMock:
 class TestListProcedureMatches:
     """Tests for list_procedure_matches()."""
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_happy_path(self, mock_request, client):
         expected = {
             "workspace_id": "ws-1",
@@ -60,7 +60,7 @@ class TestListProcedureMatches:
         assert result == expected
         mock_request.assert_called_once()
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_with_all_params(self, mock_request, client):
         mock_request.return_value = _ok_response({"records": []})
 
@@ -80,7 +80,7 @@ class TestListProcedureMatches:
         assert params["feedback"] == "success"
         assert params["limit"] == 50
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_omits_none_params(self, mock_request, client):
         mock_request.return_value = _ok_response({"records": []})
 
@@ -93,14 +93,14 @@ class TestListProcedureMatches:
         assert "procedure_id" not in params
         assert "feedback" not in params
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_400_raises_error(self, mock_request, client):
         mock_request.return_value = _error_response(400, "Invalid feedback value")
 
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.list_procedure_matches(feedback="invalid")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_500_raises_error(self, mock_request, client):
         mock_request.return_value = _error_response(500, "Internal Server Error")
 
@@ -111,7 +111,7 @@ class TestListProcedureMatches:
 class TestSubmitProcedureMatchFeedback:
     """Tests for submit_procedure_match_feedback()."""
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_happy_path(self, mock_request, client):
         expected = {"status": "success", "match_id": "match-1", "feedback": "success"}
         mock_request.return_value = _ok_response(expected)
@@ -119,7 +119,7 @@ class TestSubmitProcedureMatchFeedback:
         result = client.submit_procedure_match_feedback("match-1", "success")
         assert result == expected
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_with_note(self, mock_request, client):
         mock_request.return_value = _ok_response({"status": "success"})
 
@@ -132,7 +132,7 @@ class TestSubmitProcedureMatchFeedback:
         assert json_body["feedback"] == "failure"
         assert json_body["note"] == "Wrong profile selected"
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_without_note(self, mock_request, client):
         mock_request.return_value = _ok_response({"status": "success"})
 
@@ -143,14 +143,14 @@ class TestSubmitProcedureMatchFeedback:
         assert json_body["feedback"] == "neutral"
         assert "note" not in json_body
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_404_raises_error(self, mock_request, client):
         mock_request.return_value = _error_response(404, "Not found")
 
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.submit_procedure_match_feedback("nonexistent", "success")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_500_raises_error(self, mock_request, client):
         mock_request.return_value = _error_response(500, "Internal Server Error")
 
@@ -161,7 +161,7 @@ class TestSubmitProcedureMatchFeedback:
 class TestGetProcedureMatchStats:
     """Tests for get_procedure_match_stats()."""
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_happy_path(self, mock_request, client):
         expected = {
             "workspace_id": "ws-1",
@@ -178,14 +178,14 @@ class TestGetProcedureMatchStats:
         result = client.get_procedure_match_stats()
         assert result == expected
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_401_raises_error(self, mock_request, client):
         mock_request.return_value = _error_response(401, "Unauthorized")
 
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.get_procedure_match_stats()
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_500_raises_error(self, mock_request, client):
         mock_request.return_value = _error_response(500, "Internal Server Error")
 

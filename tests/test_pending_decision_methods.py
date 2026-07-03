@@ -28,7 +28,7 @@ def mock_response():
 
 
 class TestPendingLifecycle:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_create_pending(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response({"decision_id": "dec_1", "status": "pending"})
         out = client.create_pending_decision(
@@ -43,7 +43,7 @@ class TestPendingLifecycle:
         assert body["requirements"] == [{"description": "x", "requirement_type": "proof"}]
         assert body["domain"] == "gtm"
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_resolve_requirement(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response({"resolved": True})
         client.resolve_requirement("dec_1", "req_1", "mem_1")
@@ -51,14 +51,14 @@ class TestPendingLifecycle:
         assert args[0][1].endswith("/memory/decisions/pending/dec_1/resolve")
         assert args[1]["json"] == {"requirement_id": "req_1", "memory_id": "mem_1"}
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_try_activate(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response({"activated": True})
         client.try_activate_decision("dec_1")
         args = mock_req.call_args
         assert args[0][1].endswith("/memory/decisions/pending/dec_1/activate")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_list_pending(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response({"decisions": [], "count": 0})
         client.list_pending_decisions(limit=10)

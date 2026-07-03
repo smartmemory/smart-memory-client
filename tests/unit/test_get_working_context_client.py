@@ -50,7 +50,7 @@ _CONTRACT_RESPONSE = {
 }
 
 
-@patch("smartmemory_client.client.httpx.request")
+@patch("httpx.Client.request")
 def test_happy_path_posts_to_memory_context(mock_req, client):
     resp = MagicMock()
     resp.status_code = 200
@@ -70,7 +70,7 @@ def test_happy_path_posts_to_memory_context(mock_req, client):
     assert result == _CONTRACT_RESPONSE
 
 
-@patch("smartmemory_client.client.httpx.request")
+@patch("httpx.Client.request")
 def test_optional_params_only_sent_when_set(mock_req, client):
     resp = MagicMock()
     resp.status_code = 200
@@ -87,7 +87,7 @@ def test_optional_params_only_sent_when_set(mock_req, client):
     assert body["strategy"] == "fast:recency"
 
 
-@patch("smartmemory_client.client.httpx.request")
+@patch("httpx.Client.request")
 def test_default_k_is_20(mock_req, client):
     resp = MagicMock()
     resp.status_code = 200
@@ -100,7 +100,7 @@ def test_default_k_is_20(mock_req, client):
     assert body["k"] == 20
 
 
-@patch("smartmemory_client.client.httpx.request")
+@patch("httpx.Client.request")
 def test_sends_auth_and_workspace_headers(mock_req, client):
     resp = MagicMock()
     resp.status_code = 200
@@ -114,7 +114,7 @@ def test_sends_auth_and_workspace_headers(mock_req, client):
     assert headers.get("Authorization") == "Bearer test-token"
 
 
-@patch("smartmemory_client.client.httpx.request")
+@patch("httpx.Client.request")
 def test_budget_too_small_raises(mock_req, client):
     """400 response with body {code: budget_too_small, ...} → SmartMemoryClientError."""
     resp = MagicMock()
@@ -129,7 +129,7 @@ def test_budget_too_small_raises(mock_req, client):
         client.get_working_context(session_id="s1", query="hello", max_tokens=1)
 
 
-@patch("smartmemory_client.client.httpx.request")
+@patch("httpx.Client.request")
 def test_falsy_but_valid_max_tokens_zero_is_sent(mock_req, client):
     """Codex coverage: filter uses `is not None`, not truthiness — max_tokens=0
     (invalid by contract but syntactically not None) must be sent so server validates."""
@@ -145,7 +145,7 @@ def test_falsy_but_valid_max_tokens_zero_is_sent(mock_req, client):
     assert body["max_tokens"] == 0
 
 
-@patch("smartmemory_client.client.httpx.request")
+@patch("httpx.Client.request")
 def test_empty_strategy_string_is_sent(mock_req, client):
     """Codex coverage: strategy='' (empty string) is syntactically not None and
     must reach the server for validation — prevents truthiness-filter regressions."""
@@ -160,7 +160,7 @@ def test_empty_strategy_string_is_sent(mock_req, client):
     assert body.get("strategy") == ""
 
 
-@patch("smartmemory_client.client.httpx.request")
+@patch("httpx.Client.request")
 def test_server_error_raises(mock_req, client):
     resp = MagicMock()
     resp.status_code = 500

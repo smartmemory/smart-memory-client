@@ -28,7 +28,7 @@ def mock_response():
 
 
 class TestCreateDecision:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_create_decision_basic(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response(
             {
@@ -48,7 +48,7 @@ class TestCreateDecision:
         assert call_kwargs[1]["json"]["content"] == "Python is best for ML"
         assert call_kwargs[1]["json"]["decision_type"] == "inference"
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_create_decision_with_options(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response(
             {
@@ -76,7 +76,7 @@ class TestCreateDecision:
         assert body["tags"] == ["framework", "ui"]
         assert body["evidence_ids"] == ["mem_1", "mem_2"]
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_create_decision_with_expertise_fields(
         self, mock_req, client, mock_response
     ):
@@ -113,7 +113,7 @@ class TestCreateDecision:
         assert result["rationale"] == "Stateless plus mobile coverage"
         assert result["constraints"] == ["mobile <v3.2", "no shared store"]
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_get_decision_surfaces_expertise_fields(
         self, mock_req, client, mock_response
     ):
@@ -133,7 +133,7 @@ class TestCreateDecision:
         assert result["rationale"] == "Stateless"
         assert result["constraints"] == ["mobile <v3.2"]
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_create_decision_omits_expertise_fields_when_unset(
         self, mock_req, client, mock_response
     ):
@@ -151,7 +151,7 @@ class TestCreateDecision:
 
 
 class TestGetDecision:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_get_decision(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response(
             {
@@ -168,7 +168,7 @@ class TestGetDecision:
 
 
 class TestListDecisions:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_list_decisions_default(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response(
             {
@@ -180,7 +180,7 @@ class TestListDecisions:
         result = client.list_decisions()
         assert len(result) == 2
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_list_decisions_with_filters(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response({"decisions": [], "count": 0})
 
@@ -195,7 +195,7 @@ class TestListDecisions:
 
 
 class TestSupersedeDecision:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_supersede_decision(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response(
             {
@@ -217,7 +217,7 @@ class TestSupersedeDecision:
 
 
 class TestRetractDecision:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_retract_decision(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response(
             {
@@ -233,7 +233,7 @@ class TestRetractDecision:
 
 
 class TestReinforceDecision:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_reinforce_decision(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response(
             {
@@ -251,7 +251,7 @@ class TestReinforceDecision:
 
 
 class TestProvenanceChain:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_get_provenance_chain(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response(
             {
@@ -268,7 +268,7 @@ class TestProvenanceChain:
 
 
 class TestCausalChain:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_get_causal_chain(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response(
             {
@@ -286,7 +286,7 @@ class TestCausalChain:
 
 
 class TestErrorHandling:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_decision_not_found(self, mock_req, client):
         import httpx
 
@@ -301,7 +301,7 @@ class TestErrorHandling:
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.get_decision("nonexistent")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_decision_bad_request(self, mock_req, client):
         import httpx
 
@@ -316,7 +316,7 @@ class TestErrorHandling:
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.create_decision("")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_decision_server_error(self, mock_req, client):
         import httpx
 

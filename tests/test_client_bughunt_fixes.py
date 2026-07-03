@@ -77,7 +77,7 @@ def _build_response(
 
 
 class TestLinkPropagatesErrors:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_link_success_returns_true_and_posts_body(self, mock_req, client):
         mock_req.return_value = _build_response(200, json_data={"linked": True})
         assert client.link("src", "tgt", link_type="CAUSES") is True
@@ -92,7 +92,7 @@ class TestLinkPropagatesErrors:
             "link_type": "CAUSES",
         }
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_link_404_raises_not_found_not_false(self, mock_req, client):
         # Old behavior collapsed this to ``return False``; now it must raise.
         mock_req.return_value = _build_response(404, body="source not found")
@@ -100,21 +100,21 @@ class TestLinkPropagatesErrors:
             client.link("missing_src", "tgt")
         assert exc.value.status_code == 404
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_link_403_raises_permission_not_false(self, mock_req, client):
         mock_req.return_value = _build_response(403, body="forbidden")
         with pytest.raises(SmartMemoryPermissionError) as exc:
             client.link("src", "tgt")
         assert exc.value.status_code == 403
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_link_500_raises_server_not_false(self, mock_req, client):
         mock_req.return_value = _build_response(500, body="link write failed")
         with pytest.raises(SmartMemoryServerError) as exc:
             client.link("src", "tgt")
         assert exc.value.status_code == 500
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_link_transport_error_raises_not_false(self, mock_req, client):
         # A network failure must surface, not be swallowed into False.
         mock_req.side_effect = httpx.ConnectError("connection refused")
@@ -128,7 +128,7 @@ class TestLinkPropagatesErrors:
 
 
 class TestSearchTypedErrors:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_search_404_raises_typed_not_found(self, mock_req, client):
         mock_req.return_value = _build_response(404, body="no such index")
         with pytest.raises(SmartMemoryNotFoundError) as exc:
@@ -138,21 +138,21 @@ class TestSearchTypedErrors:
         # Backward-compat: still a SmartMemoryClientError.
         assert isinstance(exc.value, SmartMemoryClientError)
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_search_401_raises_typed_permission(self, mock_req, client):
         mock_req.return_value = _build_response(401, body="unauthorized")
         with pytest.raises(SmartMemoryPermissionError) as exc:
             client.search("anything")
         assert exc.value.status_code == 401
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_search_422_raises_typed_validation(self, mock_req, client):
         mock_req.return_value = _build_response(422, body="bad query")
         with pytest.raises(SmartMemoryValidationError) as exc:
             client.search("anything")
         assert exc.value.status_code == 422
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_search_500_raises_typed_server_with_detail(self, mock_req, client):
         mock_req.return_value = _build_response(500, body="boom")
         with pytest.raises(SmartMemoryServerError) as exc:
@@ -167,22 +167,22 @@ class TestSearchTypedErrors:
 
 
 class TestSummaryNotFoundMechanism:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_latest_returns_none_on_real_404(self, mock_req, client):
         mock_req.return_value = _build_response(404, body="no snapshots")
         assert client.summary_latest() is None
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_get_returns_none_on_real_404(self, mock_req, client):
         mock_req.return_value = _build_response(404, body="missing")
         assert client.summary_get("nope") is None
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_delta_returns_none_on_real_404(self, mock_req, client):
         mock_req.return_value = _build_response(404, body="missing")
         assert client.summary_delta("a", "b") is None
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_latest_500_with_404_in_body_still_raises(self, mock_req, client):
         # The crux of the correctness fix: a 500 whose body merely *contains* the
         # digits "404" must NOT be swallowed as not-found. The old substring check
@@ -194,14 +194,14 @@ class TestSummaryNotFoundMechanism:
             client.summary_latest()
         assert exc.value.status_code == 500
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_get_403_with_404_in_body_still_raises(self, mock_req, client):
         mock_req.return_value = _build_response(403, body="error 404 not in your scope")
         with pytest.raises(SmartMemoryPermissionError) as exc:
             client.summary_get("snap")
         assert exc.value.status_code == 403
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_summary_delta_500_with_404_in_body_still_raises(self, mock_req, client):
         mock_req.return_value = _build_response(500, body="trace id 404abc failed")
         with pytest.raises(SmartMemoryServerError):
@@ -214,28 +214,28 @@ class TestSummaryNotFoundMechanism:
 
 
 class TestSearchForwardsDocumentedParams:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_decompose_forwarded_when_true(self, mock_req, client):
         mock_req.return_value = _build_response(200, json_data={"results": []})
         client.search("q", decompose=True)
         body = mock_req.call_args.kwargs["json"]
         assert body.get("decompose") is True
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_semantic_hops_forwarded_when_true(self, mock_req, client):
         mock_req.return_value = _build_response(200, json_data={"results": []})
         client.search("q", multi_hop=True, semantic_hops=True)
         body = mock_req.call_args.kwargs["json"]
         assert body.get("semantic_hops") is True
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_include_reference_forwarded_when_true(self, mock_req, client):
         mock_req.return_value = _build_response(200, json_data={"results": []})
         client.search("q", include_reference=True)
         body = mock_req.call_args.kwargs["json"]
         assert body.get("include_reference") is True
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_new_params_omitted_when_false(self, mock_req, client):
         # Default-off: absent from the body so server defaults apply.
         mock_req.return_value = _build_response(200, json_data={"results": []})

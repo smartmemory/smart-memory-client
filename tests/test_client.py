@@ -21,7 +21,7 @@ class TestSearchConsolidationParams:
     The consolidation_first *behavior* is proven by the core integration test; the SDK's
     responsibility is body serialization, which is what these assert."""
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_consolidation_first_serialized(self, mock_req):
         mock_req.return_value = _mock_search_response()
         client = SmartMemoryClient("http://localhost:9001", api_key="t")
@@ -29,7 +29,7 @@ class TestSearchConsolidationParams:
         body = mock_req.call_args[1]["json"]
         assert body["consolidation_first"] is True
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_include_consolidated_serialized(self, mock_req):
         mock_req.return_value = _mock_search_response()
         client = SmartMemoryClient("http://localhost:9001", api_key="t")
@@ -37,7 +37,7 @@ class TestSearchConsolidationParams:
         body = mock_req.call_args[1]["json"]
         assert body["include_consolidated"] is True
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_consolidation_params_omitted_by_default(self, mock_req):
         """Default off → keys absent from the body (matches the route's default-off contract)."""
         mock_req.return_value = _mock_search_response()

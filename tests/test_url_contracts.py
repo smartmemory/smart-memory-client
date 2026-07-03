@@ -211,7 +211,7 @@ def _called_path(mock_request: MagicMock) -> str:
         ("summary_delete", ("snapshot_123",), "DELETE", "/memory/summary/snapshot_123"),
     ],
 )
-@patch("smartmemory_client.client.httpx.request")
+@patch("httpx.Client.request")
 def test_public_api_method_urls(
     mock_request: MagicMock,
     client: SmartMemoryClient,

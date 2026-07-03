@@ -169,6 +169,12 @@ class SmartMemoryClient:
         self.timeout = timeout
         self.verify_ssl = verify_ssl
 
+        # Persistent HTTP client for connection reuse (keep-alive pooling) across
+        # the many per-method calls this SDK makes. Also the single place
+        # verify_ssl is actually honored — the previous module-level httpx.request
+        # / httpx.get calls never passed verify=, so verify_ssl was dead config.
+        self._client = httpx.Client(verify=verify_ssl, timeout=timeout)
+
         # Store tokens separately for clarity
         self._api_key: Optional[str] = None
         self._token: Optional[str] = None
@@ -302,6 +308,25 @@ class SmartMemoryClient:
         self._api_key = None
         logger.info("Logged out - credentials cleared")
 
+    def close(self) -> None:
+        """Close the underlying HTTP connection pool.
+
+        Safe to call multiple times. After close(), the client should not be
+        reused. Prefer the context-manager form (`with SmartMemoryClient(...)`)
+        which closes automatically.
+        """
+        client = getattr(self, "_client", None)
+        if client is not None:
+            client.close()
+
+    def __del__(self) -> None:
+        # Best-effort pool cleanup if the caller never closed us. Interpreter
+        # teardown can leave httpx partially collected, so swallow everything.
+        try:
+            self.close()
+        except Exception:
+            pass
+
     def health_check(self) -> Dict[str, Any]:
         """
         Check the health status of the SmartMemory service.
@@ -316,7 +341,7 @@ class SmartMemoryClient:
             ```
         """
         try:
-            response = httpx.get(
+            response = self._client.get(
                 f"{self.base_url}/health", headers=self.headers, timeout=self.timeout
             )
             response.raise_for_status()
@@ -572,15 +597,13 @@ class SmartMemoryClient:
             body_dict["include_reference"] = True  # CORE-PROPS-1 Phase 6
 
         # SELF-IMPROVE-6: use _request_raw to capture X-Search-Session-Id header
-        import httpx
-
         url = f"{self.base_url}/memory/search"
         req_headers = {"X-Workspace-Id": self.team_id}
         if self.api_key:
             req_headers["Authorization"] = f"Bearer {self.api_key}"
 
         try:
-            response = httpx.request(
+            response = self._client.request(
                 "POST",
                 url,
                 json=body_dict,
@@ -3629,8 +3652,6 @@ class SmartMemoryClient:
         headers: Optional[Dict[str, str]] = None,
     ) -> Any:
         """Internal helper for making HTTP requests."""
-        import httpx
-
         url = f"{self.base_url}{endpoint}"
         req_headers = {"X-Workspace-Id": self.team_id}
         if headers:
@@ -3640,7 +3661,7 @@ class SmartMemoryClient:
             req_headers["Authorization"] = f"Bearer {self.api_key}"
 
         try:
-            response = httpx.request(
+            response = self._client.request(
                 method,
                 url,
                 params=params,
@@ -3705,6 +3726,5 @@ class SmartMemoryClient:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit"""
-        # Clean up underlying client if needed
-        pass
+        """Context manager exit — closes the persistent HTTP connection pool."""
+        self.close()

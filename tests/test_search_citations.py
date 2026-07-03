@@ -40,7 +40,7 @@ class TestSearchCite:
             },
         ]
         with patch(
-            "smartmemory_client.client.httpx.request",
+            "httpx.Client.request",
             return_value=_mock_response(items),
         ):
             results = self.client.search("anything")
@@ -88,7 +88,7 @@ class TestSearchCite:
             ],
         }
         with patch(
-            "smartmemory_client.client.httpx.request",
+            "httpx.Client.request",
             return_value=_mock_response(wrapped),
         ) as mock_req:
             results = self.client.search("anything", cite=True)
@@ -118,7 +118,7 @@ class TestSearchCite:
     def test_cite_true_no_results_returns_empty_citations(self):
         wrapped = {"results": [], "citations": []}
         with patch(
-            "smartmemory_client.client.httpx.request",
+            "httpx.Client.request",
             return_value=_mock_response(wrapped),
         ):
             results = self.client.search("no-hit", cite=True)

@@ -46,7 +46,7 @@ def _error_response(status_code: int, body: str = "") -> MagicMock:
 class TestGetTokenUsage:
     """Tests for get_token_usage()."""
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_happy_path(self, mock_request, client):
         expected = {
             "workspace_id": "ws-1",
@@ -62,7 +62,7 @@ class TestGetTokenUsage:
         assert result == expected
         mock_request.assert_called_once()
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_with_params(self, mock_request, client):
         mock_request.return_value = _ok_response({"records": []})
 
@@ -80,7 +80,7 @@ class TestGetTokenUsage:
         assert params["group_by"] == "stage"
         assert params["limit"] == 50
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_omits_none_params(self, mock_request, client):
         mock_request.return_value = _ok_response({"records": []})
 
@@ -92,14 +92,14 @@ class TestGetTokenUsage:
         assert "end_date" not in params
         assert "group_by" not in params
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_400_raises_error(self, mock_request, client):
         mock_request.return_value = _error_response(400, "Invalid start_date format")
 
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.get_token_usage(start_date="bad-date")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_500_raises_error(self, mock_request, client):
         mock_request.return_value = _error_response(500, "Internal Server Error")
 
@@ -110,7 +110,7 @@ class TestGetTokenUsage:
 class TestGetTokenUsageCurrent:
     """Tests for get_token_usage_current()."""
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_happy_path(self, mock_request, client):
         expected = {
             "workspace_id": "ws-1",
@@ -122,14 +122,14 @@ class TestGetTokenUsageCurrent:
         result = client.get_token_usage_current()
         assert result == expected
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_401_raises_error(self, mock_request, client):
         mock_request.return_value = _error_response(401, "Unauthorized")
 
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.get_token_usage_current()
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_500_raises_error(self, mock_request, client):
         mock_request.return_value = _error_response(500, "Internal Server Error")
 

@@ -103,7 +103,7 @@ class TestCodeSearchHappyPath:
 
 
 class TestCodeSearchErrorHandling:
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_code_search_not_found(self, mock_req, client):
         """404 → SmartMemoryClientError."""
         resp = MagicMock()
@@ -117,7 +117,7 @@ class TestCodeSearchErrorHandling:
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.code_search("nonexistent")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_code_search_bad_request(self, mock_req, client):
         """400 → SmartMemoryClientError."""
         resp = MagicMock()
@@ -131,7 +131,7 @@ class TestCodeSearchErrorHandling:
         with pytest.raises(SmartMemoryClientError, match="Request failed"):
             client.code_search("auth", entity_type="invalid_type")
 
-    @patch("smartmemory_client.client.httpx.request")
+    @patch("httpx.Client.request")
     def test_code_search_server_error(self, mock_req, client):
         """500 → SmartMemoryClientError."""
         resp = MagicMock()
