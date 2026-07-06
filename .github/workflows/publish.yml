@@ -5,6 +5,11 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
+      version:
+        description: 'Optional package version override for artifact reconciliation'
+        required: false
+        type: string
+        default: ''
       test_pypi:
         description: 'Publish to Test PyPI instead of PyPI'
         required: false
@@ -28,6 +33,25 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install build twine
+
+      - name: Override version for reconciliation
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
+        env:
+          PACKAGE_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+          import sys
+
+          version = os.environ["PACKAGE_VERSION"].strip()
+          if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+              sys.exit(f"::error::Bad version '{version}'")
+          pathlib.Path("VERSION").write_text(version + "\n")
+          print(f"Publishing smartmemory-client {version} from this ref without committing VERSION")
+          PY
       
       - name: Build package
         run: python -m build
@@ -40,14 +64,14 @@ jobs:
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
-        run: twine upload --repository testpypi dist/*
+        run: twine upload --repository testpypi --skip-existing dist/*
       
       - name: Publish to PyPI
         if: github.event.inputs.test_pypi != 'true'
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: twine upload dist/*
+        run: twine upload --skip-existing dist/*
 
       - name: Notify Discord
         if: always() && env.DISCORD_WEBHOOK != ''

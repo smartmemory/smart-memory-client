@@ -1,0 +1,92 @@
+name: Reconcile PyPI artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'smartmemory-client version to publish if missing'
+        required: true
+        type: string
+      source_ref:
+        description: 'Git ref to build from; use a release tag when one exists'
+        required: false
+        type: string
+        default: 'main'
+      test_pypi:
+        description: 'Publish to Test PyPI instead of PyPI'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: reconcile-pypi-${{ github.event.inputs.version }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate version
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import re
+          import sys
+
+          version = os.environ["VERSION"].strip()
+          if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+              sys.exit(f"::error::Bad version '{version}'")
+          print(f"Reconciling smartmemory-client {version}")
+          PY
+
+      - name: Check PyPI
+        id: pypi
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+          TEST_PYPI: ${{ github.event.inputs.test_pypi }}
+        run: |
+          set -euo pipefail
+          if [ "$TEST_PYPI" = "true" ]; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python - "$VERSION" "$GITHUB_OUTPUT" <<'PY'
+          import json
+          import sys
+          import urllib.error
+          import urllib.request
+
+          version, github_output = sys.argv[1], sys.argv[2]
+          url = f"https://pypi.org/pypi/smartmemory-client/{version}/json"
+          exists = False
+          try:
+              with urllib.request.urlopen(url, timeout=20) as response:
+                  exists = bool(json.load(response).get("urls"))
+          except urllib.error.HTTPError as exc:
+              if exc.code != 404:
+                  raise
+          with open(github_output, "a") as fh:
+              fh.write(f"exists={str(exists).lower()}\n")
+          print(f"smartmemory-client=={version} exists on PyPI: {exists}")
+          PY
+
+      - name: Dispatch publish workflow
+        if: steps.pypi.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          VERSION: ${{ github.event.inputs.version }}
+          SOURCE_REF: ${{ github.event.inputs.source_ref }}
+          TEST_PYPI: ${{ github.event.inputs.test_pypi }}
+        run: |
+          set -euo pipefail
+          gh workflow run publish.yml \
+            --ref "$SOURCE_REF" \
+            -f version="$VERSION" \
+            -f test_pypi="$TEST_PYPI"
+          echo "Dispatched publish.yml for smartmemory-client $VERSION from $SOURCE_REF"

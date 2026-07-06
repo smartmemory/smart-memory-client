@@ -55,7 +55,7 @@ jobs:
           print(f"smartmemory-client -> {v} (copied)")
           PY
 
-      - name: Commit, push, release
+      - name: Commit, push, release, publish
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
           V: ${{ steps.bump.outputs.version }}
@@ -64,11 +64,19 @@ jobs:
           git config user.name "smartmem-dev[bot]"
           git config user.email "smartmem-dev@users.noreply.github.com"
           if git diff --quiet; then
-            echo "Already at $V; nothing to do."
-            exit 0
+            echo "Already at $V; no version commit needed."
+          else
+            git add -A
+            git commit -m "chore(version): track product version $V (single-source lockstep)"
+            git push origin HEAD:main
           fi
-          git add -A
-          git commit -m "chore(version): track product version $V (single-source lockstep)"
-          git push origin HEAD:main
-          gh release create "v$V" --title "v$V" --notes "Unified product release $V."
-          echo "✅ Released smartmemory-client v$V (publish.yml will ship to PyPI)."
+
+          if gh release view "v$V" >/dev/null 2>&1; then
+            echo "Release v$V already exists."
+          else
+            gh release create "v$V" --title "v$V" --notes "Unified product release $V."
+          fi
+
+          # Reruns must repair missing artifacts even when VERSION already matched.
+          gh workflow run publish.yml --ref "v$V"
+          echo "✅ Ensured smartmemory-client v$V release and dispatched publish.yml."
