@@ -57,7 +57,12 @@ class TestListOntologyTypes:
     def test_list_with_filters(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response({"items": [], "next_cursor": "abc"})
         client.list_ontology_types(
-            tier="confirmed", layer="public", pack_id="pack-1", has_iri=True, limit=10, cursor="c1"
+            tier="confirmed",
+            layer="public",
+            pack_id="pack-1",
+            has_iri=True,
+            limit=10,
+            cursor="c1",
         )
         params = mock_req.call_args[1]["params"]
         assert params == {
@@ -137,7 +142,11 @@ class TestOntologyAuditFeeds:
     def test_list_audit_with_filters(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response({"items": []})
         client.list_ontology_audit(
-            actor="user-1", action="retire", since="2026-01-01T00:00:00Z", until="2026-02-01T00:00:00Z", limit=50
+            actor="user-1",
+            action="retire",
+            since="2026-01-01T00:00:00Z",
+            until="2026-02-01T00:00:00Z",
+            limit=50,
         )
         params = mock_req.call_args[1]["params"]
         assert params == {
@@ -161,7 +170,10 @@ class TestOntologyAuditFeeds:
         mock_req.return_value = mock_response({"items": []})
         client.get_ontology_relation_audit("WORKS_AT")
         call = mock_req.call_args
-        assert call[0][1] == "http://localhost:9001/memory/ontology/relations/WORKS_AT/audit"
+        assert (
+            call[0][1]
+            == "http://localhost:9001/memory/ontology/relations/WORKS_AT/audit"
+        )
 
     @patch("httpx.Client.request")
     def test_get_pack_audit_no_version(self, mock_req, client, mock_response):
@@ -197,17 +209,28 @@ class TestMigrateOntologyTypeInstances:
                 "notes": [],
             }
         )
-        result = client.migrate_ontology_type_instances("OldType", "NewType", reason="consolidation")
+        result = client.migrate_ontology_type_instances(
+            "OldType", "NewType", reason="consolidation"
+        )
         assert result["instances_migrated"] == 12
         call = mock_req.call_args
         assert call[0][0] == "POST"
-        assert call[0][1] == "http://localhost:9001/memory/ontology/types/OldType/migrate-to/NewType"
+        assert (
+            call[0][1]
+            == "http://localhost:9001/memory/ontology/types/OldType/migrate-to/NewType"
+        )
         assert call[1]["json"] == {"reason": "consolidation", "batch_size": 500}
 
     @patch("httpx.Client.request")
     def test_migrate_custom_batch_size(self, mock_req, client, mock_response):
         mock_req.return_value = mock_response(
-            {"from_name": "A", "into_name": "B", "instances_migrated": 0, "batches": 0, "notes": []}
+            {
+                "from_name": "A",
+                "into_name": "B",
+                "instances_migrated": 0,
+                "batches": 0,
+                "notes": [],
+            }
         )
         client.migrate_ontology_type_instances("A", "B", reason="test", batch_size=100)
         assert mock_req.call_args[1]["json"] == {"reason": "test", "batch_size": 100}
