@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added (2026-07-09) — ONTO-HITL-CURATE-1 SDK wrappers
+- `SmartMemoryClient` gains wrappers for the ontology curation queue HTTP surface:
+  `list_ontology_review_queue`, `approve_ontology_type`, `reject_ontology_type`,
+  `merge_ontology_review_type`, `edit_promote_ontology_type`, `assign_ontology_review`,
+  `bulk_ontology_review_action`.
+- Tests in `tests/test_ontology_curate_methods.py` cover exact queue URLs, params, bodies,
+  URL-encoded type ids, bulk mixed reports, and 404/409/400 typed-exception mapping.
+
 ### Added (2026-07-09) — ontology type/relation read, audit, and migration methods (ONTO-CRUD-1)
 - `SmartMemoryClient` gains 9 typed wrappers over the `ontology_crud.py` HTTP surface:
   `list_ontology_types`, `list_ontology_relations`, `get_ontology_type`, `get_ontology_relation`,

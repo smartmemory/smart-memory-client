@@ -16,6 +16,8 @@ import logging
 import os
 import warnings
 from typing import Any, Dict, List, Optional, Union
+from urllib.parse import quote
+
 import httpx
 
 # Use local model instead of core dependency
@@ -2108,6 +2110,193 @@ class SmartMemoryClient:
             "user_id": user_id,
         }
         return self._request("POST", "/memory/ontology/grounding/run", json_body=body)
+
+    # --- ONTO-HITL-CURATE-1 curation queue surface ---
+
+    def list_ontology_review_queue(
+        self,
+        tier: Optional[str] = None,
+        assignee: Optional[str] = None,
+        source: Optional[str] = None,
+        limit: int = 100,
+        cursor: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """List ontology review queue items, keyset-paginated (ONTO-HITL-CURATE-1).
+
+        Args:
+            tier: Filter by reviewable tier (``working``/``proposed``).
+            assignee: Filter by review assignee.
+            source: Filter by source string.
+            limit: Page size (clamped to [1, 500]).
+            cursor: Opaque keyset continuation token from a prior page.
+
+        Returns:
+            Dict with ``items`` and ``next_cursor``.
+
+        Raises:
+            SmartMemoryValidationError: if query parameters are invalid (400/422).
+        """
+        params: Dict[str, Any] = {"limit": limit}
+        if tier is not None:
+            params["tier"] = tier
+        if assignee is not None:
+            params["assignee"] = assignee
+        if source is not None:
+            params["source"] = source
+        if cursor is not None:
+            params["cursor"] = cursor
+        return self._request("GET", "/memory/ontology/queue", params=params)
+
+    def approve_ontology_type(
+        self, type_id: str, expected_tier: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Approve one ontology review type.
+
+        Args:
+            type_id: Private-layer ontology type name.
+            expected_tier: Optional optimistic tier precondition (``working``/``proposed``).
+
+        Returns:
+            Dict with ``ok``.
+
+        Raises:
+            SmartMemoryNotFoundError: if the type is not found or is cross-tenant (404).
+            SmartMemoryValidationError: if ``expected_tier`` mismatches current state (409).
+        """
+        body: Dict[str, Any] = {}
+        if expected_tier is not None:
+            body["expected_tier"] = expected_tier
+        encoded_type_id = quote(type_id, safe="")
+        return self._request(
+            "POST",
+            f"/memory/ontology/queue/{encoded_type_id}/approve",
+            json_body=body,
+        )
+
+    def reject_ontology_type(
+        self, type_id: str, expected_tier: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Reject one ontology review type.
+
+        Args:
+            type_id: Private-layer ontology type name.
+            expected_tier: Optional optimistic tier precondition (``working``/``proposed``).
+
+        Returns:
+            Dict with ``ok``.
+
+        Raises:
+            SmartMemoryNotFoundError: if the type is not found or is cross-tenant (404).
+            SmartMemoryValidationError: if ``expected_tier`` mismatches current state (409).
+        """
+        body: Dict[str, Any] = {}
+        if expected_tier is not None:
+            body["expected_tier"] = expected_tier
+        encoded_type_id = quote(type_id, safe="")
+        return self._request(
+            "POST",
+            f"/memory/ontology/queue/{encoded_type_id}/reject",
+            json_body=body,
+        )
+
+    def merge_ontology_review_type(
+        self, type_id: str, into_id: str, expected_tier: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Merge one ontology review type into another type.
+
+        Args:
+            type_id: Private-layer ontology type name being reviewed.
+            into_id: Destination type identifier.
+            expected_tier: Optional optimistic tier precondition (``working``/``proposed``).
+
+        Returns:
+            Dict with ``ok``.
+
+        Raises:
+            SmartMemoryValidationError: if this is a self-merge (400) or tier mismatch (409).
+            SmartMemoryNotFoundError: if either type is not found or is cross-tenant (404).
+        """
+        body: Dict[str, Any] = {"into_id": into_id}
+        if expected_tier is not None:
+            body["expected_tier"] = expected_tier
+        encoded_type_id = quote(type_id, safe="")
+        return self._request(
+            "POST",
+            f"/memory/ontology/queue/{encoded_type_id}/merge",
+            json_body=body,
+        )
+
+    def edit_promote_ontology_type(
+        self, type_id: str, edits: Dict[str, Any], expected_tier: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Edit and promote one ontology review type.
+
+        Args:
+            type_id: Private-layer ontology type name being reviewed.
+            edits: Edit payload accepted by the service.
+            expected_tier: Optional optimistic tier precondition (``working``/``proposed``).
+
+        Returns:
+            Dict with ``ok``.
+
+        Raises:
+            SmartMemoryValidationError: if edits are invalid (400) or tier mismatches (409).
+            SmartMemoryNotFoundError: if the type is not found or is cross-tenant (404).
+        """
+        body: Dict[str, Any] = {"edits": edits}
+        if expected_tier is not None:
+            body["expected_tier"] = expected_tier
+        encoded_type_id = quote(type_id, safe="")
+        return self._request(
+            "POST",
+            f"/memory/ontology/queue/{encoded_type_id}/edit-promote",
+            json_body=body,
+        )
+
+    def assign_ontology_review(
+        self, type_id: str, assignee: Optional[str]
+    ) -> Dict[str, Any]:
+        """Assign or clear the reviewer for one ontology review type.
+
+        Args:
+            type_id: Private-layer ontology type name being reviewed.
+            assignee: Reviewer identifier, or ``None`` to clear assignment.
+
+        Returns:
+            Dict with ``ok``.
+
+        Raises:
+            SmartMemoryNotFoundError: if the type is not found or is cross-tenant (404).
+        """
+        encoded_type_id = quote(type_id, safe="")
+        return self._request(
+            "POST",
+            f"/memory/ontology/queue/{encoded_type_id}/assign",
+            json_body={"assignee": assignee},
+        )
+
+    def bulk_ontology_review_action(
+        self,
+        action: str,
+        ids: List[str],
+        params: Optional[Dict[str, Any]] = None,
+        expected_tier: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Apply a curation action to many ontology review types.
+
+        Args:
+            action: Bulk action (``approve``/``reject``/``merge``/``edit_promote``/``assign``).
+            ids: Private-layer ontology type names to process.
+            params: Action-specific params (``into_id``, ``edits``, or ``assignee``).
+            expected_tier: Optional optimistic tier precondition (``working``/``proposed``).
+
+        Returns:
+            Dict with per-item ``results`` entries containing ``id``, ``ok``, and optional ``error``.
+        """
+        body: Dict[str, Any] = {"action": action, "ids": ids, "params": params or {}}
+        if expected_tier is not None:
+            body["expected_tier"] = expected_tier
+        return self._request("POST", "/memory/ontology/queue/bulk", json_body=body)
 
     # ============================================================================
     # Pipeline
