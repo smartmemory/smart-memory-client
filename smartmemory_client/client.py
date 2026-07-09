@@ -1851,6 +1851,209 @@ class SmartMemoryClient:
             "POST", f"/memory/ontology/hitl/{item_id}/resolve", json_body=body
         )
 
+    # --- ONTO-CRUD-1 read / audit / migration surface ---
+
+    def list_ontology_types(
+        self,
+        tier: Optional[str] = None,
+        layer: Optional[str] = None,
+        pack_id: Optional[str] = None,
+        has_iri: Optional[bool] = None,
+        limit: int = 100,
+        cursor: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """List ontology types, keyset-paginated (ONTO-CRUD-1).
+
+        Args:
+            tier: Filter by tier (``working``/``proposed``/``confirmed``/``retired``).
+            layer: Filter by layer (``public``/``domain``/``private``).
+            pack_id: Filter by originating pack id.
+            has_iri: Only types with (or without) an IRI.
+            limit: Page size (clamped to [1, 500]).
+            cursor: Opaque keyset continuation token from a prior page.
+
+        Returns:
+            Dict with ``items`` and ``next_cursor``.
+
+        Raises:
+            SmartMemoryValidationError: if ``cursor`` is malformed (400).
+        """
+        params: Dict[str, Any] = {"limit": limit}
+        if tier is not None:
+            params["tier"] = tier
+        if layer is not None:
+            params["layer"] = layer
+        if pack_id is not None:
+            params["pack_id"] = pack_id
+        if has_iri is not None:
+            params["has_iri"] = has_iri
+        if cursor is not None:
+            params["cursor"] = cursor
+        return self._request("GET", "/memory/ontology/types", params=params)
+
+    def list_ontology_relations(
+        self,
+        tier: Optional[str] = None,
+        layer: Optional[str] = None,
+        pack_id: Optional[str] = None,
+        has_iri: Optional[bool] = None,
+        limit: int = 100,
+        cursor: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """List ontology relation types, keyset-paginated (ONTO-CRUD-1). Mirror of ``list_ontology_types``.
+
+        Args:
+            tier: Filter by tier (``working``/``proposed``/``confirmed``/``retired``).
+            layer: Filter by layer (``public``/``domain``/``private``).
+            pack_id: Filter by originating pack id.
+            has_iri: Only relations with (or without) an IRI.
+            limit: Page size (clamped to [1, 500]).
+            cursor: Opaque keyset continuation token from a prior page.
+
+        Returns:
+            Dict with ``items`` and ``next_cursor``.
+        """
+        params: Dict[str, Any] = {"limit": limit}
+        if tier is not None:
+            params["tier"] = tier
+        if layer is not None:
+            params["layer"] = layer
+        if pack_id is not None:
+            params["pack_id"] = pack_id
+        if has_iri is not None:
+            params["has_iri"] = has_iri
+        if cursor is not None:
+            params["cursor"] = cursor
+        return self._request("GET", "/memory/ontology/relations", params=params)
+
+    def get_ontology_type(self, type_id: str) -> Dict[str, Any]:
+        """Resolve a single ontology type by iri/qid/name (ONTO-CRUD-1).
+
+        Args:
+            type_id: The type identifier (iri, qid, or name).
+
+        Returns:
+            Dict projection of the ontology type.
+
+        Raises:
+            SmartMemoryNotFoundError: if the type is not found (404).
+        """
+        return self._request("GET", f"/memory/ontology/types/{type_id}")
+
+    def get_ontology_relation(self, relation_id: str) -> Dict[str, Any]:
+        """Resolve a single ontology relation type by its identity (ONTO-CRUD-1).
+
+        Args:
+            relation_id: The relation identifier (iri, pid, or name).
+
+        Returns:
+            Dict projection of the ontology relation.
+
+        Raises:
+            SmartMemoryNotFoundError: if the relation is not found (404).
+        """
+        return self._request("GET", f"/memory/ontology/relations/{relation_id}")
+
+    def list_ontology_audit(
+        self,
+        actor: Optional[str] = None,
+        action: Optional[str] = None,
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+        limit: int = 200,
+    ) -> Dict[str, Any]:
+        """Cross-entity, newest-first ontology audit feed (ONTO-CRUD-1).
+
+        Args:
+            actor: Filter by actor.
+            action: Filter by action (e.g. ``migrate``, ``retire``).
+            since: Full ISO-8601 lower bound (inclusive).
+            until: Full ISO-8601 upper bound (inclusive).
+            limit: Most-recent-N cap (clamped to [1, 1000]).
+
+        Returns:
+            Dict with ``items``.
+
+        Raises:
+            SmartMemoryValidationError: if ``since``/``until`` are malformed (400).
+        """
+        params: Dict[str, Any] = {"limit": limit}
+        if actor is not None:
+            params["actor"] = actor
+        if action is not None:
+            params["action"] = action
+        if since is not None:
+            params["since"] = since
+        if until is not None:
+            params["until"] = until
+        return self._request("GET", "/memory/ontology/audit", params=params)
+
+    def get_ontology_type_audit(self, type_id: str) -> Dict[str, Any]:
+        """Full append-only audit trail for one ontology type (oldest-first) (ONTO-CRUD-1).
+
+        Args:
+            type_id: The type identifier.
+
+        Returns:
+            Dict with ``items``.
+        """
+        return self._request("GET", f"/memory/ontology/types/{type_id}/audit")
+
+    def get_ontology_relation_audit(self, relation_id: str) -> Dict[str, Any]:
+        """Full append-only audit trail for one ontology relation (oldest-first) (ONTO-CRUD-1).
+
+        Args:
+            relation_id: The relation identifier.
+
+        Returns:
+            Dict with ``items``.
+        """
+        return self._request("GET", f"/memory/ontology/relations/{relation_id}/audit")
+
+    def get_ontology_pack_audit(
+        self, pack_id: str, pack_version: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Full append-only audit trail for a pack (oldest-first) (ONTO-CRUD-1).
+
+        Args:
+            pack_id: The pack identifier.
+            pack_version: Scope to one installed version; omit for all.
+
+        Returns:
+            Dict with ``items``.
+        """
+        params: Dict[str, Any] = {}
+        if pack_version is not None:
+            params["pack_version"] = pack_version
+        return self._request(
+            "GET", f"/memory/ontology/packs/{pack_id}/audit", params=params
+        )
+
+    def migrate_ontology_type_instances(
+        self, from_id: str, to_id: str, reason: str, batch_size: int = 500
+    ) -> Dict[str, Any]:
+        """Reclassify every instance of ``from_id`` onto ``to_id`` (ONTO-CRUD-1). Both types stay live.
+
+        Args:
+            from_id: The source type identifier.
+            to_id: The destination type identifier.
+            reason: Why the migration is being performed (audit evidence).
+            batch_size: Instance edges rewritten per chunk (clamped to [1, 10000]).
+
+        Returns:
+            Dict with ``from_name``, ``into_name``, ``instances_migrated``, ``batches``, ``notes``.
+
+        Raises:
+            SmartMemoryValidationError: on a self-migration (``from_id == to_id``) (400).
+            SmartMemoryNotFoundError: if either type is not found (404).
+        """
+        body: Dict[str, Any] = {"reason": reason, "batch_size": batch_size}
+        return self._request(
+            "POST",
+            f"/memory/ontology/types/{from_id}/migrate-to/{to_id}",
+            json_body=body,
+        )
+
     def export_registry(
         self,
         registry_id: str,

@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added (2026-07-09) — ontology type/relation read, audit, and migration methods (ONTO-CRUD-1)
+- `SmartMemoryClient` gains 9 typed wrappers over the `ontology_crud.py` HTTP surface:
+  `list_ontology_types`, `list_ontology_relations`, `get_ontology_type`, `get_ontology_relation`,
+  `list_ontology_audit`, `get_ontology_type_audit`, `get_ontology_relation_audit`,
+  `get_ontology_pack_audit`, `migrate_ontology_type_instances`.
+- Tests in `tests/test_ontology_crud_methods.py` cover the happy path for all 9 methods plus
+  404/400/500 typed-exception cases.
+
 ### Changed (auto, lockstep) — track product version 1.4.44 (1.4.44)
 - Version copied from the smartmemory-core release (single-source lockstep).
 
