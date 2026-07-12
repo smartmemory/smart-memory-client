@@ -353,6 +353,32 @@ class SmartMemoryClient:
         except Exception as e:
             raise SmartMemoryClientError(f"Health check failed: {str(e)}")
 
+    def archive_put(
+        self,
+        conversation_id: str,
+        payload: Dict[str, Any],
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, str]:
+        """Store a durable conversation artifact.
+
+        Returns the archive URI and content hash required by the shared
+        conversation ingestion flow.
+        """
+        return self._request(
+            "POST",
+            "/memory/archive/store",
+            json_body={
+                "conversation_id": conversation_id,
+                "payload": payload,
+                "metadata": metadata or {},
+            },
+        )
+
+    def archive_get(self, archive_uri: str) -> Dict[str, Any]:
+        """Retrieve an archived artifact by its archive URI."""
+        encoded_archive_uri = quote(archive_uri, safe="/")
+        return self._request("GET", f"/memory/archive/{encoded_archive_uri}")
+
     def add(
         self,
         item: Union[str, MemoryItem, Dict[str, Any]],

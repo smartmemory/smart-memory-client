@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added (2026-07-12) — archive client methods (MAYA-ENVISION-1)
+- `SmartMemoryClient.archive_put()` and `archive_get()` now cover the archive store and
+  retrieval routes used by archive-first conversation ingestion.
+
 ### Changed (auto, lockstep) — track product version 1.4.45 (1.4.45)
 - Version copied from the smartmemory-core release (single-source lockstep).
 
