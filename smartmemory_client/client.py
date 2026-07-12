@@ -428,7 +428,9 @@ class SmartMemoryClient:
         # Handle different input types
         if isinstance(item, str):
             content = item
-        elif isinstance(item, MemoryItem) or hasattr(item, "content"):
+        elif isinstance(item, MemoryItem) or isinstance(
+            getattr(item, "content", None), str
+        ):
             # Duck-type MemoryItem-likes: callers (e.g. service_common record_turn)
             # pass smartmemory-core's MemoryItem, which is a different class from
             # the SDK's — a strict isinstance check silently stored str(item)
