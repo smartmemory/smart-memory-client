@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Fixed (2026-07-12) — MAYA-ENVISION-1: cross-package add() fidelity
+- **`add()` duck-types MemoryItem-likes**: smartmemory-core's `MemoryItem` is a different
+  class from the SDK's, so the strict isinstance check silently stored `str(item)` (the
+  repr) as `semantic` content with all metadata dropped. Any object with `.content` is now
+  treated as a memory item; the true fallback branch logs WARNING.
+- **`conversation_context` datetime serialization**: `dataclasses.asdict` left
+  `created_at`/`last_updated_at` as datetime objects, failing JSON encoding on every
+  `add(conversation_context=...)` call with core's `ConversationContext`. Now prefers the
+  object's own `to_dict()` and normalizes datetimes in the dataclass fallback.
+
 ### Added (2026-07-12) — archive client methods (MAYA-ENVISION-1)
 - `SmartMemoryClient.archive_put()` and `archive_get()` now cover the archive store and
   retrieval routes used by archive-first conversation ingestion.

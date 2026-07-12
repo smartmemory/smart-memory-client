@@ -428,15 +428,24 @@ class SmartMemoryClient:
         # Handle different input types
         if isinstance(item, str):
             content = item
-        elif isinstance(item, MemoryItem):
+        elif isinstance(item, MemoryItem) or hasattr(item, "content"):
+            # Duck-type MemoryItem-likes: callers (e.g. service_common record_turn)
+            # pass smartmemory-core's MemoryItem, which is a different class from
+            # the SDK's — a strict isinstance check silently stored str(item)
+            # (the repr) as semantic content.
             content = item.content
-            memory_type = item.memory_type or memory_type
-            metadata = metadata or item.metadata
+            memory_type = getattr(item, "memory_type", None) or memory_type
+            metadata = metadata or getattr(item, "metadata", None)
         elif isinstance(item, dict):
             content = item.get("content", str(item))
             memory_type = item.get("memory_type", memory_type)
             metadata = metadata or item.get("metadata")
         else:
+            logger.warning(
+                "add() received unrecognized item type %s; storing str(item) — content may "
+                "be a repr, not real memory text",
+                type(item).__name__,
+            )
             content = str(item)
 
         body_dict = {
@@ -451,17 +460,22 @@ class SmartMemoryClient:
 
         if conversation_context:
             import dataclasses
+            from datetime import date, datetime
 
-            if isinstance(conversation_context, ConversationContextModel):
-                body_dict["conversation_context"] = dataclasses.asdict(
-                    conversation_context
-                )
+            if hasattr(conversation_context, "to_dict"):
+                # Core ConversationContext serializes its own datetimes (isoformat).
+                body_dict["conversation_context"] = conversation_context.to_dict()
             elif dataclasses.is_dataclass(conversation_context) and not isinstance(
                 conversation_context, type
             ):
-                # Handle core ConversationContext or any other dataclass passed directly
+                # dataclasses.asdict leaves datetime fields intact, which breaks
+                # JSON encoding — normalize them here.
                 body_dict["conversation_context"] = dataclasses.asdict(
-                    conversation_context
+                    conversation_context,
+                    dict_factory=lambda pairs: {
+                        k: (v.isoformat() if isinstance(v, (datetime, date)) else v)
+                        for k, v in pairs
+                    },
                 )
             else:
                 body_dict["conversation_context"] = conversation_context
