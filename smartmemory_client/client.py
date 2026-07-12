@@ -4042,6 +4042,25 @@ class SmartMemoryClient:
         """Admin-only. Delete a snapshot. Raises on 403/404/500."""
         self._request("DELETE", f"/memory/summary/{snapshot_id}")
 
+    def export_okf(self) -> bytes:
+        """Export this workspace as a gzipped OKF bundle."""
+        response = self._request("GET", "/memory/okf/export", return_response=True)
+        return response.content
+
+    def import_okf(self, archive: bytes) -> dict:
+        """Import a gzipped OKF bundle into this workspace."""
+        return self._request(
+            "POST",
+            "/memory/okf/import",
+            files={
+                "file": (
+                    "smartmemory-okf-import.tar.gz",
+                    archive,
+                    "application/gzip",
+                )
+            },
+        )
+
     def _request(
         self,
         method: str,
@@ -4050,6 +4069,8 @@ class SmartMemoryClient:
         json_body: Optional[Dict[str, Any]] = None,
         data: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
+        files: Optional[Dict[str, Any]] = None,
+        return_response: bool = False,
     ) -> Any:
         """Internal helper for making HTTP requests."""
         url = f"{self.base_url}{endpoint}"
@@ -4061,16 +4082,23 @@ class SmartMemoryClient:
             req_headers["Authorization"] = f"Bearer {self.api_key}"
 
         try:
+            request_kwargs: Dict[str, Any] = {
+                "params": params,
+                "json": json_body,
+                "data": data,
+                "headers": req_headers,
+                "timeout": self.timeout,
+            }
+            if files is not None:
+                request_kwargs["files"] = files
             response = self._client.request(
                 method,
                 url,
-                params=params,
-                json=json_body,
-                data=data,
-                headers=req_headers,
-                timeout=self.timeout,
+                **request_kwargs,
             )
             response.raise_for_status()
+            if return_response:
+                return response
             if response.status_code == 204:
                 return None
             return response.json()
