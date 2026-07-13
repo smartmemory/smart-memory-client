@@ -999,6 +999,27 @@ class SmartMemoryClient:
 
         self._request("PATCH", f"/memory/{item_id}", json_body=body)
 
+    def supersede(
+        self,
+        item_id: str,
+        *,
+        content: str,
+        memory_type: str,
+        reason: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Append a replacement while retaining the prior item's history."""
+        return self._request(
+            "POST",
+            f"/memory/{item_id}/supersede",
+            json_body={
+                "content": content,
+                "memory_type": memory_type,
+                "metadata": metadata or {},
+                "reason": reason,
+            },
+        )
+
     def delete(self, item_id: str) -> None:
         """
         Delete a memory item.
@@ -2463,6 +2484,7 @@ class SmartMemoryClient:
         description: Optional[str] = None,
         data_classification: str = "internal",
         cost_center: Optional[str] = None,
+        is_system: bool = False,
     ) -> Dict[str, Any]:
         """Create a new team."""
         body = {
@@ -2471,10 +2493,16 @@ class SmartMemoryClient:
             "data_classification": data_classification,
             "cost_center": cost_center,
         }
+        if is_system:
+            body["is_system"] = True
         return self._request("POST", "/memory/teams", json_body=body)
 
-    def list_teams(self) -> List[Dict[str, Any]]:
+    def list_teams(self, include_system: bool = False) -> List[Dict[str, Any]]:
         """List all teams the user has access to."""
+        if include_system:
+            return self._request(
+                "GET", "/memory/teams", params={"include_system": True}
+            )
         return self._request("GET", "/memory/teams")
 
     def get_team(self, team_id: str) -> Dict[str, Any]:

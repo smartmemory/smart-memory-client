@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added (2026-07-13) — MAYA-SELF-1 system teams and supersession
+- `create_team()` accepts additive `is_system=True`, while `list_teams()` exposes hidden machine-owned
+  workspaces only when `include_system=True`; both defaults preserve existing request shapes.
+- `supersede()` appends a replacement through `POST /memory/{item_id}/supersede` while retaining the
+  predecessor's history.
+
 ### Changed (auto, lockstep) — track product version 1.4.47 (1.4.47)
 - Version copied from the smartmemory-core release (single-source lockstep).
 
