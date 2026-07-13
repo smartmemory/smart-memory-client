@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed (auto, lockstep) — track product version 1.4.47 (1.4.47)
+- Version copied from the smartmemory-core release (single-source lockstep).
+
+### Changed (auto, lockstep) — track product version 1.4.46 (1.4.46)
+- Version copied from the smartmemory-core release (single-source lockstep).
+
 ### Fixed (2026-07-12) — MAYA-ENVISION-1: cross-package add() fidelity
 - **`add()` duck-types MemoryItem-likes**: smartmemory-core's `MemoryItem` is a different
   class from the SDK's, so the strict isinstance check silently stored `str(item)` (the
