@@ -80,3 +80,26 @@ jobs:
           # Reruns must repair missing artifacts even when VERSION already matched.
           gh workflow run publish.yml --ref "v$V"
           echo "✅ Ensured smartmemory-client v$V release and dispatched publish.yml."
+
+      # Maya builds core AND client from source checkouts at their default-branch
+      # HEAD, so she only picks up a core release when her deploy runs again.
+      # Dispatching from here rather than from core is the point: this step runs
+      # only after client's version commit is confirmed pushed to main, so Maya's
+      # checkout cannot race it. Deliberately NOT `if: always()` — the step above
+      # both pushes the commit and triggers publish, so firing on failure could
+      # redeploy Maya against a main that never received the commit, which is the
+      # exact race this trigger exists to close.
+      - name: Dispatch client-released to Maya
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          V: ${{ steps.bump.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${V:-}" ]; then
+            echo "::error::No version from bump step; refusing to dispatch to Maya."
+            exit 1
+          fi
+          echo "→ client-released v$V → smart-memory/maya"
+          gh api "repos/smart-memory/maya/dispatches" \
+            -f event_type=client-released \
+            -f "client_payload[version]=$V"
