@@ -1227,6 +1227,79 @@ class SmartMemoryClient:
         result = self._request("GET", f"/memory/{item_id}/neighbors")
         return result.get("neighbors", [])
 
+    def get_edges_bulk(
+        self, node_ids: List[str], include_properties: bool = False
+    ) -> Dict[str, Any]:
+        """Get all graph edges whose endpoints are in ``node_ids``.
+
+        Args:
+            node_ids: Node IDs to query (the service accepts up to 5,000).
+            include_properties: Whether to include each edge's properties.
+
+        Returns:
+            Dict with ``edges`` and ``count``.
+        """
+        return self._request(
+            "POST",
+            "/memory/graph/edges",
+            params={"include_properties": include_properties},
+            json_body={"node_ids": node_ids},
+        )
+
+    def bulk_graph_upsert(
+        self,
+        nodes: Optional[List[Dict[str, Any]]] = None,
+        edges: Optional[List[Dict[str, Any]]] = None,
+        delete_prefix: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Bulk upsert graph nodes and edges, optionally replacing a prefix.
+
+        Args:
+            nodes: Node dicts with ``item_id``, optional ``label``, and optional
+                ``properties``.
+            edges: Edge dicts with ``source_id``, ``target_id``, ``edge_type``,
+                and optional ``properties``.
+            delete_prefix: Delete scoped nodes with this ID prefix before writing.
+
+        Returns:
+            Dict with ``nodes_upserted``, ``edges_upserted``, and ``nodes_deleted``.
+        """
+        body: Dict[str, Any] = {"nodes": nodes or [], "edges": edges or []}
+        if delete_prefix is not None:
+            body["delete_prefix"] = delete_prefix
+        return self._request("POST", "/memory/graph/bulk", json_body=body)
+
+    def get_graph_path(
+        self, start_id: str, end_id: str, max_hops: int = 5
+    ) -> Dict[str, Any]:
+        """Find the shortest graph path between two nodes.
+
+        Args:
+            start_id: Starting node ID.
+            end_id: Destination node ID.
+            max_hops: Maximum traversal depth (1-10).
+
+        Returns:
+            Dict with ``path_found``, ``hops``, and ``path``.
+        """
+        return self._request(
+            "GET",
+            "/memory/graph/path",
+            params={"start_id": start_id, "end_id": end_id, "max_hops": max_hops},
+        )
+
+    def get_graph_full(self, limit: Optional[int] = None) -> Dict[str, Any]:
+        """Get the workspace graph nodes and edges for visualization.
+
+        Args:
+            limit: Optional node limit; the service clamps it to its safety cap.
+
+        Returns:
+            Dict with ``nodes``, ``edges``, ``node_count``, and ``edge_count``.
+        """
+        params = {"limit": limit} if limit is not None else None
+        return self._request("GET", "/memory/graph/full", params=params)
+
     def get_lineage(self, item_id: str) -> Dict[str, Any]:
         """Get the supersession lineage chain for a memory item."""
         return self._request("GET", f"/memory/{item_id}/lineage")
@@ -3621,6 +3694,54 @@ class SmartMemoryClient:
             "POST",
             f"/memory/decisions/{decision_id}/reinforce",
             json_body={"evidence_id": evidence_id},
+        )
+
+    def contradict_decision(self, decision_id: str, evidence_id: str) -> Dict[str, Any]:
+        """Record contradicting evidence against a decision.
+
+        Args:
+            decision_id: ID of the decision to contradict.
+            evidence_id: Memory ID of the contradicting evidence.
+
+        Returns:
+            Dict with decision_id, confidence, and contradiction_count.
+        """
+        return self._request(
+            "POST",
+            f"/memory/decisions/{decision_id}/contradict",
+            json_body={"evidence_id": evidence_id},
+        )
+
+    def get_decision_conflicts(
+        self, decision_id: str, min_contest: float = 0.0
+    ) -> Dict[str, Any]:
+        """Find decisions that conflict with a decision.
+
+        Args:
+            decision_id: ID of the decision to inspect.
+            min_contest: Minimum pairwise contest severity (0.0-1.0).
+
+        Returns:
+            Dict with decision_id, conflicts, and count.
+        """
+        return self._request(
+            "POST",
+            f"/memory/decisions/{decision_id}/conflicts",
+            params={"min_contest": min_contest},
+        )
+
+    def search_decisions(self, topic: str, limit: int = 20) -> Dict[str, Any]:
+        """Search active decisions related to a topic.
+
+        Args:
+            topic: Search topic.
+            limit: Maximum matching decisions (1-100).
+
+        Returns:
+            Dict with decisions, count, and topic.
+        """
+        return self._request(
+            "GET", "/memory/decisions/search", params={"topic": topic, "limit": limit}
         )
 
     def get_provenance_chain(self, decision_id: str) -> Dict[str, Any]:

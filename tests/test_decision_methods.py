@@ -250,6 +250,69 @@ class TestReinforceDecision:
         assert body["evidence_id"] == "mem_evidence_42"
 
 
+class TestContradictDecision:
+    @patch("httpx.Client.request")
+    def test_contradict_decision(self, mock_req, client, mock_response):
+        mock_req.return_value = mock_response(
+            {
+                "decision_id": "dec_123",
+                "confidence": 0.68,
+                "contradiction_count": 1,
+            }
+        )
+
+        result = client.contradict_decision("dec_123", "mem_evidence_42")
+
+        assert result["confidence"] == 0.68
+        assert result["contradiction_count"] == 1
+        assert mock_req.call_args.args[0] == "POST"
+        assert (
+            mock_req.call_args.args[1]
+            == "http://localhost:9001/memory/decisions/dec_123/contradict"
+        )
+        assert mock_req.call_args.kwargs["json"] == {"evidence_id": "mem_evidence_42"}
+
+
+class TestDecisionConflicts:
+    @patch("httpx.Client.request")
+    def test_get_decision_conflicts(self, mock_req, client, mock_response):
+        mock_req.return_value = mock_response(
+            {
+                "decision_id": "dec_123",
+                "conflicts": [{"decision_id": "dec_456"}],
+                "count": 1,
+            }
+        )
+
+        result = client.get_decision_conflicts("dec_123", min_contest=0.6)
+
+        assert result["count"] == 1
+        assert mock_req.call_args.args[0] == "POST"
+        assert (
+            mock_req.call_args.args[1]
+            == "http://localhost:9001/memory/decisions/dec_123/conflicts"
+        )
+        assert mock_req.call_args.kwargs["params"] == {"min_contest": 0.6}
+
+
+class TestSearchDecisions:
+    @patch("httpx.Client.request")
+    def test_search_decisions(self, mock_req, client, mock_response):
+        mock_req.return_value = mock_response(
+            {"decisions": [{"decision_id": "dec_123"}], "count": 1, "topic": "routing"}
+        )
+
+        result = client.search_decisions("routing", limit=10)
+
+        assert result["topic"] == "routing"
+        assert mock_req.call_args.args[0] == "GET"
+        assert (
+            mock_req.call_args.args[1]
+            == "http://localhost:9001/memory/decisions/search"
+        )
+        assert mock_req.call_args.kwargs["params"] == {"topic": "routing", "limit": 10}
+
+
 class TestProvenanceChain:
     @patch("httpx.Client.request")
     def test_get_provenance_chain(self, mock_req, client, mock_response):
