@@ -1313,11 +1313,13 @@ class SmartMemoryClient:
         metadata_key: str,
         metadata_value: str,
         memory_type: Optional[str] = None,
+        limit: int = 25,
     ) -> Dict[str, Any]:
         """Search for a memory item by exact metadata key-value match."""
         params: Dict[str, Any] = {
             "metadata_key": metadata_key,
             "metadata_value": metadata_value,
+            "limit": limit,
         }
         if memory_type:
             params["memory_type"] = memory_type

@@ -227,3 +227,15 @@ def test_public_api_method_urls(
 
     assert _called_method(mock_request) == expected_verb
     assert _called_path(mock_request) == expected_path
+
+
+@patch("httpx.Client.request")
+def test_search_by_metadata_sends_limit_default(
+    mock_request: MagicMock, client: SmartMemoryClient
+) -> None:
+    mock_request.return_value = _ok()
+
+    client.search_by_metadata("source", "docs")
+
+    params = mock_request.call_args.kwargs["params"]
+    assert params["limit"] == 25

@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added (2026-08-02) — MAYA-SAID-1
+- search_by_metadata gains limit param (route already supported it)
+
 ### Added (2026-08-01) — GRAPH-API-1b: graph + decision route wrappers
 - New methods for routes that existed server-side but had no SDK surface:
   `get_edges_bulk`, `bulk_graph_upsert`, `get_graph_path`, `get_graph_full`,
