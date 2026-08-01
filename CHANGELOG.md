@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Fixed (2026-08-02) — GRAPH-API-1i: `add()` no longer drops `retrieved_context_ids`
+- `add()` sends the first-class `retrieved_context_ids` field (CORE-DECISION-OUTCOME-1 D4)
+  in its HTTP body, and lifts it off a `MemoryItem`-like `item` argument — the shape
+  `service_common` `record_turn` passes. Previously the body carried only
+  content/memory_type/metadata/use_pipeline, so every remote-written conversation turn
+  lost its retrieval provenance in transit. Omitted from the body when empty.
+- New explicit `retrieved_context_ids=` parameter, which overrides the value on `item`.
+- `MemoryItem` model gains the field, populated by `from_dict` (`GET /memory/{id}`
+  serializes it as of the matching service change). Contract default `[]`, never `None`.
+
 ### Added (2026-08-02) — MAYA-SAID-1
 - search_by_metadata gains limit param (route already supported it)
 

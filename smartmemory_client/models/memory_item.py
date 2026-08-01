@@ -49,6 +49,12 @@ class MemoryItem:
     # endpoints that don't run the walker.
     lineage_roots: List[str] = field(default_factory=list)
 
+    # CORE-DECISION-OUTCOME-1 D4 — item_ids retrieved as context for the work that
+    # produced this item. Writable via `client.add(...)` and readable from
+    # `GET /memory/{id}` since PLAT-GRAPH-API-1i. Empty list on endpoints that do
+    # not serialize it (search/list); contract default is [], never None.
+    retrieved_context_ids: List[str] = field(default_factory=list)
+
     def __getitem__(self, key: str) -> Any:
         """Dict-like access for compatibility."""
         return getattr(self, key)
@@ -98,6 +104,8 @@ class MemoryItem:
             # CORE-ORIGIN-1 / CORE-RECALL-LINEAGE-1
             origin=data.get("origin"),
             lineage_roots=list(data.get("lineage_roots") or []),
+            # CORE-DECISION-OUTCOME-1 D4 / PLAT-GRAPH-API-1i
+            retrieved_context_ids=list(data.get("retrieved_context_ids") or []),
         )
 
     def __repr__(self) -> str:
