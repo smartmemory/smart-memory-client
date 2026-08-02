@@ -9,8 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `add()` sends the first-class `retrieved_context_ids` field (CORE-DECISION-OUTCOME-1 D4)
   in its HTTP body, and lifts it off a `MemoryItem`-like `item` argument — the shape
   `service_common` `record_turn` passes. Previously the body carried only
-  content/memory_type/metadata/use_pipeline, so every remote-written conversation turn
-  lost its retrieval provenance in transit. Omitted from the body when empty.
+  content/memory_type/metadata/use_pipeline. Omitted from the body when empty.
+  **Scope note (corrected same day):** this closed a consistency gap, not a data-loss
+  bug. `record_turn` also writes the ids into `metadata`, which always crossed the wire
+  and round-trips back into the typed field, and the `context_retention` consumer reads
+  the metadata copy. No provenance was actually lost; the typed field now travels in its
+  own right rather than depending on that copy.
 - New explicit `retrieved_context_ids=` parameter, which overrides the value on `item`.
 - `MemoryItem` model gains the field, populated by `from_dict` (`GET /memory/{id}`
   serializes it as of the matching service change). Contract default `[]`, never `None`.
