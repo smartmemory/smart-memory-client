@@ -1314,6 +1314,48 @@ class SmartMemoryClient:
         """Get all edges (links) for a memory item."""
         return self._request("GET", f"/memory/{item_id}/links")
 
+    def list_memories(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        order: str = "asc",
+        metadata_key: Optional[str] = None,
+        metadata_value: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """List memory items, optionally filtered by an exact metadata match.
+
+        GRAPH-API-1l. Supersedes :meth:`search_by_metadata` for metadata lookups:
+        same filter, but with pagination and an exact ``total``.
+
+        Args:
+            limit: Maximum items in the page.
+            offset: Items to skip.
+            order: ``"asc"`` or ``"desc"`` on creation time.
+            metadata_key: Metadata key to filter on. Nested keys use dot syntax
+                (``"profile.tier"``). Must be supplied with ``metadata_value``.
+            metadata_value: Value the key must equal.
+
+        Returns:
+            ``{"items": [...], "total": int, "limit": int, "offset": int}``, where
+            ``total`` counts the filtered set and so can drive pagination directly.
+
+        Raises:
+            APIError: 422 if only one half of the metadata pair is supplied, if the
+                key is not a valid identifier, or if the value is empty.
+        """
+        params: Dict[str, Any] = {
+            "limit": limit,
+            "offset": offset,
+            "order": order,
+        }
+        # Sent only when present — the route validates them as a both-or-neither
+        # pair, so passing one as an explicit None would be a 422.
+        if metadata_key is not None:
+            params["metadata_key"] = metadata_key
+        if metadata_value is not None:
+            params["metadata_value"] = metadata_value
+        return self._request("GET", "/memory/list", params=params)
+
     def search_by_metadata(
         self,
         metadata_key: str,
@@ -1321,7 +1363,15 @@ class SmartMemoryClient:
         memory_type: Optional[str] = None,
         limit: int = 25,
     ) -> Dict[str, Any]:
-        """Search for a memory item by exact metadata key-value match."""
+        """Search for a memory item by exact metadata key-value match.
+
+        .. deprecated:: GRAPH-API-1l
+            Use :meth:`list_memories` with ``metadata_key`` / ``metadata_value``
+            instead — it applies the same filter but adds pagination and an exact
+            ``total``. This method still works and its behaviour is unchanged; the
+            two endpoints return slightly different item shapes, so migrate
+            deliberately rather than by find-and-replace.
+        """
         params: Dict[str, Any] = {
             "metadata_key": metadata_key,
             "metadata_value": metadata_value,

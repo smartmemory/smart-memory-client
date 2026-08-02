@@ -5,6 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added (2026-08-02) — GRAPH-API-1l: `list_memories()`
+- New `list_memories(limit=50, offset=0, order="asc", metadata_key=None, metadata_value=None)`
+  wrapping `GET /memory/list`. The client had **no** wrapper for this endpoint at all before
+  now, so this is a new method rather than an added parameter.
+- Optional `metadata_key` / `metadata_value` filter to an exact metadata match. Nested keys use
+  dot syntax (`"profile.tier"`) and are sent unchanged — translation to the flattened storage
+  separator is the server's job. Returns `{"items", "total", "limit", "offset"}`, where `total`
+  counts the filtered set and so drives pagination directly.
+- Filter params are omitted from the query string entirely when unset: the route validates them
+  as a both-or-neither pair, so sending one as an explicit `None` would be a 422.
+
+### Deprecated (2026-08-02) — GRAPH-API-1l: `search_by_metadata()`
+- Docstring-level deprecation pointing at `list_memories()`. **No behaviour change and no
+  `DeprecationWarning`** — the two endpoints return slightly different item shapes, so this is a
+  signal to migrate deliberately, not a mechanical find-and-replace.
+
 ### Changed (2026-08-02) — GRAPH-API-1i wire surface added, then removed same day
 - `add()` briefly gained a `retrieved_context_ids` parameter, an item-lift, and a body
   field, and the `MemoryItem` model briefly carried the field. All removed after review:

@@ -60,6 +60,7 @@ def _called_path(mock_request: MagicMock) -> str:
         ("search", ("python sdk",), "POST", "/memory/search"),
         ("search_advanced", ("python sdk",), "POST", "/memory/search/advanced"),
         ("search_by_metadata", ("source", "docs"), "GET", "/memory/by-metadata"),
+        ("list_memories", (), "GET", "/memory/list"),
         (
             "get_working_context",
             ("session_123", "what matters?"),
@@ -239,3 +240,54 @@ def test_search_by_metadata_sends_limit_default(
 
     params = mock_request.call_args.kwargs["params"]
     assert params["limit"] == 25
+
+
+@patch("httpx.Client.request")
+def test_list_memories_sends_pagination_defaults(
+    mock_request: MagicMock, client: SmartMemoryClient
+) -> None:
+    mock_request.return_value = _ok()
+
+    client.list_memories()
+
+    params = mock_request.call_args.kwargs["params"]
+    assert params == {"limit": 50, "offset": 0, "order": "asc"}
+
+
+@patch("httpx.Client.request")
+def test_list_memories_omits_metadata_filters_when_unset(
+    mock_request: MagicMock, client: SmartMemoryClient
+) -> None:
+    """An explicit `None` on the wire would be a 422 — the pair is both-or-neither."""
+    mock_request.return_value = _ok()
+
+    client.list_memories(limit=10)
+
+    params = mock_request.call_args.kwargs["params"]
+    assert "metadata_key" not in params
+    assert "metadata_value" not in params
+
+
+@patch("httpx.Client.request")
+def test_list_memories_sends_metadata_filters_when_set(
+    mock_request: MagicMock, client: SmartMemoryClient
+) -> None:
+    mock_request.return_value = _ok()
+
+    client.list_memories(metadata_key="bot_topic", metadata_value="ml-research")
+
+    params = mock_request.call_args.kwargs["params"]
+    assert params["metadata_key"] == "bot_topic"
+    assert params["metadata_value"] == "ml-research"
+
+
+@patch("httpx.Client.request")
+def test_list_memories_sends_dotted_key_unchanged(
+    mock_request: MagicMock, client: SmartMemoryClient
+) -> None:
+    """Translation to the flattened storage separator is the server's job."""
+    mock_request.return_value = _ok()
+
+    client.list_memories(metadata_key="profile.tier", metadata_value="pro")
+
+    assert mock_request.call_args.kwargs["params"]["metadata_key"] == "profile.tier"
