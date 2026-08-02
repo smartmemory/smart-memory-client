@@ -4,7 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.4.57] - 2026-08-02
+Version copied verbatim from `smart-memory-core/VERSION` per the release sync chain — core is the
+only dial. The client had been lagging at 1.4.53 while core advanced to 1.4.57; this release
+resynchronises it. The client declares no `smartmemory-core` dependency, so there is no pin to
+update. Published wheel-only.
+
 ### Added (2026-08-02) — GRAPH-API-1l: `list_memories()`
 - New `list_memories(limit=50, offset=0, order="asc", metadata_key=None, metadata_value=None)`
   wrapping `GET /memory/list`. The client had **no** wrapper for this endpoint at all before
