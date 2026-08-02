@@ -5,19 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-### Fixed (2026-08-02) — GRAPH-API-1i: `add()` no longer drops `retrieved_context_ids`
-- `add()` sends the first-class `retrieved_context_ids` field (CORE-DECISION-OUTCOME-1 D4)
-  in its HTTP body, and lifts it off a `MemoryItem`-like `item` argument — the shape
-  `service_common` `record_turn` passes. Previously the body carried only
-  content/memory_type/metadata/use_pipeline. Omitted from the body when empty.
-  **Scope note (corrected same day):** this closed a consistency gap, not a data-loss
-  bug. `record_turn` also writes the ids into `metadata`, which always crossed the wire
-  and round-trips back into the typed field, and the `context_retention` consumer reads
-  the metadata copy. No provenance was actually lost; the typed field now travels in its
-  own right rather than depending on that copy.
-- New explicit `retrieved_context_ids=` parameter, which overrides the value on `item`.
-- `MemoryItem` model gains the field, populated by `from_dict` (`GET /memory/{id}`
-  serializes it as of the matching service change). Contract default `[]`, never `None`.
+### Changed (2026-08-02) — GRAPH-API-1i wire surface added, then removed same day
+- `add()` briefly gained a `retrieved_context_ids` parameter, an item-lift, and a body
+  field, and the `MemoryItem` model briefly carried the field. All removed after review:
+  metadata is the storage substrate — a `metadata["retrieved_context_ids"]` write crosses
+  the wire, persists, and lifts back onto the server-side typed field, and the only
+  consumer (`context_retention`) reads the metadata copy in-process. The dedicated wire
+  surface duplicated that path and was never needed. Provenance continues to travel in
+  `metadata`; net change to this SDK versus the last release: none.
 
 ### Added (2026-08-02) — MAYA-SAID-1
 - search_by_metadata gains limit param (route already supported it)

@@ -389,7 +389,6 @@ class SmartMemoryClient:
         conversation_context: Optional[
             Union[ConversationContextModel, Dict[str, Any]]
         ] = None,
-        retrieved_context_ids: Optional[List[str]] = None,
     ) -> str:
         """
         Add a memory item to the system.
@@ -403,11 +402,12 @@ class SmartMemoryClient:
                 routed server-side; selects an alternate pipeline configuration.
             conversation_context: Optional conversation context for
                 conversation-aware entity extraction.
-            retrieved_context_ids: CORE-DECISION-OUTCOME-1 D4 — item_ids of the
-                memory items retrieved as context for the work that produced this
-                item. When `item` is a MemoryItem carrying the field, it is lifted
-                off the item automatically; this parameter overrides that. Powers
-                the `context_retention` evaluation dimension.
+
+        Note:
+            Provenance like `retrieved_context_ids` travels in `metadata` — the
+            storage layer flattens metadata onto the node and lifts known fields
+            back on read, so a dedicated wire field is unnecessary (GRAPH-API-1i,
+            added then removed 2026-08-02).
 
         Returns:
             Memory item ID
@@ -444,17 +444,10 @@ class SmartMemoryClient:
             content = item.content
             memory_type = getattr(item, "memory_type", None) or memory_type
             metadata = metadata or getattr(item, "metadata", None)
-            # GRAPH-API-1i: the typed D4 field is first-class on MemoryItem, not
-            # part of metadata — without this lift it never reached the body, so
-            # every remote record_turn write lost its provenance.
-            if retrieved_context_ids is None:
-                retrieved_context_ids = getattr(item, "retrieved_context_ids", None)
         elif isinstance(item, dict):
             content = item.get("content", str(item))
             memory_type = item.get("memory_type", memory_type)
             metadata = metadata or item.get("metadata")
-            if retrieved_context_ids is None:
-                retrieved_context_ids = item.get("retrieved_context_ids")
         else:
             logger.warning(
                 "add() received unrecognized item type %s; storing str(item) — content may "
@@ -472,18 +465,6 @@ class SmartMemoryClient:
 
         if profile_name is not None:
             body_dict["profile_name"] = profile_name
-
-        # GRAPH-API-1i: omit when empty so the body stays lean and the server
-        # applies its own [] default. Only a tuple is normalized — the field is
-        # order-significant, so an unordered container is a caller bug that should
-        # fail loudly at encode time rather than be silently reordered here. Any
-        # other non-list value is passed through for the server to reject.
-        if retrieved_context_ids:
-            body_dict["retrieved_context_ids"] = (
-                list(retrieved_context_ids)
-                if isinstance(retrieved_context_ids, tuple)
-                else retrieved_context_ids
-            )
 
         if conversation_context:
             import dataclasses
