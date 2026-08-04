@@ -167,6 +167,13 @@ results = client.search("AI concepts", top_k=10, use_ssg=True)
 # Search specific memory type
 results = client.search("conversation", memory_type="episodic")
 
+# Time travel: search the store as it stood on a date (auditable memory)
+results = client.search("AI concepts", as_of_date="2026-06-01T00:00:00Z")
+results = client.search("AI concepts", include_superseded=True)
+
+# Explain a memory: origin, version audit, supersession lineage, chain verification
+answer = client.explain(item_id)
+
 # Process results
 for memory in results:
     print(f"{memory.item_id}: {memory.content}")
