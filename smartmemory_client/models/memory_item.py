@@ -49,6 +49,13 @@ class MemoryItem:
     # endpoints that don't run the walker.
     lineage_roots: List[str] = field(default_factory=list)
 
+    # PLAT-AUDITABLE-MEMORY-1 gap #2 — "resolved" | "unresolved" | "no_chain",
+    # populated only on as_of_date searches. "unresolved" means this result is
+    # PRESENT-DAY content that could not be resolved to the belief held at the
+    # requested time, so it must NOT be read as history. Dropping it here would
+    # silently discard the one signal that distinguishes the two.
+    as_of_resolution: Optional[str] = None
+
     def __getitem__(self, key: str) -> Any:
         """Dict-like access for compatibility."""
         return getattr(self, key)
@@ -81,6 +88,7 @@ class MemoryItem:
             memory_type=data.get("memory_type", data.get("type", "semantic")),
             metadata=data.get("metadata", {}),
             score=data.get("score"),
+            as_of_resolution=data.get("as_of_resolution"),
             created_at=data.get("created_at"),
             updated_at=data.get("updated_at"),
             embedding=data.get("embedding"),

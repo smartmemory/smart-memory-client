@@ -588,6 +588,7 @@ class SmartMemoryClient:
         semantic_hops: bool = False,
         include_reference: bool = False,
         as_of_date: Optional[Union[str, datetime]] = None,
+        as_of_strict: bool = False,
         include_superseded: bool = False,
     ):
         """
@@ -676,6 +677,10 @@ class SmartMemoryClient:
             body_dict["semantic_hops"] = True  # CORE-MULTIHOP-2
         if include_reference:
             body_dict["include_reference"] = True  # CORE-PROPS-1 Phase 6
+        if as_of_strict:
+            # PLAT-AUDITABLE-MEMORY-1 gap #2: refuse a partial history (422)
+            # rather than return results that could not be resolved.
+            body_dict["as_of_strict"] = True
         if as_of_date is not None:
             # PLAT-AUDITABLE-MEMORY-1: transaction-time travel (ISO precedent:
             # search_during_range)
@@ -726,8 +731,13 @@ class SmartMemoryClient:
         # (no longer double-wraps as it did pre-LINEAGE-1).
         self._last_citations: List[Dict[str, Any]] = []
         self._last_group_roots: Dict[str, Dict[str, Any]] = {}
+        # PLAT-AUDITABLE-MEMORY-1 gap #2: keep the temporal verdict. Unwrapping
+        # the envelope and discarding this would throw away the only signal
+        # that an as-of answer contains present-day content.
+        self._last_as_of_diagnostics: Optional[Dict[str, Any]] = None
         if isinstance(response_data, dict) and "results" in response_data:
             self._last_group_roots = dict(response_data.get("group_roots") or {})
+            self._last_as_of_diagnostics = response_data.get("as_of_diagnostics")
             if cite:
                 self._last_citations = list(response_data.get("citations") or [])
             response_data = response_data.get("results")
@@ -784,6 +794,18 @@ class SmartMemoryClient:
         requested or no results were returned.
         """
         return list(getattr(self, "_last_citations", []) or [])
+
+    @property
+    def last_as_of_diagnostics(self) -> Optional[Dict[str, Any]]:
+        """Temporal resolution summary for the last as_of_date search, or None.
+
+        PLAT-AUDITABLE-MEMORY-1 gap #2. Shape: {as_of, policy, unresolved_count,
+        unresolved_item_ids, note}. A non-zero ``unresolved_count`` means some
+        returned results carry PRESENT-DAY content and must not be read as
+        historical beliefs. Note it describes the delivered page, not
+        query-wide resolver health.
+        """
+        return getattr(self, "_last_as_of_diagnostics", None)
 
     @property
     def last_group_roots(self) -> Dict[str, Dict[str, Any]]:
