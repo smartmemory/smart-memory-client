@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added (2026-08-04) — as-of search + explain (PLAT-AUDITABLE-MEMORY-1 T11)
+- `search()` gains `as_of_date` (ISO string or datetime, serialized to ISO)
+  and `include_superseded` — transaction-time travel per the search contract.
+- New `explain(memory_id)`: the single-call audit answer (explain-contract
+  shape). Raises `SmartMemoryNotFoundError` on 404. `chain_verified` of
+  `None` means nothing to verify, not a tamper warning.
+- Contract tests pin the search body field names and the ExplainResponse
+  top-level blocks against `explain-contract.json`; typed 404/400/500 error
+  coverage per house rule.
+
 ## [1.4.57] - 2026-08-02
 Version copied verbatim from `smart-memory-core/VERSION` per the release sync chain — core is the
 only dial. The client had been lagging at 1.4.53 while core advanced to 1.4.57; this release

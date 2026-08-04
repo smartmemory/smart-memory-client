@@ -15,6 +15,7 @@ For more information, see: https://github.com/smartmemory/smart-memory-client
 import logging
 import os
 import warnings
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import quote
 
@@ -507,6 +508,34 @@ class SmartMemoryClient:
         else:
             raise SmartMemoryClientError(f"Unexpected response format: {result}")
 
+    def explain(self, memory_id: str) -> Dict[str, Any]:
+        """
+        Get the complete audit answer for one memory (PLAT-AUDITABLE-MEMORY-1).
+
+        Returns the explain-contract dict: identity + origin tier, every
+        belief the system held over time (with chain hashes), supersession in
+        both directions, lineage roots, decision provenance, and chain
+        verification. ``chain_verified`` of ``None`` means nothing to verify
+        (legacy or unversioned) — it is NOT a tamper warning.
+
+        Args:
+            memory_id: Memory item ID.
+
+        Returns:
+            Explain response dict (see
+            docs/features/PLAT-AUDITABLE-MEMORY-1/explain-contract.json).
+
+        Raises:
+            SmartMemoryNotFoundError: 404 — no accessible item with that ID.
+        """
+        response = self._request("GET", f"/memory/{memory_id}/explain")
+        if response is None:
+            raise SmartMemoryNotFoundError(
+                f"Request failed: empty body for /memory/{memory_id}/explain",
+                status_code=204,
+            )
+        return response
+
     def get(self, item_id: str) -> MemoryItem:
         """
         Retrieve a memory item by ID.
@@ -558,6 +587,8 @@ class SmartMemoryClient:
         decompose: bool = False,
         semantic_hops: bool = False,
         include_reference: bool = False,
+        as_of_date: Optional[Union[str, datetime]] = None,
+        include_superseded: bool = False,
     ):
         """
         Search for memory items using semantic matching.
@@ -645,6 +676,16 @@ class SmartMemoryClient:
             body_dict["semantic_hops"] = True  # CORE-MULTIHOP-2
         if include_reference:
             body_dict["include_reference"] = True  # CORE-PROPS-1 Phase 6
+        if as_of_date is not None:
+            # PLAT-AUDITABLE-MEMORY-1: transaction-time travel (ISO precedent:
+            # search_during_range)
+            body_dict["as_of_date"] = (
+                as_of_date.isoformat()
+                if isinstance(as_of_date, datetime)
+                else as_of_date
+            )
+        if include_superseded:
+            body_dict["include_superseded"] = True  # PLAT-AUDITABLE-MEMORY-1
 
         # SELF-IMPROVE-6: use _request_raw to capture X-Search-Session-Id header
         url = f"{self.base_url}/memory/search"
