@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.59] - 2026-08-04
+
 ### Added (2026-08-04) — as-of search + explain (PLAT-AUDITABLE-MEMORY-1 T11)
 - `search()` gains `as_of_date` (ISO string or datetime, serialized to ISO)
   and `include_superseded` — transaction-time travel per the search contract.
