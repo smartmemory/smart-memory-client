@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (2026-08-05) — SVC-LEASE-1 lease client surface
+
+- New `acquire_lease()`, `renew_lease()`, and `release_lease()` methods for
+  scoped renewable leases.
+- Only recognised ownership conflicts return normal control-flow values (`None`
+  or `False`); validation, quota, coordinator, malformed-response, and network
+  failures raise so callers never treat an unknown outcome as a known conflict.
+  A 409 is control flow only when its `detail.reason` is the one the call models.
+- **Deliberate divergence from the `get`/`update`/`delete` convention** in
+  `.claude/rules/error-coverage.md`, which removed sentinel returns in 0.6.0:
+  `release_lease()` returns `False` rather than raising when the token no longer
+  owns the lease. Release is normally called from a `finally` block, where an
+  exception would mask the error that ended the critical section. The 0.6.0
+  change targeted blanket `except Exception` swallowing that hid 404/403/500
+  from callers; these methods do the opposite — they recognise exactly one
+  status-and-reason pair and re-raise everything else.
+
 ### Added (2026-08-05) — `include_retracted` on `search()` (CORE-RETRACTED-RECALL-1)
 
 - `search()` gains `include_retracted: bool = False`, sent only when true (per the

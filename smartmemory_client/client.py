@@ -12,6 +12,7 @@ Features:
 For more information, see: https://github.com/smartmemory/smart-memory-client
 """
 
+import json
 import logging
 import os
 import warnings
@@ -4362,6 +4363,90 @@ class SmartMemoryClient:
     def summary_delete(self, snapshot_id: str) -> None:
         """Admin-only. Delete a snapshot. Raises on 403/404/500."""
         self._request("DELETE", f"/memory/summary/{snapshot_id}")
+
+    # ------------------------------------------------------------------
+    # Scoped renewable leases (SVC-LEASE-1)
+    # ------------------------------------------------------------------
+
+    def acquire_lease(
+        self, key: str, ttl_seconds: Optional[int] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Acquire a lease, or return ``None`` when a live holder owns it."""
+        body: Dict[str, Any] = {}
+        if ttl_seconds is not None:
+            body["ttl_seconds"] = ttl_seconds
+        try:
+            return self._request("POST", f"/memory/locks/{key}", json_body=body)
+        except SmartMemoryValidationError as e:
+            if e.status_code != 409:
+                raise
+            try:
+                detail = json.loads(e.detail)
+            except (TypeError, json.JSONDecodeError):
+                raise e
+            lease_detail = detail.get("detail") if isinstance(detail, dict) else None
+            if (
+                isinstance(lease_detail, dict)
+                and lease_detail.get("reason") == "lock_held"
+            ):
+                # Only a recognised 409 is definitive "not ours" control flow. A 503,
+                # network failure, malformed body, or other error is unknown and must
+                # raise so callers never mistake coordinator uncertainty for contention.
+                return None
+            raise
+
+    def renew_lease(
+        self, key: str, token: str, ttl_seconds: Optional[int] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Renew a lease, or return ``None`` when this token no longer owns it."""
+        body: Dict[str, Any] = {}
+        if ttl_seconds is not None:
+            body["ttl_seconds"] = ttl_seconds
+        try:
+            return self._request(
+                "POST",
+                f"/memory/locks/{key}/renew",
+                json_body=body,
+                headers={"X-Lease-Token": token},
+            )
+        except SmartMemoryValidationError as e:
+            if e.status_code != 409:
+                raise
+            try:
+                detail = json.loads(e.detail)
+            except (TypeError, json.JSONDecodeError):
+                raise e
+            lease_detail = detail.get("detail") if isinstance(detail, dict) else None
+            if (
+                isinstance(lease_detail, dict)
+                and lease_detail.get("reason") == "not_owner"
+            ):
+                return None
+            raise
+
+    def release_lease(self, key: str, token: str) -> bool:
+        """Release a lease, returning ``False`` when this token no longer owns it."""
+        try:
+            self._request(
+                "DELETE",
+                f"/memory/locks/{key}",
+                headers={"X-Lease-Token": token},
+            )
+            return True
+        except SmartMemoryValidationError as e:
+            if e.status_code != 409:
+                raise
+            try:
+                detail = json.loads(e.detail)
+            except (TypeError, json.JSONDecodeError):
+                raise e
+            lease_detail = detail.get("detail") if isinstance(detail, dict) else None
+            if (
+                isinstance(lease_detail, dict)
+                and lease_detail.get("reason") == "not_owner"
+            ):
+                return False
+            raise
 
     def export_okf(self) -> bytes:
         """Export this workspace as a gzipped OKF bundle."""
