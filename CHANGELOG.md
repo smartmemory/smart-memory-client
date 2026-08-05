@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (2026-08-05) — `include_retracted` on `search()` (CORE-RETRACTED-RECALL-1)
+
+- `search()` gains `include_retracted: bool = False`, sent only when true (per the
+  contract's SDK rule: omit unset optional params rather than serializing null).
+- Sibling of `include_superseded`, not covered by it — a retraction has no
+  replacement. **Retracted items are hidden by default as of this release**; pass
+  `include_retracted=True` to see them.
+
 ## [1.4.59] - 2026-08-04
 
 ### Added (2026-08-04) — as-of search + explain (PLAT-AUDITABLE-MEMORY-1 T11)
