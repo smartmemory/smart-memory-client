@@ -4497,6 +4497,49 @@ class SmartMemoryClient:
                 return False
             raise
 
+    def allocate_sequence(
+        self,
+        name: str,
+        *,
+        floor: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Consume the next numbers from a workspace-scoped monotonic sequence.
+
+        Returns ``{"name", "value", "first", "count"}`` — the caller owns the
+        inclusive range ``[first, value]``.
+
+        Unlike the lease methods there is no benign failure to swallow: every
+        non-2xx raises. An allocator that returned ``None`` on a 503 would let a
+        caller mistake coordinator failure for a value, which is the one thing
+        this primitive exists to prevent.
+
+        ``floor`` raises the counter before allocating and can never lower it,
+        so passing it on every call is idempotent and is the recommended
+        pattern — it removes any "did I initialise this?" state from the caller.
+
+        Numbers you do not use are LOST. There is no release and no reclaim;
+        gaps are guaranteed, so never treat ``value`` as a record count.
+        """
+        body: Dict[str, Any] = {}
+        if floor is not None:
+            body["floor"] = floor
+        if count is not None:
+            body["count"] = count
+        return self._request("POST", f"/memory/sequences/{name}/next", json_body=body)
+
+    def peek_sequence(self, name: str) -> Optional[int]:
+        """Return the sequence's current value, or ``None`` if never allocated.
+
+        Consumes nothing. Use this to validate a ``floor`` computation before
+        cutover without burning an ordinal.
+        """
+        try:
+            result = self._request("GET", f"/memory/sequences/{name}")
+        except SmartMemoryNotFoundError:
+            return None
+        return result.get("value") if isinstance(result, dict) else None
+
     def export_okf(self) -> bytes:
         """Export this workspace as a gzipped OKF bundle."""
         response = self._request("GET", "/memory/okf/export", return_response=True)

@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (2026-08-05) — SVC-ALLOC-1 sequence client surface
+
+- New `allocate_sequence(name, floor=None, count=None)` and
+  `peek_sequence(name)` for workspace-scoped monotonic allocation.
+- `allocate_sequence` raises on **every** non-2xx and never returns a sentinel.
+  Unlike the lease there is no benign failure: returning `None` on a 503 would
+  let a caller mistake coordinator failure for a value.
+- `peek_sequence` returns `None` only for a 404 (never allocated). A 503 raises
+  — a down coordinator is not the same answer as "does not exist".
+- `floor=0` is sent rather than dropped; it is falsy but meaningful.
+
 ### Added (2026-08-05) — embed control + supersede-link (SVC-EMBED-CONTROL-1, SVC-SUPERSEDE-LINK-1)
 
 - `add()` accepts `embed=True|False|None`. Sent only when set, so an omitted
