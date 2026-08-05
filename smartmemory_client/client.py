@@ -391,6 +391,7 @@ class SmartMemoryClient:
         conversation_context: Optional[
             Union[ConversationContextModel, Dict[str, Any]]
         ] = None,
+        embed: Optional[bool] = None,
     ) -> str:
         """
         Add a memory item to the system.
@@ -404,6 +405,12 @@ class SmartMemoryClient:
                 routed server-side; selects an alternate pipeline configuration.
             conversation_context: Optional conversation context for
                 conversation-aware entity extraction.
+            embed: SVC-EMBED-CONTROL-1 embedding override. True forces an
+                embedding, False suppresses one, None (default) leaves existing
+                behaviour untouched. Only valid with ``use_pipeline=False`` —
+                the service answers 400 for the combination rather than silently
+                ignoring it, because the ingestion pipeline has no per-item
+                override.
 
         Note:
             Provenance like `retrieved_context_ids` travels in `metadata` — the
@@ -489,6 +496,11 @@ class SmartMemoryClient:
                 )
             else:
                 body_dict["conversation_context"] = conversation_context
+
+        # SVC-EMBED-CONTROL-1: send only when set, so an omitted argument is
+        # byte-identical to the pre-feature request.
+        if embed is not None:
+            body_dict["embed"] = embed
 
         try:
             result = self._request("POST", "/memory/add", json_body=body_dict)
@@ -1097,6 +1109,43 @@ class SmartMemoryClient:
                 "metadata": metadata or {},
                 "reason": reason,
             },
+        )
+
+    def supersede_link(
+        self,
+        item_id: str,
+        new_item_id: str,
+        reason: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Link two ALREADY-STORED items as a supersession (SVC-SUPERSEDE-LINK-1).
+
+        Use this when both records exist. Use :meth:`supersede` instead when the
+        replacement still has to be created from content.
+
+        The write stamps the OLD record with ``superseded``, ``superseded_by`` and
+        ``superseded_at``. Detect supersession by reading those off a recalled
+        record — the newer record carries no marker, so never scan for inbound
+        links.
+
+        Args:
+            item_id: The OLD item (the one being superseded).
+            new_item_id: The NEW item; must already exist and be in scope.
+            reason: Optional human-readable reason.
+
+        Returns:
+            ``{"status", "old_item_id", "new_item_id", "superseded_at", ...}``
+
+        Raises:
+            SmartMemoryValidationError: 400 when ``new_item_id == item_id``;
+                409 when the store declined the supersession.
+            SmartMemoryNotFoundError: 404 when either item is missing *or* out of
+                scope — the two are deliberately indistinguishable, so a caller
+                cannot probe for items in other workspaces.
+        """
+        return self._request(
+            "POST",
+            f"/memory/{item_id}/supersede-link",
+            json_body={"new_item_id": new_item_id, "reason": reason},
         )
 
     def delete(self, item_id: str) -> None:

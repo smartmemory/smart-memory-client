@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (2026-08-05) — embed control + supersede-link (SVC-EMBED-CONTROL-1, SVC-SUPERSEDE-LINK-1)
+
+- `add()` accepts `embed=True|False|None`. Sent only when set, so an omitted
+  argument is byte-identical to the previous request. Valid only with
+  `use_pipeline=False`; the service answers 400 for the combination.
+- New `supersede_link(item_id, new_item_id, reason=None)` relates two records
+  that already exist. Raises `SmartMemoryNotFoundError` on 404 (missing and
+  out-of-scope are deliberately indistinguishable) and
+  `SmartMemoryValidationError` on 400 self-link / 409 store refusal.
+
 ### Added (2026-08-05) — SVC-LEASE-1 lease client surface
 
 - New `acquire_lease()`, `renew_lease()`, and `release_lease()` methods for
