@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.60] - 2026-08-06
+
 ### Added (2026-08-05) — SVC-ALLOC-1 sequence client surface
 
 - New `allocate_sequence(name, floor=None, count=None)` and
