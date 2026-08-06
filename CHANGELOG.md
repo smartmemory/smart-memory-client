@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — CORE-MEMTYPE-DECLARE-1 P1: declare surface
+
+- `declare_type(name, kind=..., properties_schema=..., required_properties=...,
+  storage_strategy=..., storage_searchable=..., tier=...)` →
+  `POST /memory/ontology/types`. `kind="record"` declares a concrete record
+  type; items with `memory_type=name` are then accepted by `add()` and
+  `ingest_structured()` with schema checks (WARNING mode in P1).
+- `declare_relation(name, domain=..., range=..., cardinality=..., ...)` →
+  `POST /memory/ontology/relations` (declare-only in P1).
+- `list_ontology_types()` gains the `kind` filter.
+
 ## [1.4.60] - 2026-08-06
 
 ### Added (2026-08-05) — SVC-ALLOC-1 sequence client surface

@@ -2177,6 +2177,7 @@ class SmartMemoryClient:
         layer: Optional[str] = None,
         pack_id: Optional[str] = None,
         has_iri: Optional[bool] = None,
+        kind: Optional[str] = None,
         limit: int = 100,
         cursor: Optional[str] = None,
     ) -> Dict[str, Any]:
@@ -2187,6 +2188,8 @@ class SmartMemoryClient:
             layer: Filter by layer (``public``/``domain``/``private``).
             pack_id: Filter by originating pack id.
             has_iri: Only types with (or without) an IRI.
+            kind: Filter by class kind (``entity`` / ``record``,
+                CORE-MEMTYPE-DECLARE-1).
             limit: Page size (clamped to [1, 500]).
             cursor: Opaque keyset continuation token from a prior page.
 
@@ -2205,9 +2208,144 @@ class SmartMemoryClient:
             params["pack_id"] = pack_id
         if has_iri is not None:
             params["has_iri"] = has_iri
+        if kind is not None:
+            params["kind"] = kind
         if cursor is not None:
             params["cursor"] = cursor
         return self._request("GET", "/memory/ontology/types", params=params)
+
+    def declare_type(
+        self,
+        name: str,
+        *,
+        kind: str = "entity",
+        properties_schema: Optional[Dict[str, Any]] = None,
+        required_properties: Optional[List[str]] = None,
+        storage_strategy: Optional[str] = None,
+        storage_searchable: Optional[bool] = None,
+        iri: Optional[str] = None,
+        wikidata_qid: Optional[str] = None,
+        display_name: Optional[str] = None,
+        definition: Optional[str] = None,
+        description: Optional[str] = None,
+        aliases: Optional[List[str]] = None,
+        examples: Optional[List[str]] = None,
+        parent_types: Optional[List[str]] = None,
+        tier: str = "confirmed",
+    ) -> Dict[str, Any]:
+        """Declare an ontology class (CORE-MEMTYPE-DECLARE-1).
+
+        ``kind="record"`` declares a concrete record type: items may then be
+        written with ``memory_type=name`` through ``add()`` and
+        ``ingest_structured()``, schema-checked against ``properties_schema``
+        (WARNING mode in P1). Field names/enums are pinned by
+        ``memory-type-contract.json``.
+
+        Args:
+            name: Class name — for ``kind="record"`` this IS the item
+                ``memory_type``.
+            kind: ``"entity"`` (extraction vocabulary) or ``"record"``.
+            properties_schema: field name -> field spec
+                (``{type, of?, default?, indexed?, append_only?}``).
+            required_properties: Names that must be present on item writes.
+            storage_strategy: ``full`` | ``indexed`` | ``append``
+                (record classes only).
+            storage_searchable: Embedding default (record classes only).
+            tier: Governance tier; ``"working"`` routes through review.
+
+        Returns:
+            The created type projection (includes ``kind`` and storage facet).
+
+        Raises:
+            SmartMemoryValidationError: 400 (invalid schema/tier/kind/strategy)
+                or 409 (name shadows a registered memory type, or the iri/qid
+                identity slot is already bound).
+        """
+        body: Dict[str, Any] = {"name": name, "kind": kind, "tier": tier}
+        if properties_schema is not None:
+            body["properties_schema"] = properties_schema
+        if required_properties is not None:
+            body["required_properties"] = required_properties
+        if storage_strategy is not None:
+            body["storage_strategy"] = storage_strategy
+        if storage_searchable is not None:
+            body["storage_searchable"] = storage_searchable
+        if iri is not None:
+            body["iri"] = iri
+        if wikidata_qid is not None:
+            body["wikidata_qid"] = wikidata_qid
+        if display_name is not None:
+            body["display_name"] = display_name
+        if definition is not None:
+            body["definition"] = definition
+        if description is not None:
+            body["description"] = description
+        if aliases is not None:
+            body["aliases"] = aliases
+        if examples is not None:
+            body["examples"] = examples
+        if parent_types is not None:
+            body["parent_types"] = parent_types
+        return self._request("POST", "/memory/ontology/types", json_body=body)
+
+    def declare_relation(
+        self,
+        name: str,
+        *,
+        iri: Optional[str] = None,
+        wikidata_pid: Optional[str] = None,
+        display_name: Optional[str] = None,
+        definition: Optional[str] = None,
+        description: Optional[str] = None,
+        aliases: Optional[List[str]] = None,
+        examples: Optional[List[str]] = None,
+        domain: Optional[List[str]] = None,
+        range: Optional[List[str]] = None,
+        inverse_of: Optional[str] = None,
+        cardinality: Optional[str] = None,
+        temporal: Optional[bool] = None,
+        properties_schema: Optional[Dict[str, Any]] = None,
+        transitive: Optional[bool] = None,
+        symmetric: Optional[bool] = None,
+        reflexive: Optional[bool] = None,
+        parent_relations: Optional[List[str]] = None,
+        tier: str = "confirmed",
+    ) -> Dict[str, Any]:
+        """Declare an ontology relation (CORE-MEMTYPE-DECLARE-1; declare-only in P1).
+
+        Record links are relations whose ``domain``/``range`` name record
+        classes. Edge writes are not validated against domain/range/cardinality
+        yet (P3).
+
+        Returns:
+            The created relation projection.
+
+        Raises:
+            SmartMemoryValidationError: 400 on an invalid tier, 409 on an
+                identity-slot conflict.
+        """
+        body: Dict[str, Any] = {"name": name, "tier": tier}
+        optional = {
+            "iri": iri,
+            "wikidata_pid": wikidata_pid,
+            "display_name": display_name,
+            "definition": definition,
+            "description": description,
+            "aliases": aliases,
+            "examples": examples,
+            "domain": domain,
+            "range": range,
+            "inverse_of": inverse_of,
+            "cardinality": cardinality,
+            "temporal": temporal,
+            "properties_schema": properties_schema,
+            "transitive": transitive,
+            "symmetric": symmetric,
+            "reflexive": reflexive,
+            "parent_relations": parent_relations,
+        }
+        body.update({k: v for k, v in optional.items() if v is not None})
+        return self._request("POST", "/memory/ontology/relations", json_body=body)
 
     def list_ontology_relations(
         self,
