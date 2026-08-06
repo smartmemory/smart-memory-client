@@ -2238,7 +2238,9 @@ class SmartMemoryClient:
         ``kind="record"`` declares a concrete record type: items may then be
         written with ``memory_type=name`` through ``add()`` and
         ``ingest_structured()``, schema-checked against ``properties_schema``
-        (WARNING mode in P1). Field names/enums are pinned by
+        (STRICT by default — violations are refused with a structured 400;
+        ``SMARTMEMORY_STRICT_SCHEMA_VALIDATION=false`` on the server is the
+        WARNING-mode kill-switch). Field names/enums are pinned by
         ``memory-type-contract.json``.
 
         Args:

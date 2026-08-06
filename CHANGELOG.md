@@ -12,7 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   storage_strategy=..., storage_searchable=..., tier=...)` →
   `POST /memory/ontology/types`. `kind="record"` declares a concrete record
   type; items with `memory_type=name` are then accepted by `add()` and
-  `ingest_structured()` with schema checks (WARNING mode in P1).
+  `ingest_structured()` with schema checks (STRICT by default — violations
+  refused with a structured 400; server-side literal-`false` env kill-switch
+  downgrades to WARNING).
 - `declare_relation(name, domain=..., range=..., cardinality=..., ...)` →
   `POST /memory/ontology/relations` (declare-only in P1).
 - `list_ontology_types()` gains the `kind` filter.
