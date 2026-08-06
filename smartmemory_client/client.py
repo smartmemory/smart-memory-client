@@ -2488,7 +2488,12 @@ class SmartMemoryClient:
         )
 
     def migrate_ontology_type_instances(
-        self, from_id: str, to_id: str, reason: str, batch_size: int = 500
+        self,
+        from_id: str,
+        to_id: str,
+        reason: str,
+        batch_size: int = 500,
+        on_violation: str = "refuse",
     ) -> Dict[str, Any]:
         """Reclassify every instance of ``from_id`` onto ``to_id`` (ONTO-CRUD-1). Both types stay live.
 
@@ -2497,19 +2502,57 @@ class SmartMemoryClient:
             to_id: The destination type identifier.
             reason: Why the migration is being performed (audit evidence).
             batch_size: Instance edges rewritten per chunk (clamped to [1, 10000]).
+            on_violation: Record migrations only: ``"refuse"`` (default) preflights
+                all source items; ``"skip"`` moves conforming items and reports
+                invalid item ids. Entity migrations ignore this setting.
 
         Returns:
-            Dict with ``from_name``, ``into_name``, ``instances_migrated``, ``batches``, ``notes``.
+            Dict with ``from_name``, ``into_name``, ``instances_migrated``, ``batches``,
+            ``notes``, ``moved_item_ids``, ``skipped_items``,
+            ``vector_metadata_updated``, ``vector_metadata_missing``,
+            ``vector_metadata_failed``, and ``searchable_mismatch_count``. The six
+            record fields are ALWAYS present — an entity migration returns them
+            empty/zero rather than omitting them, so callers never have to branch
+            on kind to read a response.
 
         Raises:
-            SmartMemoryValidationError: on a self-migration (``from_id == to_id``) (400).
+            SmartMemoryValidationError: on a self-migration, a mixed-kind migration,
+                or a strict-preflight schema refusal (400). A preflight refusal's
+                detail carries per-item violations under ``violations``.
             SmartMemoryNotFoundError: if either type is not found (404).
+            SmartMemoryServerError: if the record-lifecycle backend is unavailable
+                (500) — a deployment fault, not a bad request.
         """
         body: Dict[str, Any] = {"reason": reason, "batch_size": batch_size}
+        # Preserve the established entity-migration request bytes; the server
+        # defaults this field to ``refuse``. Only record callers selecting the
+        # non-default behavior need it on the wire.
+        if on_violation != "refuse":
+            body["on_violation"] = on_violation
         return self._request(
             "POST",
             f"/memory/ontology/types/{from_id}/migrate-to/{to_id}",
             json_body=body,
+        )
+
+    def retire_ontology_type(self, type_id: str, reason: str) -> Dict[str, Any]:
+        """Retire an active ontology type, including a confirmed private record class.
+
+        Args:
+            type_id: The ontology type identifier.
+            reason: Audit evidence for the retirement.
+
+        Returns:
+            Dict with ``ok``.
+
+        Raises:
+            SmartMemoryNotFoundError: If the type is unresolved in the workspace (404).
+            SmartMemoryValidationError: If the request is invalid (400).
+        """
+        return self._request(
+            "POST",
+            f"/memory/ontology/types/{quote(type_id, safe='')}/retire",
+            json_body={"reason": reason},
         )
 
     def export_registry(

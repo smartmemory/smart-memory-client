@@ -236,6 +236,42 @@ class TestMigrateOntologyTypeInstances:
         assert mock_req.call_args[1]["json"] == {"reason": "test", "batch_size": 100}
 
     @patch("httpx.Client.request")
+    def test_migrate_skip_violation_mode_and_report(
+        self, mock_req, client, mock_response
+    ):
+        mock_req.return_value = mock_response(
+            {
+                "from_name": "RecordA",
+                "into_name": "RecordB",
+                "instances_migrated": 1,
+                "batches": 1,
+                "notes": [],
+                "moved_item_ids": ["item-1"],
+                "skipped_items": {"item-2": ["priority: expected integer"]},
+                "vector_metadata_updated": 1,
+                "vector_metadata_missing": 0,
+                "vector_metadata_failed": 0,
+                "searchable_mismatch_count": 1,
+            }
+        )
+
+        result = client.migrate_ontology_type_instances(
+            "RecordA", "RecordB", reason="schema repair", on_violation="skip"
+        )
+
+        assert mock_req.call_args[1]["json"] == {
+            "reason": "schema repair",
+            "batch_size": 500,
+            "on_violation": "skip",
+        }
+        assert result["moved_item_ids"] == ["item-1"]
+        assert result["skipped_items"] == {"item-2": ["priority: expected integer"]}
+        assert result["vector_metadata_updated"] == 1
+        assert result["vector_metadata_missing"] == 0
+        assert result["vector_metadata_failed"] == 0
+        assert result["searchable_mismatch_count"] == 1
+
+    @patch("httpx.Client.request")
     def test_migrate_self_migration_400(self, mock_req, client):
         mock_req.return_value = _error_response(400, "cannot migrate into itself")
         with pytest.raises(SmartMemoryValidationError) as exc:

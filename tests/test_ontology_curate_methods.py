@@ -136,6 +136,18 @@ class TestOntologyReviewActions:
             {"assignee": None},
         )
 
+    @patch("httpx.Client.request")
+    def test_retire_confirmed_type(self, mock_req, client, mock_response):
+        mock_req.return_value = mock_response({"ok": True})
+        result = client.retire_ontology_type("confirmed/private", "superseded")
+
+        assert result == {"ok": True}
+        _assert_post(
+            mock_req,
+            "/memory/ontology/types/confirmed%2Fprivate/retire",
+            {"reason": "superseded"},
+        )
+
 
 class TestBulkOntologyReviewAction:
     @patch("httpx.Client.request")
