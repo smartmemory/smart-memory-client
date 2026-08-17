@@ -4742,6 +4742,45 @@ class SmartMemoryClient:
             },
         )
 
+    def recall_pack(
+        self,
+        budget_tokens: int,
+        query: Optional[str] = None,
+        sections: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Assemble one priority-ordered context block within a token budget.
+
+        Packs the default sections (active plan, anchors, latest snapshot,
+        tier-1/tier-2 memory items, notes) — or the caller-supplied
+        ``sections`` override — into a single text block sized to fit
+        ``budget_tokens``. Items that don't fit are truncated
+        (``items_compacted``) or dropped (``items_dropped``); both are
+        WARN-logged server-side.
+
+        Args:
+            budget_tokens: Total token budget for the packed block (1..200000).
+            query: Optional query to rank items by relevance. When omitted,
+                items rank by tier and recency instead.
+            sections: Optional override of the default section list/order/caps,
+                each entry ``{"name": str, "cap_tokens": int}``.
+
+        Returns:
+            The RecallPack dict: ``{"block": str, "manifest": {...}}`` — see
+            the CORE-RECALL-BUDGET-1 contract for the full manifest shape.
+
+        Example:
+            ```python
+            pack = client.recall_pack(4000, query="what did we decide about auth?")
+            print(pack["block"])
+            ```
+        """
+        body: Dict[str, Any] = {"budget_tokens": budget_tokens}
+        if query is not None:
+            body["query"] = query
+        if sections is not None:
+            body["sections"] = sections
+        return self._request("POST", "/memory/recall/pack", json_body=body)
+
     def _request(
         self,
         method: str,

@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — CORE-RECALL-BUDGET-1: recall_pack client surface
+
+- `recall_pack(budget_tokens, query=None, sections=None)` →
+  `POST /memory/recall/pack`. Assembles one priority-ordered context block
+  within a token budget from the default sections (active plan, anchors,
+  latest snapshot, tier-1/tier-2 memory items, notes), or a caller-supplied
+  `sections` override (`{"name", "cap_tokens"}`). Returns the RecallPack dict
+  (`{"block", "manifest": {budget_tokens, used_tokens, tokenizer, query,
+  sections}}`). `query`/`sections` are omitted from the request body when
+  `None`.
+
 ### Added — CORE-MEMTYPE-DECLARE-1 P4: record lifecycle client surface
 
 - `migrate_ontology_type_instances(..., on_violation="refuse"|"skip")`
