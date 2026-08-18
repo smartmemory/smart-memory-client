@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — recommended wake-up budget ~200 -> ~300 (CORE-TOKEN-ESTIMATOR-UNDERCOUNT-1)
+
+- `recall_pack(preset="wakeup")` docstring and example updated. The card is
+  content-bounded (~70 real tokens); the headroom is for verbose workspaces.
+
 ### Added — `recall_pack(preset=...)` (CORE-RECALL-BUDGET-1 Phase 5)
 
 - `client.recall_pack(200, preset="wakeup")` returns the L1 session-start card. Omitted

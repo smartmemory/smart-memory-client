@@ -4767,8 +4767,9 @@ class SmartMemoryClient:
             preset: Optional named section set, used instead of ``sections``.
                 ``"wakeup"`` is the session-start L1 card (active plan, anchors,
                 workspace topics, last-session headline) — pass it with a small
-                budget (~200 tokens); the default sections go degenerate at that
-                size. Mutually exclusive with ``sections``.
+                budget (~300 tokens); the default sections go degenerate at that
+                size. The card is content-bounded, so a typical workspace renders
+                far under that. Mutually exclusive with ``sections``.
 
         Returns:
             The RecallPack dict: ``{"block": str, "manifest": {...}}`` — see
@@ -4779,8 +4780,8 @@ class SmartMemoryClient:
             pack = client.recall_pack(4000, query="what did we decide about auth?")
             print(pack["block"])
 
-            # Session start: the ~200-token wake-up card.
-            card = client.recall_pack(200, preset="wakeup")
+            # Session start: the wake-up card (renders ~70 real tokens).
+            card = client.recall_pack(300, preset="wakeup")
             ```
         """
         body: Dict[str, Any] = {"budget_tokens": budget_tokens}
