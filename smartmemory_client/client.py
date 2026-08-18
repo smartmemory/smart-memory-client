@@ -4747,6 +4747,7 @@ class SmartMemoryClient:
         budget_tokens: int,
         query: Optional[str] = None,
         sections: Optional[List[Dict[str, Any]]] = None,
+        preset: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Assemble one priority-ordered context block within a token budget.
 
@@ -4763,6 +4764,11 @@ class SmartMemoryClient:
                 items rank by tier and recency instead.
             sections: Optional override of the default section list/order/caps,
                 each entry ``{"name": str, "cap_tokens": int}``.
+            preset: Optional named section set, used instead of ``sections``.
+                ``"wakeup"`` is the session-start L1 card (active plan, anchors,
+                workspace topics, last-session headline) — pass it with a small
+                budget (~200 tokens); the default sections go degenerate at that
+                size. Mutually exclusive with ``sections``.
 
         Returns:
             The RecallPack dict: ``{"block": str, "manifest": {...}}`` — see
@@ -4772,6 +4778,9 @@ class SmartMemoryClient:
             ```python
             pack = client.recall_pack(4000, query="what did we decide about auth?")
             print(pack["block"])
+
+            # Session start: the ~200-token wake-up card.
+            card = client.recall_pack(200, preset="wakeup")
             ```
         """
         body: Dict[str, Any] = {"budget_tokens": budget_tokens}
@@ -4779,6 +4788,8 @@ class SmartMemoryClient:
             body["query"] = query
         if sections is not None:
             body["sections"] = sections
+        if preset is not None:
+            body["preset"] = preset
         return self._request("POST", "/memory/recall/pack", json_body=body)
 
     def _request(

@@ -112,6 +112,32 @@ class TestRecallPack:
         }
 
     @patch("httpx.Client.request")
+    def test_wakeup_preset_is_forwarded(
+        self, mock_request: MagicMock, client: SmartMemoryClient
+    ):
+        """Phase 5: the session-start L1 card is a param on this call, not a new endpoint."""
+        mock_request.return_value = _build_response(200, json_data=RECALL_PACK)
+
+        client.recall_pack(200, preset="wakeup")
+
+        assert mock_request.call_args.kwargs["json"] == {
+            "budget_tokens": 200,
+            "preset": "wakeup",
+        }
+
+    @patch("httpx.Client.request")
+    def test_omitted_preset_is_not_sent(
+        self, mock_request: MagicMock, client: SmartMemoryClient
+    ):
+        """An absent preset must not become an explicit null on the wire — the SDKs, the
+        MCP remote backend and this client all send the same body shape."""
+        mock_request.return_value = _build_response(200, json_data=RECALL_PACK)
+
+        client.recall_pack(4000, query="auth")
+
+        assert "preset" not in mock_request.call_args.kwargs["json"]
+
+    @patch("httpx.Client.request")
     def test_400_invalid_budget_raises_validation_error(
         self, mock_request: MagicMock, client: SmartMemoryClient
     ):

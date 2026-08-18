@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — `recall_pack(preset=...)` (CORE-RECALL-BUDGET-1 Phase 5)
+
+- `client.recall_pack(200, preset="wakeup")` returns the L1 session-start card. Omitted
+  when not supplied, so the wire body still matches the JS SDK and the MCP remote backend.
+
 ### Added — CORE-RECALL-BUDGET-1: recall_pack client surface
 
 - `recall_pack(budget_tokens, query=None, sections=None)` →
