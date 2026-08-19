@@ -4742,6 +4742,52 @@ class SmartMemoryClient:
             },
         )
 
+    def import_chat_export(
+        self,
+        export: bytes,
+        *,
+        source_format: str = "auto",
+        max_conversations: int = 25,
+        filename: str = "conversations.json",
+    ) -> Dict[str, Any]:
+        """Import a ChatGPT or Claude conversation export (DIST-CHAT-IMPORT-1).
+
+        Conversations run through the normal conversation pipeline, so entities
+        and relations are extracted exactly as for a live conversation. Items
+        land with ``origin="import:chatgpt_export"`` / ``"import:claude_export"``
+        — tier 1, so they are recallable, and dedupe-eligible, so re-uploading a
+        later export updates the overlap rather than duplicating it.
+
+        Args:
+            export: Raw bytes of the vendor ``.zip`` or of ``conversations.json``.
+            source_format: ``"auto"`` (default), ``"chatgpt"``, or ``"claude"``.
+            max_conversations: Cap on conversations ingested (1-200). The import
+                is synchronous and each conversation runs the full pipeline, so
+                this bound is real. The longest conversations are kept first and
+                anything left behind is named in the returned ``warnings``.
+            filename: Name sent with the upload; only affects server-side logging.
+
+        Returns:
+            ``{source_format, conversations_imported, conversations_failed,
+            turns_imported, items_created, warnings}``. **Read ``warnings``** —
+            a non-empty list means something was capped, skipped, or degraded
+            even though the call succeeded.
+        """
+        content_type = "application/zip" if export[:2] == b"PK" else "application/json"
+        return self._request(
+            "POST",
+            "/memory/import/chat-export",
+            files={"file": (filename, export, content_type)},
+            data={
+                "source_format": source_format,
+                "max_conversations": str(max_conversations),
+            },
+        )
+
+    def chat_export_formats(self) -> Dict[str, Any]:
+        """List supported chat-export formats and how to obtain each export."""
+        return self._request("GET", "/memory/import/chat-export/formats")
+
     def recall_pack(
         self,
         budget_tokens: int,

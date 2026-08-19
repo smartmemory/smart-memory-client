@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — `import_chat_export()` / `chat_export_formats()` (DIST-CHAT-IMPORT-1)
+
+Upload a ChatGPT or Claude conversation export and have it ingested through the normal
+conversation pipeline. `import_chat_export(export_bytes, source_format="auto",
+max_conversations=25)` sniffs the zip magic bytes to label the upload correctly and returns
+`{source_format, conversations_imported, conversations_failed, turns_imported,
+items_created, warnings}`.
+
+**Read `warnings`.** A non-empty list means something was capped, skipped, or degraded even
+though the call returned 200 — the import is synchronous and capped by default, so a
+partial import is a normal outcome, not an error.
+
+
 ### Changed — recommended wake-up budget ~200 -> ~300 (CORE-TOKEN-ESTIMATOR-UNDERCOUNT-1)
 
 - `recall_pack(preset="wakeup")` docstring and example updated. The card is
