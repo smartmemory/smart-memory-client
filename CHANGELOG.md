@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — policy exchange client methods (GOV-STRATUM-SEAM-1 P1)
+
+- `policy_bundle(workflow=None, domain=None, statuses=("active",))` calls
+  `GET /memory/policy/bundle`, encoding `status` as a repeatable query key.
+- `record_enforcement_event(event)` posts the contract event unchanged to
+  `POST /memory/policy/events` and returns its idempotency result.
+
 ### Added — `import_chat_export()` / `chat_export_formats()` (DIST-CHAT-IMPORT-1)
 
 Upload a ChatGPT or Claude conversation export and have it ingested through the normal

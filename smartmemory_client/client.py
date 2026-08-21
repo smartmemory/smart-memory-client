@@ -3997,6 +3997,29 @@ class SmartMemoryClient:
         result = self._request("GET", "/memory/decisions", params=params)
         return result.get("decisions", [])
 
+    def policy_bundle(
+        self,
+        workflow: Optional[str] = None,
+        domain: Optional[str] = None,
+        statuses: tuple[str, ...] = ("active",),
+    ) -> Dict[str, Any]:
+        """Compile active workspace decisions into a Stratum policy bundle.
+
+        ``statuses`` is sent as a list so httpx encodes repeatable ``status``
+        query parameters. P1 accepts only the default active selector; the
+        server returns a typed validation error for any unsupported value.
+        """
+        params: Dict[str, Any] = {"status": list(statuses)}
+        if workflow is not None:
+            params["workflow"] = workflow
+        if domain is not None:
+            params["domain"] = domain
+        return self._request("GET", "/memory/policy/bundle", params=params)
+
+    def record_enforcement_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """Record an idempotent Stratum enforcement event for this workspace."""
+        return self._request("POST", "/memory/policy/events", json_body=event)
+
     def supersede_decision(
         self,
         decision_id: str,
