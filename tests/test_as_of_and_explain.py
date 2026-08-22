@@ -73,6 +73,24 @@ class TestSearchAsOfParams:
         body = self._search_body(include_superseded=True)
         assert body["include_superseded"] is True
 
+    def test_lifecycle_flags_are_omitted_when_false(self):
+        """Send-only-when-true keeps the body minimal AND keeps an older server
+        (one that predates a flag) from 422-ing on an unknown field."""
+        body = self._search_body()
+        assert "include_retracted" not in body
+        assert "include_archived" not in body
+
+    def test_include_retracted_forwarded(self):
+        body = self._search_body(include_retracted=True)
+        assert body["include_retracted"] is True
+
+    def test_include_archived_forwarded(self):
+        """CORE-ARCHIVED-RECALL-1. The default changed behaviour rather than
+        preserving it, so a dropped flag here is silent: the caller keeps getting
+        the filtered view they explicitly opted out of."""
+        body = self._search_body(include_archived=True)
+        assert body["include_archived"] is True
+
 
 class TestExplain:
     def test_explain_hits_explain_route(self):

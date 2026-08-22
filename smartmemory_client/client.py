@@ -604,6 +604,7 @@ class SmartMemoryClient:
         as_of_strict: bool = False,
         include_superseded: bool = False,
         include_retracted: bool = False,
+        include_archived: bool = False,
     ):
         """
         Search for memory items using semantic matching.
@@ -638,6 +639,14 @@ class SmartMemoryClient:
                       beliefs that were withdrawn outright, with no replacement. A separate
                       knob from include_superseded, not covered by it. Both are inert when
                       as_of_date is set, which retains those rows regardless.
+            include_archived: When True (CORE-ARCHIVED-RECALL-1), include archived items —
+                      memories the decay/prune evolvers retired, or the source an
+                      episodic→semantic promotion replaced. Third sibling of the two above:
+                      an archived item has no replacement and no version chain either, so it
+                      gets its own knob. Also inert under as_of_date. Note the default here
+                      changed behaviour rather than preserving it — until CORE-ARCHIVED-RECALL-1
+                      the server read `archived` on no search path at all, so archived items
+                      were returned ranked like live ones.
 
         Returns:
             By default, ``List[MemoryItem]``.
@@ -713,6 +722,8 @@ class SmartMemoryClient:
             body_dict["include_superseded"] = True  # PLAT-AUDITABLE-MEMORY-1
         if include_retracted:
             body_dict["include_retracted"] = True  # CORE-RETRACTED-RECALL-1
+        if include_archived:
+            body_dict["include_archived"] = True  # CORE-ARCHIVED-RECALL-1
 
         # SELF-IMPROVE-6: use _request_raw to capture X-Search-Session-Id header
         url = f"{self.base_url}/memory/search"

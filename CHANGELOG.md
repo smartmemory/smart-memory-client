@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### Added (2026-08-22) — `include_archived` on `search()` (CORE-ARCHIVED-RECALL-1)
+
+- `search()` gains `include_archived: bool = False`, sent only when true (same
+  send-only-when-true shape as `include_superseded` / `include_retracted`, which
+  also keeps an older server from rejecting an unknown field).
+- Third sibling of the other two lifecycle flags. An archived item — retired by
+  the decay/prune evolvers, or the source an episodic→semantic promotion replaced
+  — has no replacement and no version chain, so it gets its own knob rather than
+  riding `include_superseded`. Also inert under `as_of_date`.
+- **The default changed behaviour rather than preserving it.** Until
+  CORE-ARCHIVED-RECALL-1 the server read `archived` on no search path at all, so
+  archived items were returned ranked like live ones. Callers who want them must
+  now pass `include_archived=True`.
+
+
 ## [Unreleased]
 
 ### Added — policy exchange client methods (GOV-STRATUM-SEAM-1 P1)
