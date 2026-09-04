@@ -4873,6 +4873,51 @@ class SmartMemoryClient:
             body["preset"] = preset
         return self._request("POST", "/memory/recall/pack", json_body=body)
 
+    def ask(
+        self,
+        question: str,
+        limit: int = 5,
+        reasoning: bool = True,
+    ) -> Dict[str, Any]:
+        """Answer a question from stored memories and their one-hop graph relations.
+
+        Unlike ``search``, which hands back ranked memories for you to read, this
+        returns a written answer plus the exact evidence it was grounded in, so the
+        answer can be checked rather than trusted. The evidence list is the retrieved
+        memory set itself, captured before the model was called — a citation in it
+        cannot have been invented.
+
+        There is no fallback answer. If the server's LLM is unavailable or returns
+        nothing, the call raises rather than handing back a synthesized reply.
+
+        Args:
+            question: The natural-language question.
+            limit: How many memories to retrieve as evidence (1..50).
+            reasoning: When False, ``reasoning`` comes back as an empty string.
+
+        Returns:
+            ``{"answer": str, "reasoning": str, "evidence": [{"item_id", "content"}],
+            "relations": [{"source", "type", "target", "source_id", "target_id"}]}``
+            — see the DIST-LITE-9 ask contract. Relation rows carry both display
+            labels and graph node ids, so a UI can focus the edge that was used.
+
+        Raises:
+            SmartMemoryValidationError: blank question or an out-of-range limit.
+            SmartMemoryServerError: the configured LLM could not answer (502).
+
+        Example:
+            ```python
+            result = client.ask("Does Zed believe the amulet was stolen by Yara?")
+            print(result["answer"])
+            for item in result["evidence"]:
+                print(item["item_id"], item["content"])
+            ```
+        """
+        body: Dict[str, Any] = {"question": question, "limit": limit}
+        if reasoning is not True:
+            body["reasoning"] = reasoning
+        return self._request("POST", "/memory/ask", json_body=body)
+
     def _request(
         self,
         method: str,

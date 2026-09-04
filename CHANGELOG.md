@@ -21,6 +21,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (2026-09-04) — `ask()` (DIST-LITE-9)
+
+- `client.ask(question, limit=5, reasoning=True)` calls `POST /memory/ask` and returns
+  `{answer, reasoning, evidence, relations}`. Unlike `search()`, which hands back ranked
+  memories to read, this returns a written answer together with the evidence behind it.
+- `reasoning=True` is not sent on the wire, so this client, the JS SDK and the lite
+  daemon all put the same body up for the same call.
+- Relation rows carry `source_id` / `target_id` as well as display labels, so a UI can
+  focus the graph edge a relation names.
+- No fallback answer: a server that cannot answer raises `SmartMemoryServerError` (502)
+  rather than returning an empty one.
+
 ### Added — policy exchange client methods (GOV-STRATUM-SEAM-1 P1)
 
 - `policy_bundle(workflow=None, domain=None, statuses=("active",))` calls
