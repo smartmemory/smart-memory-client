@@ -605,6 +605,7 @@ class SmartMemoryClient:
         include_superseded: bool = False,
         include_retracted: bool = False,
         include_archived: bool = False,
+        exclude_speculative: bool = False,
     ):
         """
         Search for memory items using semantic matching.
@@ -647,6 +648,9 @@ class SmartMemoryClient:
                       changed behaviour rather than preserving it — until CORE-ARCHIVED-RECALL-1
                       the server read `archived` on no search path at all, so archived items
                       were returned ranked like live ones.
+            exclude_speculative: When True, drop origin tier-3 speculative derived items;
+                      tier 4 is never returned and legacy origin=unknown is kept.
+                      PLAT-MCP-HOSTED-1 / CORE-ORIGIN-1.
 
         Returns:
             By default, ``List[MemoryItem]``.
@@ -724,6 +728,8 @@ class SmartMemoryClient:
             body_dict["include_retracted"] = True  # CORE-RETRACTED-RECALL-1
         if include_archived:
             body_dict["include_archived"] = True  # CORE-ARCHIVED-RECALL-1
+        if exclude_speculative:
+            body_dict["exclude_speculative"] = True  # PLAT-MCP-HOSTED-1 / CORE-ORIGIN-1
 
         # SELF-IMPROVE-6: use _request_raw to capture X-Search-Session-Id header
         url = f"{self.base_url}/memory/search"

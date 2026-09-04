@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `search()` now accepts `exclude_speculative: bool = False` and sends it only
+  when true, allowing callers to omit origin tier-3 speculative derived items
+  (PLAT-MCP-HOSTED-1 / CORE-ORIGIN-1).
+
 ## [1.4.86] - 2026-09-04
 
 ### Added (2026-09-04) — `ask()` (DIST-LITE-9)

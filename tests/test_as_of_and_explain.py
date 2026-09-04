@@ -79,6 +79,7 @@ class TestSearchAsOfParams:
         body = self._search_body()
         assert "include_retracted" not in body
         assert "include_archived" not in body
+        assert "exclude_speculative" not in body
 
     def test_include_retracted_forwarded(self):
         body = self._search_body(include_retracted=True)
@@ -90,6 +91,10 @@ class TestSearchAsOfParams:
         the filtered view they explicitly opted out of."""
         body = self._search_body(include_archived=True)
         assert body["include_archived"] is True
+
+    def test_exclude_speculative_forwarded(self):
+        body = self._search_body(exclude_speculative=True)
+        assert body["exclude_speculative"] is True
 
 
 class TestExplain:
