@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.86] - 2026-09-04
+
 ### Added (2026-09-04) — `ask()` (DIST-LITE-9)
 
 - `client.ask(question, limit=5, reasoning=True)` calls `POST /memory/ask` and returns
