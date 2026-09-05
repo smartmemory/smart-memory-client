@@ -1460,6 +1460,7 @@ class SmartMemoryClient:
         order: str = "asc",
         metadata_key: Optional[str] = None,
         metadata_value: Optional[str] = None,
+        memory_type: Optional[str] = None,
     ) -> Dict[str, Any]:
         """List memory items, optionally filtered by an exact metadata match.
 
@@ -1473,6 +1474,7 @@ class SmartMemoryClient:
             metadata_key: Metadata key to filter on. Nested keys use dot syntax
                 (``"profile.tier"``). Must be supplied with ``metadata_value``.
             metadata_value: Value the key must equal.
+            memory_type: Exact type filter, applied before pagination and counting.
 
         Returns:
             ``{"items": [...], "total": int, "limit": int, "offset": int}``, where
@@ -1493,6 +1495,8 @@ class SmartMemoryClient:
             params["metadata_key"] = metadata_key
         if metadata_value is not None:
             params["metadata_value"] = metadata_value
+        if memory_type is not None:
+            params["memory_type"] = memory_type
         return self._request("GET", "/memory/list", params=params)
 
     def search_by_metadata(

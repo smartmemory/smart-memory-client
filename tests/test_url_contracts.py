@@ -291,3 +291,25 @@ def test_list_memories_sends_dotted_key_unchanged(
     client.list_memories(metadata_key="profile.tier", metadata_value="pro")
 
     assert mock_request.call_args.kwargs["params"]["metadata_key"] == "profile.tier"
+
+
+@patch("httpx.Client.request")
+def test_list_memories_combines_type_and_metadata(
+    mock_request: MagicMock, client: SmartMemoryClient
+) -> None:
+    mock_request.return_value = _ok()
+    client.list_memories(
+        memory_type="custom_record",
+        metadata_key="topic",
+        metadata_value="yes",
+        limit=1,
+        offset=2,
+    )
+    assert mock_request.call_args.kwargs["params"] == {
+        "limit": 1,
+        "offset": 2,
+        "order": "asc",
+        "memory_type": "custom_record",
+        "metadata_key": "topic",
+        "metadata_value": "yes",
+    }

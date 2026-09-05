@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- fix(memory): add optional memory_type to list_memories, composed with metadata filters and applied server-side before pagination/counting.
+
 ### Added
 
 - `search()` now accepts `exclude_speculative: bool = False` and sends it only
