@@ -105,7 +105,11 @@ class RemoteCallTiming:
         path: URL path (no query string — ids in the path are kept, query values
             can carry user content).
         status_code: HTTP status returned.
-        wall_ms: Time measured by this client, request send to response received.
+        wall_ms: Time measured by this client, from request send to response
+            **headers**. httpx fires its response hook before the body is read,
+            which makes this the symmetric counterpart of the service's
+            ``to_response_start_ms`` — neither number includes body transfer, so
+            do not subtract one from the other expecting it to appear.
         server_ms: The service's own time-to-response-start from
             ``X-SM-Latency-Ms``, or ``None`` if the header was absent (an older
             service, or a response from a proxy that never reached it).
