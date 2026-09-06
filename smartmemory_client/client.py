@@ -220,8 +220,7 @@ class SmartMemoryClient:
         )
         if team_id is not None and not workspace_id:
             warnings.warn(
-                "The 'team_id' parameter is deprecated and will be removed in v0.5.0. "
-                "Use 'workspace_id' instead.",
+                "The 'team_id' parameter is deprecated and will be removed in v0.5.0. Use 'workspace_id' instead.",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -234,8 +233,7 @@ class SmartMemoryClient:
 
         if self.is_authenticated:
             logger.info(
-                f"SmartMemoryClient initialized with authentication. "
-                f"Base URL: {self.base_url}, Team ID: {self.team_id}"
+                f"SmartMemoryClient initialized with authentication. Base URL: {self.base_url}, Team ID: {self.team_id}"
             )
         else:
             logger.warning(
@@ -606,12 +604,20 @@ class SmartMemoryClient:
         include_retracted: bool = False,
         include_archived: bool = False,
         exclude_speculative: bool = False,
+        since: Optional[Union[str, datetime]] = None,
+        until: Optional[Union[str, datetime]] = None,
+        hop_strategy: Optional[str] = None,
     ):
         """
         Search for memory items using semantic matching.
 
         Args:
             query: Search query
+            hop_strategy: consensus follows entities several top results agree on; relevance
+                follows best-result entities, including one-off bridges; semantic asks an LLM.
+                None preserves the core default (consensus unless semantic hops are enabled).
+            since: Inclusive created_at lower bound; ISO-8601 or datetime (naive means UTC).
+            until: Exclusive created_at upper bound, independent of as_of_date.
             top_k: Maximum number of results
             memory_type: Type of memory to search (optional)
             use_ssg: Use Similarity Graph Traversal for better multi-hop reasoning (optional)
@@ -680,18 +686,26 @@ class SmartMemoryClient:
             user_id is automatically determined from the JWT token.
             No need to pass it as a parameter.
         """
+        # since/until filter created_at in [since, until), independently of as_of_date.
         # The FastAPI route expects a top-level SearchRequest body
         body_dict: Dict[str, Any] = {
             "query": query,
             "top_k": top_k,
             "enable_hybrid": enable_hybrid,
         }
+        for key, value in (("since", since), ("until", until)):
+            if value is not None:
+                body_dict[key] = (
+                    value.isoformat() if isinstance(value, datetime) else value
+                )
         if memory_type is not None:
             body_dict["memory_type"] = memory_type
         if use_ssg is not None:
             body_dict["use_ssg"] = use_ssg
         if channel_weights is not None:
             body_dict["channel_weights"] = channel_weights
+        if hop_strategy is not None:
+            body_dict["hop_strategy"] = hop_strategy
         if multi_hop:
             body_dict["multi_hop"] = True
             body_dict["max_hops"] = max_hops
@@ -768,6 +782,8 @@ class SmartMemoryClient:
         # `group_roots` + `citations` on the client for `last_*` accessors.
         # RECALL-CITATIONS-1: cite=True attaches `citations` as a sibling key
         # (no longer double-wraps as it did pre-LINEAGE-1).
+        self._last_inert_parameters = {}
+        self._last_search_coverage = {}
         self._last_citations: List[Dict[str, Any]] = []
         self._last_group_roots: Dict[str, Dict[str, Any]] = {}
         # PLAT-AUDITABLE-MEMORY-1 gap #2: keep the temporal verdict. Unwrapping
@@ -775,6 +791,10 @@ class SmartMemoryClient:
         # that an as-of answer contains present-day content.
         self._last_as_of_diagnostics: Optional[Dict[str, Any]] = None
         if isinstance(response_data, dict) and "results" in response_data:
+            self._last_inert_parameters = dict(
+                response_data.get("inert_parameters") or {}
+            )
+            self._last_search_coverage = dict(response_data.get("coverage") or {})
             self._last_group_roots = dict(response_data.get("group_roots") or {})
             self._last_as_of_diagnostics = response_data.get("as_of_diagnostics")
             if cite:
@@ -833,6 +853,16 @@ class SmartMemoryClient:
         requested or no results were returned.
         """
         return list(getattr(self, "_last_citations", []) or [])
+
+    @property
+    def last_inert_parameters(self) -> Dict[str, Any]:
+        """Parameters the service labelled inert on the last search."""
+        return getattr(self, "_last_inert_parameters", {})
+
+    @property
+    def last_search_coverage(self) -> Dict[str, Any]:
+        """Creation-time accuracy caveat from the last search, including empty results."""
+        return getattr(self, "_last_search_coverage", {})
 
     @property
     def last_as_of_diagnostics(self) -> Optional[Dict[str, Any]]:
@@ -1237,6 +1267,7 @@ class SmartMemoryClient:
         turns_per_chunk: int = 15,
         max_chunk_chars: int = 12000,
         max_concurrent: int = 4,
+        context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Ingest a conversation as session chunks through the full pipeline (RLM-1g).
 
@@ -1266,6 +1297,9 @@ class SmartMemoryClient:
             body_dict["max_chunk_chars"] = max_chunk_chars
         if max_concurrent != 4:
             body_dict["max_concurrent"] = max_concurrent
+
+        if context is not None:
+            body_dict["context"] = context
 
         try:
             return self._request(
@@ -1505,6 +1539,8 @@ class SmartMemoryClient:
         metadata_value: str,
         memory_type: Optional[str] = None,
         limit: int = 25,
+        since: Optional[Union[str, datetime]] = None,
+        until: Optional[Union[str, datetime]] = None,
     ) -> Dict[str, Any]:
         """Search for a memory item by exact metadata key-value match.
 
@@ -1520,6 +1556,11 @@ class SmartMemoryClient:
             "metadata_value": metadata_value,
             "limit": limit,
         }
+        for key, value in (("since", since), ("until", until)):
+            if value is not None:
+                params[key] = (
+                    value.isoformat() if isinstance(value, datetime) else value
+                )
         if memory_type:
             params["memory_type"] = memory_type
         return self._request("GET", "/memory/by-metadata", params=params)

@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+### Added (2026-09-06) — `since`/`until`, `hop_strategy`, conversation context
+
+- `search()` and `search_by_metadata()` accept `since`/`until` creation windows and retain the
+  server's coverage block in `last_search_coverage` (SEARCH-TIME-RANGE-1).
+- `search()` accepts `hop_strategy` and retains the server's inert-parameter diagnostics
+  (SEARCH-HOP-STRATEGY-SURFACE-1).
+- Conversation ingestion accepts optional `context` so caller origin reaches the service
+  (CORE-ORIGIN-PROPAGATION-1).
+
 ### Added (2026-08-22) — `include_archived` on `search()` (CORE-ARCHIVED-RECALL-1)
 
 - `search()` gains `include_archived: bool = False`, sent only when true (same
