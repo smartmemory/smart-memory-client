@@ -1671,14 +1671,17 @@ class SmartMemoryClient:
         preferences: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Update personalization settings for the authenticated user.
+        Request personalization for the authenticated user.
+
+        The endpoint currently returns HTTP 501 because
+        CORE-PERSONALIZATION-CONTRACT-1 is not implemented.
 
         Args:
             traits: User traits
             preferences: User preferences
 
         Returns:
-            Personalization result
+            Error response (HTTP 501)
 
         Example:
             ```python
@@ -1780,7 +1783,10 @@ class SmartMemoryClient:
         self, item_id: str, source_url: str, validation: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Ground a memory item to an external source for provenance.
+        Request grounding for a memory item.
+
+        The endpoint currently returns HTTP 501 because
+        CORE-GROUND-ROUTE-CONTRACT-1 is not implemented.
 
         Args:
             item_id: Memory item ID
@@ -1788,7 +1794,7 @@ class SmartMemoryClient:
             validation: Optional validation data
 
         Returns:
-            Result message
+            Error response (HTTP 501)
         """
         body = {"item_id": item_id, "source_url": source_url, "validation": validation}
         return self._request("POST", f"/memory/{item_id}/ground", json_body=body)

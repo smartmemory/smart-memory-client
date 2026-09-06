@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+### Changed (2026-09-06) — `personalize()` and `ground()` document their 501 (CORE-PERSONALIZATION-CONTRACT-1, CORE-GROUND-ROUTE-CONTRACT-1)
+
+- Both methods remain on the client but state that the endpoint returns HTTP 501 because the
+  feature is not implemented server-side. They previously read as working calls.
+
 ### Added (2026-09-06) — `since`/`until`, `hop_strategy`, conversation context
 
 - `search()` and `search_by_metadata()` accept `since`/`until` creation windows and retain the
