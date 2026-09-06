@@ -5,6 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+### Added (2026-09-06) — optional request correlation and per-call timing hooks (MAYA-ENDPOINT-VISIBILITY-1)
+
+- `SmartMemoryClient(request_id_provider=..., on_remote_call=...)`. The provider supplies an
+  `X-Request-Id` per request so a caller's logs can be joined to the service's; the observer
+  receives a `RemoteCallTiming` (method, path, status, `wall_ms`, `server_ms`, `request_id`)
+  after every response, letting a caller attribute its own latency to remote service work.
+- `RemoteCallTiming` is exported from the package. `server_ms` is `None`, never `0.0`, when the
+  service sent no `X-SM-Latency-Ms` header — a zero would claim the service answered instantly.
+- Implemented as httpx event hooks, so calls that bypass the internal request helper (health,
+  search session) are covered too.
+- Both hooks are failure-isolated: one that raises logs a WARNING naming what was lost and the
+  request proceeds. An id that fails validation is dropped with a warning rather than sent.
+- Neither hook is called for a request that failed before a response (connect/timeout); those
+  raise to the caller as before.
+
+
 ### Changed (2026-09-06) — `personalize()` and `ground()` document their 501 (CORE-PERSONALIZATION-CONTRACT-1, CORE-GROUND-ROUTE-CONTRACT-1)
 
 - Both methods remain on the client but state that the endpoint returns HTTP 501 because the

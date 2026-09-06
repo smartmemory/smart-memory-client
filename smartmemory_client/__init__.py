@@ -33,6 +33,7 @@ For more information:
 """
 
 from smartmemory_client.client import (
+    RemoteCallTiming,
     SmartMemoryClient,
     SmartMemoryClientError,
     SmartMemoryNotFoundError,
@@ -60,6 +61,7 @@ except ImportError:
     __version__ = "0.0.0-dev"
 
 __all__ = [
+    "RemoteCallTiming",
     "SmartMemoryClient",
     "SmartMemoryClientError",
     "SmartMemoryNotFoundError",

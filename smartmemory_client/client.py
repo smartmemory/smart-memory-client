@@ -15,9 +15,12 @@ For more information, see: https://github.com/smartmemory/smart-memory-client
 import json
 import logging
 import os
+import re
 import warnings
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from time import perf_counter
+from typing import Any, Callable, Dict, List, Optional, Union
 from urllib.parse import quote
 
 import httpx
@@ -80,6 +83,47 @@ def _exception_for_status(status: int) -> type[SmartMemoryClientError]:
     return SmartMemoryClientError
 
 
+#: SVC-REQUEST-LATENCY-1 correlation/timing headers. The service echoes the
+#: request id it accepted and reports its own time-to-response-start, so a caller
+#: can split its wall time into "waiting on the service" and "network + our own
+#: serialization" instead of guessing.
+REQUEST_ID_HEADER = "X-Request-Id"
+LATENCY_HEADER = "X-SM-Latency-Ms"
+
+#: Same alphabet the service accepts. Validating here too means a bad id is
+#: dropped at the source, where the caller can see the warning, rather than
+#: silently ignored one process away.
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
+
+
+@dataclass(frozen=True)
+class RemoteCallTiming:
+    """One observed HTTP call to the SmartMemory service.
+
+    Attributes:
+        method: HTTP method.
+        path: URL path (no query string — ids in the path are kept, query values
+            can carry user content).
+        status_code: HTTP status returned.
+        wall_ms: Time measured by this client, request send to response received.
+        server_ms: The service's own time-to-response-start from
+            ``X-SM-Latency-Ms``, or ``None`` if the header was absent (an older
+            service, or a response from a proxy that never reached it).
+        request_id: The correlation id sent with the call, or ``""``.
+
+    ``wall_ms - server_ms`` is network plus client-side overhead. That delta is
+    the number worth watching: a small server_ms under a large wall_ms means the
+    service is not the problem.
+    """
+
+    method: str
+    path: str
+    status_code: int
+    wall_ms: float
+    server_ms: Optional[float]
+    request_id: str
+
+
 class SmartMemoryClient:
     """
     SmartMemory HTTP Client
@@ -139,6 +183,8 @@ class SmartMemoryClient:
         team_id: Optional[
             str
         ] = None,  # deprecated alias for workspace_id, removed in v0.5.0
+        request_id_provider: Optional[Callable[[], Optional[str]]] = None,
+        on_remote_call: Optional[Callable[["RemoteCallTiming"], None]] = None,
     ):
         """
         Initialize SmartMemory client wrapper.
@@ -151,6 +197,15 @@ class SmartMemoryClient:
             verify_ssl: Whether to verify SSL certificates
             workspace_id: Workspace ID for multi-tenant isolation (preferred)
             team_id: Deprecated alias for workspace_id. Removed in v0.5.0.
+            request_id_provider: Called per request to supply a correlation id
+                sent as ``X-Request-Id``. Return ``None`` to send none. Used by
+                callers (Maya) that want their own log lines joinable with the
+                service's. Ids must match ``[A-Za-z0-9._:-]{1,64}``.
+            on_remote_call: Called after every response with a
+                :class:`RemoteCallTiming`. Lets a caller attribute its own
+                latency to remote service work. Never called for a request that
+                failed before a response (connect/timeout errors) — those raise
+                and are visible to the caller directly.
 
         Note:
             Provide either api_key OR token, not both. If neither provided,
@@ -177,7 +232,19 @@ class SmartMemoryClient:
         # the many per-method calls this SDK makes. Also the single place
         # verify_ssl is actually honored — the previous module-level httpx.request
         # / httpx.get calls never passed verify=, so verify_ssl was dead config.
-        self._client = httpx.Client(verify=verify_ssl, timeout=timeout)
+        self._request_id_provider = request_id_provider
+        self._on_remote_call = on_remote_call
+        self._client = httpx.Client(
+            verify=verify_ssl,
+            timeout=timeout,
+            # Hooks rather than a wrapper around _request(): a few calls (health,
+            # search-session) go through self._client directly, and a hook cannot
+            # be bypassed by adding another one of those later.
+            event_hooks={
+                "request": [self._stamp_outgoing_request],
+                "response": [self._observe_response],
+            },
+        )
 
         # Store tokens separately for clarity
         self._api_key: Optional[str] = None
@@ -239,6 +306,82 @@ class SmartMemoryClient:
             logger.warning(
                 "SmartMemoryClient initialized WITHOUT authentication - "
                 "most endpoints will fail. Call login() or provide api_key/token."
+            )
+
+    # ---- SVC-REQUEST-LATENCY-1: outgoing correlation + timing observation ----
+
+    def _stamp_outgoing_request(self, request: httpx.Request) -> None:
+        """Attach the caller's correlation id and start the clock.
+
+        A provider that raises must not take the request down with it — telemetry
+        is never worth a failed memory write — but it also must not vanish
+        silently, so the loss is logged with what was lost.
+        """
+        request.extensions["sm_started"] = perf_counter()
+        request.extensions["sm_request_id"] = ""
+        if self._request_id_provider is None:
+            return
+        try:
+            raw = self._request_id_provider()
+        except Exception as error:
+            logger.warning(
+                "smartmemory_client: request_id_provider raised %s; "
+                "sending request without a correlation id (lost=X-Request-Id)",
+                type(error).__name__,
+            )
+            return
+        request_id = (raw or "").strip()
+        if not request_id:
+            return
+        if not _REQUEST_ID_RE.match(request_id):
+            logger.warning(
+                "smartmemory_client: request_id %r rejected (must match %s); "
+                "sending request without a correlation id (lost=X-Request-Id)",
+                request_id[:80],
+                _REQUEST_ID_RE.pattern,
+            )
+            return
+        request.headers[REQUEST_ID_HEADER] = request_id
+        request.extensions["sm_request_id"] = request_id
+
+    def _observe_response(self, response: httpx.Response) -> None:
+        """Report one completed call to the caller's observer."""
+        if self._on_remote_call is None:
+            return
+        started = response.request.extensions.get("sm_started")
+        if started is None:
+            return
+        raw_server_ms = response.headers.get(LATENCY_HEADER)
+        server_ms: Optional[float] = None
+        if raw_server_ms is not None:
+            try:
+                server_ms = float(raw_server_ms)
+            except ValueError:
+                # A malformed header is a service bug, not a client one. Report
+                # the call with server_ms=None rather than dropping the timing.
+                logger.warning(
+                    "smartmemory_client: unparseable %s header %r; "
+                    "reporting call without server timing",
+                    LATENCY_HEADER,
+                    raw_server_ms[:40],
+                )
+        timing = RemoteCallTiming(
+            method=response.request.method,
+            path=response.request.url.path,
+            status_code=response.status_code,
+            wall_ms=(perf_counter() - started) * 1000.0,
+            server_ms=server_ms,
+            request_id=response.request.extensions.get("sm_request_id", ""),
+        )
+        try:
+            self._on_remote_call(timing)
+        except Exception as error:
+            logger.warning(
+                "smartmemory_client: on_remote_call raised %s; "
+                "timing for %s %s discarded",
+                type(error).__name__,
+                timing.method,
+                timing.path,
             )
 
     @property
