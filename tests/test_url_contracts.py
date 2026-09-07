@@ -313,3 +313,25 @@ def test_list_memories_combines_type_and_metadata(
         "metadata_key": "topic",
         "metadata_value": "yes",
     }
+
+
+@pytest.mark.parametrize("value", [None, False, True])
+@patch("httpx.Client.request")
+def test_list_grounding_override_and_policy_envelope(mock_request, client, value):
+    envelope = {
+        "items": [],
+        "total": 0,
+        "limit": 50,
+        "offset": 0,
+        "policy": {
+            "include_grounding": value is True,
+            "source": "workspace" if value is None else "request",
+        },
+    }
+    mock_request.return_value = _ok(envelope)
+    assert client.list_memories(include_grounding=value) == envelope
+    params = mock_request.call_args.kwargs["params"]
+    if value is None:
+        assert "include_grounding" not in params
+    else:
+        assert params["include_grounding"] is value

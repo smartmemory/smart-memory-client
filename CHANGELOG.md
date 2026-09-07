@@ -52,6 +52,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (2026-09-07) — list grounding policy (PLAT-RETRIEVAL-POLICY-1 slice 1)
+
+- `list_memories(include_grounding=None)` inherits workspace then env defaults (OFF unless
+  configured); explicit `False` and `True` are sent. The response retains the resolved
+  `policy.include_grounding` and `policy.source` fields. No SDK version bump.
+
+
 - fix(memory): add optional memory_type to list_memories, composed with metadata filters and applied server-side before pagination/counting.
 
 ### Added

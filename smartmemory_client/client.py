@@ -1642,6 +1642,7 @@ class SmartMemoryClient:
         metadata_key: Optional[str] = None,
         metadata_value: Optional[str] = None,
         memory_type: Optional[str] = None,
+        include_grounding: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """List memory items, optionally filtered by an exact metadata match.
 
@@ -1656,10 +1657,14 @@ class SmartMemoryClient:
                 (``"profile.tier"``). Must be supplied with ``metadata_value``.
             metadata_value: Value the key must equal.
             memory_type: Exact type filter, applied before pagination and counting.
+            include_grounding: Include grounding nodes. None inherits the workspace
+                default, then env (OFF unless configured); False is sent explicitly.
 
         Returns:
             ``{"items": [...], "total": int, "limit": int, "offset": int}``, where
             ``total`` counts the filtered set and so can drive pagination directly.
+            Also retains ``policy: {include_grounding: bool, source: str}``, the
+            resolved choice and its request/workspace/env source.
 
         Raises:
             APIError: 422 if only one half of the metadata pair is supplied, if the
@@ -1678,6 +1683,8 @@ class SmartMemoryClient:
             params["metadata_value"] = metadata_value
         if memory_type is not None:
             params["memory_type"] = memory_type
+        if include_grounding is not None:
+            params["include_grounding"] = include_grounding
         return self._request("GET", "/memory/list", params=params)
 
     def search_by_metadata(
