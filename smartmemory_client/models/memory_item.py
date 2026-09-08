@@ -1,5 +1,25 @@
 from dataclasses import dataclass, field, asdict
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Literal
+import logging
+
+logger = logging.getLogger(__name__)
+
+# CORE-RERANK-EXPOSE-1; pinned against the shared contract by tests.
+RerankStatus = Literal[
+    "scored",
+    "unscored_tail",
+    "bypass_disabled",
+    "bypass_pending",
+    "bypass_memory_type",
+    "bypass_recency",
+    "bypass_empty_query",
+    "bypass_small_pool",
+    "model_unavailable",
+    "prediction_failed",
+    "invalid_score",
+    "post_rerank_insertion",
+    "not_reranked",
+]
 
 
 @dataclass
@@ -56,6 +76,16 @@ class MemoryItem:
     # silently discard the one signal that distinguishes the two.
     as_of_resolution: Optional[str] = None
 
+    # Response evidence only. Null scores always mean unverified.
+    rerank_score: Optional[float] = None
+    rerank_status: RerankStatus = "not_reranked"
+    rerank_model: Optional[Dict[str, Any]] = None
+    rerank_pool_size: Optional[int] = None
+    rerank_candidate_count: Optional[int] = None
+    rerank_scored_count: Optional[int] = None
+    rerank_pool_capped: Optional[bool] = None
+    rerank_max_doc_chars: Optional[int] = None
+
     def __getitem__(self, key: str) -> Any:
         """Dict-like access for compatibility."""
         return getattr(self, key)
@@ -82,12 +112,25 @@ class MemoryItem:
         # Handle id vs item_id
         item_id = data.get("item_id") or data.get("id") or ""
 
+        rerank_status = data.get("rerank_status") or "not_reranked"
+        if not data.get("rerank_status"):
+            logger.warning(
+                "rerank_unscored rerank_status=not_reranked: server supplied no scoring status"
+            )
         return cls(
             item_id=item_id,
             content=data.get("content", ""),
             memory_type=data.get("memory_type", data.get("type", "semantic")),
             metadata=data.get("metadata", {}),
             score=data.get("score"),
+            rerank_status=rerank_status,
+            rerank_score=data.get("rerank_score"),
+            rerank_model=data.get("rerank_model"),
+            rerank_pool_size=data.get("rerank_pool_size"),
+            rerank_candidate_count=data.get("rerank_candidate_count"),
+            rerank_scored_count=data.get("rerank_scored_count"),
+            rerank_pool_capped=data.get("rerank_pool_capped"),
+            rerank_max_doc_chars=data.get("rerank_max_doc_chars"),
             as_of_resolution=data.get("as_of_resolution"),
             created_at=data.get("created_at"),
             updated_at=data.get("updated_at"),

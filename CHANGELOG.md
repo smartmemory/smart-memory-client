@@ -52,6 +52,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (2026-09-08) — rerank evidence (CORE-RERANK-EXPOSE-1)
+
+- Preserve nullable rerank_score, reason status, actual model identity and pool diagnostics through MemoryItem.from_dict/to_dict; missing legacy evidence stays unverified.
+
+
 ### Added (2026-09-07) — list grounding policy (PLAT-RETRIEVAL-POLICY-1 slice 1)
 
 - `list_memories(include_grounding=None)` inherits workspace then env defaults (OFF unless
