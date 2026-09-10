@@ -4269,6 +4269,9 @@ class SmartMemoryClient:
         reason: str,
         new_decision_type: str = "inference",
         new_confidence: float = 0.8,
+        rejected_alternatives: Optional[List[str]] = None,
+        rationale: Optional[str] = None,
+        constraints: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Replace a decision with a new one.
 
@@ -4278,6 +4281,9 @@ class SmartMemoryClient:
             reason: Why the old decision is being superseded.
             new_decision_type: Type of the new decision.
             new_confidence: Confidence of the new decision.
+            rejected_alternatives: Alternatives considered and dropped for the replacement.
+            rationale: Why the replacement was chosen.
+            constraints: Hard limits applying to the replacement.
 
         Returns:
             Dict with old_decision_id, new_decision_id, status.
@@ -4288,6 +4294,12 @@ class SmartMemoryClient:
             "new_decision_type": new_decision_type,
             "new_confidence": new_confidence,
         }
+        if rejected_alternatives is not None:
+            body["rejected_alternatives"] = rejected_alternatives
+        if rationale is not None:
+            body["rationale"] = rationale
+        if constraints is not None:
+            body["constraints"] = constraints
         return self._request(
             "POST", f"/memory/decisions/{decision_id}/supersede", json_body=body
         )

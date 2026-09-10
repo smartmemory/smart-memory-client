@@ -206,7 +206,13 @@ class TestSupersedeDecision:
         )
 
         result = client.supersede_decision(
-            "dec_old", "New approach", "Better data available"
+            "dec_old",
+            "New approach",
+            "Better data available",
+            new_confidence=0.95,
+            rejected_alternatives=["Keep the old approach"],
+            rationale="The benchmark failed",
+            constraints=["multi-region"],
         )
         assert result["status"] == "superseded"
         assert result["new_decision_id"] == "dec_new"
@@ -214,6 +220,10 @@ class TestSupersedeDecision:
         body = mock_req.call_args[1]["json"]
         assert body["new_content"] == "New approach"
         assert body["reason"] == "Better data available"
+        assert body["new_confidence"] == 0.95
+        assert body["rejected_alternatives"] == ["Keep the old approach"]
+        assert body["rationale"] == "The benchmark failed"
+        assert body["constraints"] == ["multi-region"]
 
 
 class TestRetractDecision:
