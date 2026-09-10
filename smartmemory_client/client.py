@@ -932,9 +932,16 @@ class SmartMemoryClient:
             # so callers can branch on SmartMemoryNotFoundError/PermissionError/etc.
             status = e.response.status_code if hasattr(e, "response") else 0
             error_detail = e.response.text if hasattr(e, "response") else str(e)
+            if status in (400, 503):
+                try:
+                    body = e.response.json()
+                except ValueError:
+                    body = None
+                if isinstance(body, dict) and isinstance(body.get("detail"), str):
+                    error_detail = body["detail"]
             exc_cls = _exception_for_status(status)
             raise exc_cls(
-                f"Request failed: {e} - Detail: {error_detail}",
+                error_detail,
                 status_code=status,
                 detail=error_detail,
             ) from e

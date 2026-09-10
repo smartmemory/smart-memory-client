@@ -35,11 +35,21 @@ CONTRACT = json.loads(
 def test_python_search_obeys_lexical_contract(case):
     client = SmartMemoryClient(base_url="http://test", team_id="ws", api_key="fake")
     options = {}
-    status = {"validation": 400, "unavailable": 503}.get(case, 200)
+    wire = (
+        CONTRACT["errors"][case]["http"]
+        if case in {"validation", "unavailable"}
+        else None
+    )
+    status = wire["status"] if wire else 200
     detail = (
-        "Unmatched quotation mark in lexical query."
-        if status == 400
+        CONTRACT["errors"]["validation"]["unmatched_quote_message"]
+        if case == "validation"
         else "LexicalIndexUnavailableError: sm rebuild --lexical"
+    )
+    body = (
+        {key: value.format(message=detail) for key, value in wire["body"].items()}
+        if wire
+        else {"results": []}
     )
     if case in {"empty", "zero", "accepted", "contains", "keyword-bm25", "unknown"}:
         weights = (
@@ -54,7 +64,7 @@ def test_python_search_obeys_lexical_contract(case):
         options["channel_weights"] = weights
     response = httpx.Response(
         status,
-        json={"results": []} if status == 200 else {"detail": detail},
+        json=body,
         request=httpx.Request("POST", "http://test/memory/search"),
     )
     with patch("httpx.Client.request", return_value=response) as request:
@@ -70,7 +80,8 @@ def test_python_search_obeys_lexical_contract(case):
             with pytest.raises(SmartMemoryClientError) as error:
                 client.search("quartz", **options)
             assert error.value.status_code == status
-            assert detail in str(error.value)
+            assert error.value.detail == body["detail"]
+            assert str(error.value) == body["detail"]
         else:
             assert client.search("quartz", **options) == []
             body = request.call_args.kwargs["json"]
