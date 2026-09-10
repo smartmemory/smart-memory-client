@@ -4179,6 +4179,16 @@ class SmartMemoryClient:
 
         Returns:
             Decision dict with all fields.
+
+            Each decision also carries three Dempster-Shafer belief reads derived
+            from its reinforce/contradict evidence (CORE-DECISION-BELIEF-SURFACE-1):
+            ``belief_hold`` (lower bound that the decision should stand),
+            ``plausibility_hold`` (upper bound), and ``ignorance`` (the width of that
+            interval, so 1.0 means no evidence has been recorded either way). They are
+            evidence-only and independent of the prior scalar ``confidence``, and they
+            separate "disputed" (high ``contest``) from "not yet known" (high
+            ``ignorance``) — a distinction ``stability`` cannot express, since it reads
+            0.5 for both.
         """
         return self._request("GET", f"/memory/decisions/{decision_id}")
 
@@ -4206,6 +4216,16 @@ class SmartMemoryClient:
 
         Returns:
             List of decision dicts.
+
+            Each decision also carries three Dempster-Shafer belief reads derived
+            from its reinforce/contradict evidence (CORE-DECISION-BELIEF-SURFACE-1):
+            ``belief_hold`` (lower bound that the decision should stand),
+            ``plausibility_hold`` (upper bound), and ``ignorance`` (the width of that
+            interval, so 1.0 means no evidence has been recorded either way). They are
+            evidence-only and independent of the prior scalar ``confidence``, and they
+            separate "disputed" (high ``contest``) from "not yet known" (high
+            ``ignorance``) — a distinction ``stability`` cannot express, since it reads
+            0.5 for both.
         """
         params: Dict[str, Any] = {"min_confidence": min_confidence, "limit": limit}
         if domain:
@@ -4347,6 +4367,16 @@ class SmartMemoryClient:
 
         Returns:
             Dict with decisions, count, and topic.
+
+            Each decision also carries three Dempster-Shafer belief reads derived
+            from its reinforce/contradict evidence (CORE-DECISION-BELIEF-SURFACE-1):
+            ``belief_hold`` (lower bound that the decision should stand),
+            ``plausibility_hold`` (upper bound), and ``ignorance`` (the width of that
+            interval, so 1.0 means no evidence has been recorded either way). They are
+            evidence-only and independent of the prior scalar ``confidence``, and they
+            separate "disputed" (high ``contest``) from "not yet known" (high
+            ``ignorance``) — a distinction ``stability`` cannot express, since it reads
+            0.5 for both.
         """
         return self._request(
             "GET", "/memory/decisions/search", params={"topic": topic, "limit": limit}

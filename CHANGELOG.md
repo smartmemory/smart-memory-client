@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+### Documentation (2026-09-10) — decision belief reads (CORE-DECISION-BELIEF-SURFACE-1)
+
+- `get_decision`, `list_decisions` and `search_decisions` document the three Dempster-Shafer belief reads
+  the service now returns: `belief_hold`, `plausibility_hold` and `ignorance`. All three pass through
+  unchanged, so there is no code change and no version bump; core's `VERSION` is the release dial.
+- The docstrings state what the fields mean and, more usefully, what they are not: they are evidence-only
+  and independent of the prior scalar `confidence`, and they separate a disputed decision (high `contest`)
+  from one nothing has evidenced yet (high `ignorance`), which `stability` cannot do because it reads 0.5
+  for both.
+
+
 ### Added (2026-09-06) — optional request correlation and per-call timing hooks (MAYA-ENDPOINT-VISIBILITY-1)
 
 - `SmartMemoryClient(request_id_provider=..., on_remote_call=...)`. The provider supplies an
