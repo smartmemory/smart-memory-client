@@ -770,9 +770,10 @@ class SmartMemoryClient:
             use_ssg: Use Similarity Graph Traversal for better multi-hop reasoning (optional)
                     If None, uses config default. If True, uses SSG. If False, uses basic vector search.
             enable_hybrid: Enable hybrid retrieval (vector + keyword search with RRF fusion).
-                          Default: True. Set to False for vector-only search.
+                          Default: True. False selects sequential retrieval, not vector-only.
             channel_weights: Per-channel weight multipliers for RRF fusion (CORE-SEARCH-2a).
-                           Keys: entity-graph, ssg-traversal, semantic, regex-text, contains, keyword-bm25.
+                           Keys: entity-graph, ssg-traversal, semantic, regex-text, lexical,
+                           spreading-activation, facts, structural-semantic.
                            Values: float multipliers (default varies by channel).
             expertise: When True (CORE-EXPERTISE-1 Phase 4a), returns a typed dict
                       keyed by expertise type instead of a flat list.
@@ -819,7 +820,7 @@ class SmartMemoryClient:
             # Search with SSG for better multi-hop reasoning
             results = client.search("AI concepts", top_k=10, use_ssg=True)
 
-            # Vector-only search (disable hybrid)
+            # Sequential retrieval (disable hybrid)
             results = client.search("AI concepts", enable_hybrid=False)
 
             # Search specific memory type
@@ -850,6 +851,23 @@ class SmartMemoryClient:
         if use_ssg is not None:
             body_dict["use_ssg"] = use_ssg
         if channel_weights is not None:
+            accepted = {
+                "entity-graph",
+                "ssg-traversal",
+                "semantic",
+                "regex-text",
+                "lexical",
+                "spreading-activation",
+                "facts",
+                "structural-semantic",
+            }
+            for channel in channel_weights:
+                if channel in {"contains", "keyword-bm25"}:
+                    raise ValueError(f"Channel {channel} was removed; use lexical.")
+                if channel not in accepted:
+                    raise ValueError(
+                        f"Unknown search channel {channel!r}. Accepted: {sorted(accepted)}"
+                    )
             body_dict["channel_weights"] = channel_weights
         if hop_strategy is not None:
             body_dict["hop_strategy"] = hop_strategy
