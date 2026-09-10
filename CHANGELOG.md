@@ -68,6 +68,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed: CORE-LEXICAL-INDEX-1 consumer cutover
+
+- Use one `lexical` channel with default weight 0.8. Removed channel names fail validation, explicit zero is preserved, and unavailable required lexical search fails without partial success.
+- Coordinated service, common, Python, JS, MCP and lite contracts cover migration and recovery. See [migration guidance](https://github.com/smart-memory/smart-memory-docs/blob/main/docs/features/CORE-LEXICAL-INDEX-1/migration.md) and the [canonical contract](https://github.com/smart-memory/smart-memory-docs/blob/main/docs/features/CORE-LEXICAL-INDEX-1/lexical-contract.json).
+- Release remains pending maintainer review of measured write cost and final verification. No version bump.
+
 ### Added (2026-09-08) — rerank evidence (CORE-RERANK-EXPOSE-1)
 
 - Preserve nullable rerank_score, reason status, actual model identity and pool diagnostics through MemoryItem.from_dict/to_dict; missing legacy evidence stays unverified.
