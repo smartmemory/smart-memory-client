@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### Added (2026-09-16) — switchable reranker policy (CORE-RERANK-PLUGIN-1)
+
+- `SmartMemoryClient.search(reranker=...)` forwards an explicit reranker override
+  and omits the field when the caller wants server-side policy resolution.
+
 ### Fixed (2026-09-10) — decision supersession context
 
 - `supersede_decision` accepts and forwards optional `rejected_alternatives`, `rationale`, and

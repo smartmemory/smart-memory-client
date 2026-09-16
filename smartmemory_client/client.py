@@ -754,6 +754,7 @@ class SmartMemoryClient:
         since: Optional[Union[str, datetime]] = None,
         until: Optional[Union[str, datetime]] = None,
         hop_strategy: Optional[str] = None,
+        reranker: Optional[str] = None,
     ):
         """
         Search for memory items using semantic matching.
@@ -775,6 +776,7 @@ class SmartMemoryClient:
                            Keys: entity-graph, ssg-traversal, semantic, regex-text, lexical,
                            spreading-activation, facts, structural-semantic.
                            Values: float multipliers (default varies by channel).
+            reranker: Optional reranker policy override (for example, ``"none"``).
             expertise: When True (CORE-EXPERTISE-1 Phase 4a), returns a typed dict
                       keyed by expertise type instead of a flat list.
             include_consolidated: When True (CORE-CONSOLIDATE-1), include consolidated
@@ -869,6 +871,8 @@ class SmartMemoryClient:
                         f"Unknown search channel {channel!r}. Accepted: {sorted(accepted)}"
                     )
             body_dict["channel_weights"] = channel_weights
+        if reranker is not None:
+            body_dict["reranker"] = reranker
         if hop_strategy is not None:
             body_dict["hop_strategy"] = hop_strategy
         if multi_hop:
