@@ -3190,6 +3190,44 @@ class SmartMemoryClient:
         )
 
     # ============================================================================
+    # Workspaces
+    # ============================================================================
+
+    def list_workspaces(self) -> Dict[str, Any]:
+        """List Workspaces visible in the active tenant."""
+        return self._request("GET", "/memory/workspaces")
+
+    def create_workspace(
+        self,
+        name: str,
+        team_id: str,
+        description: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create an independent Workspace with an initial Team grant."""
+        body = {
+            "name": name,
+            "description": description,
+            "team_id": team_id,
+        }
+        return self._request("POST", "/memory/workspaces", json_body=body)
+
+    def share_workspace(
+        self,
+        workspace_id: str,
+        team_id: str,
+        permission: str,
+    ) -> Dict[str, Any]:
+        """Add or replace a Team's permission on a Workspace."""
+        body = {"team_id": team_id, "permission": permission}
+        return self._request(
+            "POST", f"/memory/workspaces/{workspace_id}/share", json_body=body
+        )
+
+    def revoke_workspace_share(self, workspace_id: str, team_id: str) -> None:
+        """Revoke a Team's grant from a Workspace."""
+        self._request("DELETE", f"/memory/workspaces/{workspace_id}/share/{team_id}")
+
+    # ============================================================================
     # Teams
     # ============================================================================
 
@@ -3277,6 +3315,10 @@ class SmartMemoryClient:
     def get_team_permissions(self, team_id: str) -> Dict[str, Any]:
         """Get available permissions for a team."""
         return self._request("GET", f"/memory/teams/{team_id}/permissions")
+
+    def list_team_workspaces(self, team_id: str) -> Dict[str, Any]:
+        """List visible Workspaces granted to a Team."""
+        return self._request("GET", f"/memory/teams/{team_id}/workspaces")
 
     # ============================================================================
     # Temporal
