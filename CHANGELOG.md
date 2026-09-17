@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### Added (2026-09-18) — workspace naming and typed session (AUTH-IDENTITY-MODEL-1 Phase 3)
+
+- `workspace_id` is now the primary property; `team_id` delegates to it and keeps the
+  `X-Workspace-Id` header in sync, so existing code is unaffected. `SMARTMEMORY_WORKSPACE_ID` is
+  preferred over `SMARTMEMORY_TEAM_ID`, which still works.
+- `get_me()` and `refresh_token()` return a typed, dict-compatible `SessionResponse` carrying
+  `default_workspace_id`, `active_workspace_id`, `tenant_id` and `tenant_role`, falling back to the
+  server's deprecated `default_team_id`. Existing callers that index the result as a dict keep
+  working.
+- Team-management methods targeting `/memory/teams` are genuine Team APIs and are unchanged.
+
 ### Added (2026-09-16) — switchable reranker policy (CORE-RERANK-PLUGIN-1)
 
 - `SmartMemoryClient.search(reranker=...)` forwards an explicit reranker override

@@ -28,6 +28,10 @@ import httpx
 # Use local model instead of core dependency
 from smartmemory_client.models.memory_item import MemoryItem
 from smartmemory_client.models.conversation import ConversationContextModel
+from smartmemory_client.models.session import (
+    SessionResponse,
+    normalize_session_response,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -282,7 +286,7 @@ class SmartMemoryClient:
 
         # Resolve workspace_id; team_id is a deprecated alias (removed in v0.5.0).
         # Warn only when team_id is actually used as the fallback (workspace_id not provided).
-        self.team_id = (
+        self.workspace_id = (
             workspace_id
             or team_id
             or os.getenv("SMARTMEMORY_WORKSPACE_ID")
@@ -299,12 +303,12 @@ class SmartMemoryClient:
         # Build default headers (auth header added dynamically)
         self._base_headers = {
             "Content-Type": "application/json",
-            "X-Workspace-Id": self.team_id,
+            "X-Workspace-Id": self.workspace_id,
         }
 
         if self.is_authenticated:
             logger.info(
-                f"SmartMemoryClient initialized with authentication. Base URL: {self.base_url}, Team ID: {self.team_id}"
+                f"SmartMemoryClient initialized with authentication. Base URL: {self.base_url}, Workspace ID: {self.workspace_id}"
             )
         else:
             logger.warning(
@@ -394,6 +398,28 @@ class SmartMemoryClient:
         return bool(self._token or self._api_key)
 
     @property
+    def workspace_id(self) -> str:
+        """Return the workspace used for ``X-Workspace-Id`` requests."""
+        return self._workspace_id
+
+    @workspace_id.setter
+    def workspace_id(self, workspace_id: str) -> None:
+        """Set the active workspace and keep the request header synchronized."""
+        self._workspace_id = workspace_id
+        if hasattr(self, "_base_headers"):
+            self._base_headers["X-Workspace-Id"] = workspace_id
+
+    @property
+    def team_id(self) -> str:
+        """Deprecated alias for :attr:`workspace_id`."""
+        return self.workspace_id
+
+    @team_id.setter
+    def team_id(self, team_id: str) -> None:
+        """Set :attr:`workspace_id` through the deprecated alias."""
+        self.workspace_id = team_id
+
+    @property
     def headers(self) -> Dict[str, str]:
         """Get headers with current auth token."""
         headers = self._base_headers.copy()
@@ -411,7 +437,7 @@ class SmartMemoryClient:
 
     def refresh_token(
         self, refresh_token_value: Optional[str] = None
-    ) -> Dict[str, Any]:
+    ) -> SessionResponse:
         """
         Refresh the JWT access token using the refresh token.
 
@@ -431,7 +457,9 @@ class SmartMemoryClient:
             )
 
         body = {"refresh_token": token_to_use}
-        result = self._request("POST", "/auth/refresh", json_body=body)
+        result = normalize_session_response(
+            self._request("POST", "/auth/refresh", json_body=body)
+        )
 
         if "access_token" in result:
             self._token = result["access_token"]
@@ -916,7 +944,7 @@ class SmartMemoryClient:
 
         # SELF-IMPROVE-6: use _request_raw to capture X-Search-Session-Id header
         url = f"{self.base_url}/memory/search"
-        req_headers = {"X-Workspace-Id": self.team_id}
+        req_headers = {"X-Workspace-Id": self.workspace_id}
         if self.api_key:
             req_headers["Authorization"] = f"Bearer {self.api_key}"
 
@@ -2193,9 +2221,9 @@ class SmartMemoryClient:
     # Auth
     # ============================================================================
 
-    def get_me(self) -> Dict[str, Any]:
+    def get_me(self) -> SessionResponse:
         """Get current authenticated user info."""
-        return self._request("GET", "/auth/me")
+        return normalize_session_response(self._request("GET", "/auth/me"))
 
     def logout_all(self) -> None:
         """Logout from all devices."""
@@ -5213,7 +5241,7 @@ class SmartMemoryClient:
     ) -> Any:
         """Internal helper for making HTTP requests."""
         url = f"{self.base_url}{endpoint}"
-        req_headers = {"X-Workspace-Id": self.team_id}
+        req_headers = {"X-Workspace-Id": self.workspace_id}
         if headers:
             req_headers.update(headers)
 

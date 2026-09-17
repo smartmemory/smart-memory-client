@@ -41,7 +41,11 @@ from smartmemory_client.client import (
     SmartMemoryValidationError,
     SmartMemoryServerError,
 )
-from smartmemory_client.models import MemoryItem, ConversationContextModel
+from smartmemory_client.models import (
+    ConversationContextModel,
+    MemoryItem,
+    SessionResponse,
+)
 
 try:
     from importlib.metadata import version, PackageNotFoundError
@@ -70,5 +74,6 @@ __all__ = [
     "SmartMemoryServerError",
     "MemoryItem",
     "ConversationContextModel",
+    "SessionResponse",
     "__version__",
 ]
