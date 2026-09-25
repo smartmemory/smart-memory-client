@@ -556,4 +556,4 @@ Search uses `lexical` with default weight 0.8. Replace removed `contains` and `k
 
 Use `client.search(query, channel_weights={"lexical": 0})`. Validation and server failures remain visible to callers.
 
-Quiesce old writers before first-open indexing. Verify the engine capability pin and use `sm rebuild --lexical` for recovery. [Migration, targets and measured limitations](https://github.com/smart-memory/smart-memory-docs/blob/main/docs/features/CORE-LEXICAL-INDEX-1/migration.md).
+Quiesce old writers before first-open indexing. Verify the engine capability pin and use `sm rebuild --lexical` for recovery. [Migration, targets and measured limitations](https://github.com/smartmemory/smart-memory-docs/blob/main/docs/features/CORE-LEXICAL-INDEX-1/migration.md).

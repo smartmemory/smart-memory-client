@@ -99,7 +99,7 @@ jobs:
             echo "::error::No version from bump step; refusing to dispatch to Maya."
             exit 1
           fi
-          echo "→ client-released v$V → smart-memory/maya"
-          gh api "repos/smart-memory/maya/dispatches" \
+          echo "→ client-released v$V → smartmemory/maya"
+          gh api "repos/smartmemory/maya/dispatches" \
             -f event_type=client-released \
             -f "client_payload[version]=$V"
