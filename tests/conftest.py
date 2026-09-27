@@ -38,20 +38,6 @@ def pytest_configure(config):
 SERVICE_URL = os.getenv("SMARTMEMORY_SERVICE_URL", "http://localhost:9001")
 
 
-def _cleanup_test_users_best_effort():
-    """Best-effort cleanup for prefixed test users.
-
-    Uses shared service_common helper when available (monorepo runs),
-    otherwise silently skips to avoid blocking standalone client tests.
-    """
-    try:
-        from service_common.testing import cleanup_test_users
-
-        cleanup_test_users(["test-", "test_", "sso_smoke_"])
-    except Exception:
-        pass
-
-
 @pytest.fixture(scope="session")
 def service_url():
     """Base URL for the SmartMemory service."""
@@ -70,15 +56,26 @@ def service_available(service_url):
     pytest.skip(f"SmartMemory service not available at {service_url}")
 
 
-@pytest.fixture(scope="session", autouse=True)
-def cleanup_test_users_session():
-    _cleanup_test_users_best_effort()
-    yield
-    _cleanup_test_users_best_effort()
+@pytest.fixture(scope="session")
+def owned_client_run():
+    """Only integration provisioning needs the optional common dependency."""
+    import tempfile
+    from pathlib import Path
+    from service_common.testing.auth import RunOwnership
+
+    path = os.environ.get("SM_TEST_OWNERSHIP_MANIFEST") or str(
+        Path(tempfile.mkdtemp(prefix="test_h1_E2E_TEST_ISOLATION_1_"))
+        / "ownership.json"
+    )
+    owner = RunOwnership.create(path)
+    try:
+        yield owner
+    finally:
+        owner.finish()
 
 
 @pytest.fixture(scope="class")
-def test_user(service_url, service_available):
+def test_user(service_url, service_available, owned_client_run, request):
     """Create a unique test user via direct DB provisioning.
 
     /auth/signup HTTP route no longer exists (removed in PLAT-SSO-IDP-1).
@@ -101,7 +98,26 @@ def test_user(service_url, service_available):
         )
 
     unique_id = uuid.uuid4().hex[:8]
-    email = f"test_{unique_id}@example.com"
+    email = f"{owned_client_run.data['prefix']}{unique_id}@example.com"
+    owned_client_run.intend(email)
+    # Register before creation, so signup or /auth/me failures still finalize.
+    class_tenants = set()
+
+    def finalize_user():
+        from service_common.repositories.clients.mongodb import get_mongo_db
+
+        owned_client_run.capture()
+        db = get_mongo_db()
+        try:
+            class_tenants.update(
+                user["tenant_id"]
+                for user in db.users.find({"email": email}, {"tenant_id": 1})
+            )
+        finally:
+            db.client.close()
+        owned_client_run.cleanup(sorted(class_tenants))
+
+    request.addfinalizer(finalize_user)
     password = "TestPassword123!"
 
     repo = create_auth_repository()
@@ -114,6 +130,9 @@ def test_user(service_url, service_available):
             email=email, password=password, full_name=f"Test User {unique_id}"
         )
     )
+
+    owned_client_run.capture()
+    class_tenants.add(user_response.tenant_id)
 
     # Validate the provisioned session via /auth/me (still present)
     resp = httpx.get(
@@ -130,6 +149,7 @@ def test_user(service_url, service_available):
         "password": password,
         "access_token": tokens.access_token,
         "workspace_id": me.get("tenant_id"),
+        "tenant_id": me["tenant_id"],
         "user_id": user_response.id,
         "team_id": me.get("default_team_id"),
     }
