@@ -110,7 +110,7 @@ def test_smartmemory_client_error():
 
 # Integration tests (require running service)
 @pytest.mark.integration
-def test_health_check():
+def test_health_check(service_available):
     """Test health check endpoint"""
     client = SmartMemoryClient("http://localhost:9001")
     health = client.health_check()
@@ -118,7 +118,7 @@ def test_health_check():
 
 
 @pytest.mark.integration
-def test_add_memory_requires_auth():
+def test_add_memory_requires_auth(service_available):
     """Test that add memory requires authentication"""
     client = SmartMemoryClient("http://localhost:9001")
     with pytest.raises(SmartMemoryClientError):
@@ -126,7 +126,7 @@ def test_add_memory_requires_auth():
 
 
 @pytest.mark.integration
-def test_search_requires_auth():
+def test_search_requires_auth(service_available):
     """Test that search requires authentication"""
     client = SmartMemoryClient("http://localhost:9001")
     with pytest.raises(SmartMemoryClientError):

@@ -84,6 +84,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (2026-09-27) — live client test setup
+
+- Require the existing service-availability fixture for the three live-service tests in `test_client.py`, so a missing service skips them instead of failing health or producing false-positive authentication checks.
+
 ### Changed: CORE-LEXICAL-INDEX-1 consumer cutover
 - R-E4: Pin lexical HTTP contract v2 to exact 400/503 detail envelopes and verify consumer error fidelity.
 
