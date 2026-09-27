@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.5.0 — 2026-09-27
+
 ### Added (2026-09-18) — workspace naming and typed session (AUTH-IDENTITY-MODEL-1 Phase 3)
 
 - `workspace_id` is now the primary property; `team_id` delegates to it and keeps the
@@ -81,8 +83,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   archived items were returned ranked like live ones. Callers who want them must
   now pass `include_archived=True`.
 
-
-## [Unreleased]
 
 ### Fixed (2026-09-27) — live client test setup
 
