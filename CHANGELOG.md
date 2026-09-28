@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- **Breaking (fix):** `code_index(repo, entities, relations=None, commit_hash=None)`
+  now uploads already-parsed code entities using the service's request fields.
+  The former path-based signature always failed service validation.
 - Remove the automatic cross-run test-user sweep. Record provisioning intent and finalize only owned identities, including signup and auth validation failures.
 
 ## 1.5.0 — 2026-09-27

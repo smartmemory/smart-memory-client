@@ -97,7 +97,22 @@ def _called_path(mock_request: MagicMock) -> str:
         ),
         # Code surfaces.
         ("code_search", ("auth",), "GET", "/memory/code/search"),
-        ("code_index", ("/repo/src",), "POST", "/memory/code/index"),
+        (
+            "code_index",
+            (
+                "sdk",
+                [
+                    {
+                        "name": "parse",
+                        "entity_type": "function",
+                        "file_path": "src/parser.py",
+                        "line_number": 1,
+                    }
+                ],
+            ),
+            "POST",
+            "/memory/code/index",
+        ),
         ("code_context", ("SmartMemoryClient",), "GET", "/memory/code/context"),
         ("code_dead_code", ("smartmemory",), "GET", "/memory/code/dead-code"),
         (
@@ -228,6 +243,67 @@ def test_public_api_method_urls(
 
     assert _called_method(mock_request) == expected_verb
     assert _called_path(mock_request) == expected_path
+
+
+@patch("httpx.Client.request")
+def test_code_index_sends_exact_service_body(mock_request, client):
+    mock_request.return_value = _ok(
+        {
+            "entities_created": 1,
+            "edges_created": 1,
+            "commit_hash": "abc123",
+            "replaced": True,
+        }
+    )
+    entities = [
+        {
+            "name": "parse",
+            "entity_type": "function",
+            "file_path": "src/parser.py",
+            "line_number": 1,
+        }
+    ]
+    relations = [
+        {"source_id": "module", "target_id": "parse", "relation_type": "DEFINES"}
+    ]
+
+    result = client.code_index("sdk", entities, relations, commit_hash="abc123")
+
+    assert result == {
+        "entities_created": 1,
+        "edges_created": 1,
+        "commit_hash": "abc123",
+        "replaced": True,
+    }
+    body = mock_request.call_args.kwargs["json"]
+    assert body == {
+        "repo": "sdk",
+        "entities": entities,
+        "relations": relations,
+        "commit_hash": "abc123",
+    }
+    assert "path" not in body
+    assert "commit" not in body
+
+
+@patch("httpx.Client.request")
+def test_code_index_defaults_and_validates_before_request(mock_request, client):
+    mock_request.return_value = _ok()
+    client.code_index("sdk", [])
+    assert mock_request.call_args.kwargs["json"] == {
+        "repo": "sdk",
+        "entities": [],
+        "relations": [],
+        "commit_hash": None,
+    }
+    mock_request.reset_mock()
+
+    for repo in ("", "  ", None):
+        with pytest.raises(ValueError, match="repo must be a non-empty string"):
+            client.code_index(repo, [])
+    with pytest.raises(ValueError, match="entities must be a list"):
+        client.code_index("sdk", None)
+    assert not mock_request.called
 
 
 @patch("httpx.Client.request")

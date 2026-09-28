@@ -1228,14 +1228,27 @@ class SmartMemoryClient:
         return self._request("GET", "/memory/code/search", params=params)
 
     def code_index(
-        self, path: str, repo: Optional[str] = None, commit: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """Index code entities from a file or directory."""
-        body: Dict[str, Any] = {"path": path}
-        if repo:
-            body["repo"] = repo
-        if commit:
-            body["commit"] = commit
+        self,
+        repo: str,
+        entities: list[dict],
+        relations: Optional[list[dict]] = None,
+        commit_hash: Optional[str] = None,
+    ) -> dict:
+        """Upload already-parsed code entities and relations for a repository.
+
+        The caller parses files locally (as the MCP and CLI do) before upload.
+        Returns the service's entity and edge counts, commit hash, and replaced flag.
+        """
+        if not isinstance(repo, str) or not repo.strip():
+            raise ValueError("repo must be a non-empty string")
+        if not isinstance(entities, list):
+            raise ValueError("entities must be a list")
+        body: Dict[str, Any] = {
+            "repo": repo,
+            "entities": entities,
+            "relations": relations if relations is not None else [],
+            "commit_hash": commit_hash,
+        }
         return self._request("POST", "/memory/code/index", json_body=body)
 
     def code_context(
