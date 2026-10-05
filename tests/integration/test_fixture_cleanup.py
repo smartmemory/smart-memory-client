@@ -105,7 +105,7 @@ if __name__ == "__main__":
 
 
 def test_fixture_finalizes_created_user_on_success_and_me_failure(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, service_url
 ):
     """Real provisioning/cascade; only the HTTP response is fault-injected."""
     import importlib.util

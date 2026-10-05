@@ -41,7 +41,7 @@ SERVICE_URL = os.getenv("SMARTMEMORY_SERVICE_URL", "http://localhost:9001")
 @pytest.fixture(scope="session")
 def service_url():
     """Base URL for the SmartMemory service."""
-    return SERVICE_URL
+    yield SERVICE_URL
 
 
 @pytest.fixture(scope="session")
@@ -57,21 +57,28 @@ def service_available(service_url):
 
 
 @pytest.fixture(scope="session")
-def owned_client_run():
+def owned_client_run(service_url, tmp_path_factory):
     """Only integration provisioning needs the optional common dependency."""
-    import tempfile
-    from pathlib import Path
     from service_common.testing.auth import RunOwnership
 
     path = os.environ.get("SM_TEST_OWNERSHIP_MANIFEST") or str(
-        Path(tempfile.mkdtemp(prefix="test_h1_E2E_TEST_ISOLATION_1_"))
-        / "ownership.json"
+        tmp_path_factory.mktemp("test_client_owner") / "ownership.json"
     )
+    from service_common.testing.auth import _retrieval_redis, _retrieval_snapshot, _assert_owned_retrieval_clean
     owner = RunOwnership.create(path)
+    retrieval = _retrieval_redis()
+    before = _retrieval_snapshot(retrieval)
     try:
         yield owner
     finally:
-        owner.finish()
+        try:
+            owner.finish()
+        finally:
+            try:
+                workspaces = {ws for record in owner.data["tenants"].values() for ws in record["workspaces"]}
+                _assert_owned_retrieval_clean(retrieval, before, workspaces)
+            finally:
+                retrieval.close()
 
 
 @pytest.fixture(scope="class")
@@ -133,6 +140,10 @@ def test_user(service_url, service_available, owned_client_run, request):
 
     owned_client_run.capture()
     class_tenants.add(user_response.tenant_id)
+    from service_common.auth.cache import USER_KEY_PREFIX
+    owned_client_run.register(user_response.tenant_id, user_ids=[user_response.id],
+                              workspace_ids=[user_response.default_team_id],
+                              redis_keys=[USER_KEY_PREFIX + user_response.id])
 
     # Validate the provisioned session via /auth/me (still present)
     resp = httpx.get(
@@ -148,7 +159,7 @@ def test_user(service_url, service_available, owned_client_run, request):
         "email": email,
         "password": password,
         "access_token": tokens.access_token,
-        "workspace_id": me.get("tenant_id"),
+        "workspace_id": me.get("default_team_id"),
         "tenant_id": me["tenant_id"],
         "user_id": user_response.id,
         "team_id": me.get("default_team_id"),
