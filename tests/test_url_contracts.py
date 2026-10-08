@@ -435,3 +435,77 @@ def test_list_grounding_override_and_policy_envelope(mock_request, client, value
         assert "include_grounding" not in params
     else:
         assert params["include_grounding"] is value
+
+
+# --------------------------------------------------------------------------- CODE-INDEXER-HARDEN-1 U5
+
+
+@patch("httpx.Client.request")
+def test_code_index_sends_repo_identity_only_when_given(mock_request, client):
+    mock_request.return_value = _ok()
+    client.code_index("sdk", [], repo_identity="remote:github.com/acme/sdk")
+    assert (
+        mock_request.call_args.kwargs["json"]["repo_identity"]
+        == "remote:github.com/acme/sdk"
+    )
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "extra"),
+    [
+        ("code_context", "/memory/code/context", {}),
+        ("code_dependencies", "/memory/code/dependencies", {"direction": "both"}),
+    ],
+)
+@pytest.mark.parametrize(
+    "selectors",
+    [
+        {"file_path": "b.py"},
+        {"item_id": "code::r::b.py::helper"},
+        {"file_path": "b.py", "item_id": "code::r::b.py::helper"},
+    ],
+)
+@patch("httpx.Client.request")
+def test_code_root_disambiguators_reach_the_query(
+    mock_request, client, method, path, extra, selectors
+):
+    mock_request.return_value = _ok()
+    getattr(client, method)("a.helper", repo="r", **selectors)
+    assert mock_request.call_args.args[1].endswith(path)
+    assert mock_request.call_args.kwargs["params"] == {
+        "entity_name": "a.helper",
+        "repo": "r",
+        **selectors,
+        **extra,
+    }
+
+
+@patch("httpx.Client.request")
+def test_code_context_ambiguity_raises_validation_error_with_candidates(
+    mock_request, client
+):
+    import json
+
+    from smartmemory_client.client import SmartMemoryValidationError
+
+    detail = {
+        "detail": {
+            "status": "ambiguous",
+            "entity_name": "helper",
+            "candidates": [
+                {"item_id": "a", "file_path": "a.py"},
+                {"item_id": "b", "file_path": "b.py"},
+            ],
+            "candidate_count": 2,
+            "truncated": False,
+        }
+    }
+    request = httpx.Request("GET", f"{BASE_URL}/memory/code/context")
+    response = httpx.Response(409, json=detail, request=request)
+    mock_request.return_value = response
+    with pytest.raises(SmartMemoryValidationError) as raised:
+        client.code_context("helper")
+    assert raised.value.status_code == 409
+    assert [
+        c["file_path"] for c in json.loads(raised.value.detail)["detail"]["candidates"]
+    ] == ["a.py", "b.py"]

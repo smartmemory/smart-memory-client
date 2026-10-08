@@ -1233,11 +1233,19 @@ class SmartMemoryClient:
         entities: list[dict],
         relations: Optional[list[dict]] = None,
         commit_hash: Optional[str] = None,
+        repo_identity: Optional[str] = None,
     ) -> dict:
         """Upload already-parsed code entities and relations for a repository.
 
         The caller parses files locally (as the MCP and CLI do) before upload.
-        Returns the service's entity and edge counts, commit hash, and replaced flag.
+        Returns the service's entity, edge and embedding counts
+        (``embeddings_generated``), commit hash, and replaced flag.
+
+        Args:
+            repo_identity: Optional checkout identity (``remote:<normalized remote>``
+                or ``path:<sha256>``, CODE-INDEXER-HARDEN-1). When sent, the service
+                refuses (HTTP 422, ``SmartMemoryValidationError``) a repo name that
+                already belongs to a different checkout instead of overwriting it.
         """
         if not isinstance(repo, str) or not repo.strip():
             raise ValueError("repo must be a non-empty string")
@@ -1249,15 +1257,42 @@ class SmartMemoryClient:
             "relations": relations if relations is not None else [],
             "commit_hash": commit_hash,
         }
+        if repo_identity is not None:
+            body["repo_identity"] = repo_identity
         return self._request("POST", "/memory/code/index", json_body=body)
 
-    def code_context(
-        self, entity_name: str, repo: Optional[str] = None
+    @staticmethod
+    def _code_root_params(
+        entity_name: str,
+        repo: Optional[str],
+        file_path: Optional[str],
+        item_id: Optional[str],
     ) -> Dict[str, Any]:
-        """Get rich context for a code entity."""
         params: Dict[str, Any] = {"entity_name": entity_name}
         if repo:
             params["repo"] = repo
+        if file_path:
+            params["file_path"] = file_path
+        if item_id:
+            params["item_id"] = item_id
+        return params
+
+    def code_context(
+        self,
+        entity_name: str,
+        repo: Optional[str] = None,
+        file_path: Optional[str] = None,
+        item_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Get rich context for a code entity.
+
+        ``entity_name`` matches a stored name or qualified name exactly or as a
+        dotted suffix (``run`` finds ``Svc.run``). When several entities match,
+        the service answers 409 and this raises ``SmartMemoryValidationError``
+        whose ``detail`` (JSON text) holds ``detail.candidates``; pass
+        ``file_path`` or ``item_id`` from a candidate to choose one.
+        """
+        params = self._code_root_params(entity_name, repo, file_path, item_id)
         return self._request("GET", "/memory/code/context", params=params)
 
     def code_dead_code(
@@ -1290,12 +1325,20 @@ class SmartMemoryClient:
         return self._request("GET", "/memory/code/dead-code", params=params)
 
     def code_dependencies(
-        self, entity_name: str, direction: str = "both", repo: Optional[str] = None
+        self,
+        entity_name: str,
+        direction: str = "both",
+        repo: Optional[str] = None,
+        file_path: Optional[str] = None,
+        item_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Trace dependencies for a code entity."""
-        params: Dict[str, Any] = {"entity_name": entity_name, "direction": direction}
-        if repo:
-            params["repo"] = repo
+        """Trace dependencies for a code entity.
+
+        Name matching and the 409 ambiguity response are the same as
+        :meth:`code_context`; ``file_path`` / ``item_id`` choose one candidate.
+        """
+        params = self._code_root_params(entity_name, repo, file_path, item_id)
+        params["direction"] = direction
         return self._request("GET", "/memory/code/dependencies", params=params)
 
     def get_plan(self, plan_id: str) -> Dict[str, Any]:
