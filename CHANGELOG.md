@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 
+- `code_dead_code(repo, include_exported=False, production_only=False)`: CODE-INDEXER-HARDEN-1 U6 opt-in dead-code options, sent only when set (a default call is unchanged).
+
 - Keep optional service dependencies inside integration fixtures. Use the explicitly configured integration service with exact tenant and retrieval cleanup, without automatically launching a service.
 - **Breaking (fix):** `code_index(repo, entities, relations=None, commit_hash=None)`
   now uploads already-parsed code entities using the service's request fields.

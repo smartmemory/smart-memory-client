@@ -1260,9 +1260,34 @@ class SmartMemoryClient:
             params["repo"] = repo
         return self._request("GET", "/memory/code/context", params=params)
 
-    def code_dead_code(self, repo: str) -> Dict[str, Any]:
-        """Find unreferenced code entities in a repository."""
-        return self._request("GET", "/memory/code/dead-code", params={"repo": repo})
+    def code_dead_code(
+        self,
+        repo: str,
+        include_exported: bool = False,
+        production_only: bool = False,
+    ) -> Dict[str, Any]:
+        """Find unreferenced code entities in a repository.
+
+        Args:
+            repo: Repository to scan.
+            include_exported: Also report exported functions with no counted caller
+                (CODE-INDEXER-HARDEN-1 U6, opt-in).
+            production_only: Count only callers in non-test files as liveness
+                (CODE-INDEXER-HARDEN-1 U6, opt-in).
+
+        The flags are independent: include_exported reports exported functions with no counted caller, and
+        test callers count unless production_only is on, so an exported function used only by tests is
+        reported only when BOTH flags are on.
+
+        Options are sent only when set, so a default call is unchanged. The response
+        echoes the effective options under ``options``.
+        """
+        params: Dict[str, Any] = {"repo": repo}
+        if include_exported:
+            params["include_exported"] = "true"
+        if production_only:
+            params["production_only"] = "true"
+        return self._request("GET", "/memory/code/dead-code", params=params)
 
     def code_dependencies(
         self, entity_name: str, direction: str = "both", repo: Optional[str] = None

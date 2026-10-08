@@ -307,6 +307,30 @@ def test_code_index_defaults_and_validates_before_request(mock_request, client):
 
 
 @patch("httpx.Client.request")
+def test_code_dead_code_sends_options_only_when_set(
+    mock_request: MagicMock, client: SmartMemoryClient
+) -> None:
+    """CODE-INDEXER-HARDEN-1 U6: a default call sends only repo, exactly as before."""
+    mock_request.return_value = _ok()
+    client.code_dead_code("sdk")
+    assert mock_request.call_args.kwargs["params"] == {"repo": "sdk"}
+
+    client.code_dead_code("sdk", include_exported=True)
+    assert mock_request.call_args.kwargs["params"] == {
+        "repo": "sdk",
+        "include_exported": "true",
+    }
+
+    client.code_dead_code("sdk", include_exported=True, production_only=True)
+    assert _called_path(mock_request) == "/memory/code/dead-code"
+    assert mock_request.call_args.kwargs["params"] == {
+        "repo": "sdk",
+        "include_exported": "true",
+        "production_only": "true",
+    }
+
+
+@patch("httpx.Client.request")
 def test_search_by_metadata_sends_limit_default(
     mock_request: MagicMock, client: SmartMemoryClient
 ) -> None:
