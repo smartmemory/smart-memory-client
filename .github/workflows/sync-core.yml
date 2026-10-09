@@ -1,3 +1,4 @@
+# Manual only (workflow_dispatch). Prod deploys and releases use the scripts in the repo/runbook. Owner decision 2026-10-09.
 name: Sync to core release
 
 # The SDK joined the unified product line: core's VERSION is the single source of
@@ -5,8 +6,6 @@ name: Sync to core release
 # that number. (The SDK does not pin or import core — it just tracks the shared
 # product version so all five packages always carry the identical number.)
 on:
-  repository_dispatch:
-    types: [core-released]
   workflow_dispatch:
     inputs:
       version:

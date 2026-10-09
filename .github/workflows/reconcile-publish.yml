@@ -1,3 +1,4 @@
+# Manual only (workflow_dispatch). Prod deploys and releases use the scripts in the repo/runbook. Owner decision 2026-10-09.
 name: Reconcile PyPI artifact
 
 on:
