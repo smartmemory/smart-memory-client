@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- `get_plugin_catalog()`: PLAT-PLUGIN-MARKETPLACE-1 H3, `GET /memory/plugins/catalog`. Returns the registered pipeline plugins as `{generated_at, tiles, refused}` (hub axis 3). HTTP failures raise the typed errors (401/403 `SmartMemoryPermissionError`, 503 `SmartMemoryServerError`).
 - CODE-INDEXER-HARDEN-1 U5: `code_context` and `code_dependencies` take optional `file_path` and `item_id` to choose one of several same-named entities. A name matching several entities now raises `SmartMemoryValidationError` (HTTP 409) whose `detail` JSON lists `detail.candidates`. `code_index` takes an optional `repo_identity`; the service refuses a repo name owned by a different checkout (HTTP 422). Responses carry `embeddings_generated`.
 - U5 post-review fix round: verify file_path and item_id independently through both code context and dependency methods, including an exact name shadowed by a longer dotted suffix. Existing SDK parameters already match the service contract.
 

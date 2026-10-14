@@ -5435,6 +5435,24 @@ class SmartMemoryClient:
             body["query"] = query
         return self._request("POST", "/memory/feedback", json_body=body)
 
+    def get_plugin_catalog(self) -> Dict[str, Any]:
+        """List the pipeline plugins registered in the service (hub axis 3).
+
+        ``GET /memory/plugins/catalog`` (PLAT-PLUGIN-MARKETPLACE-1). Read-only and global, not
+        per-workspace: it needs an authenticated caller but no team context.
+
+        Returns:
+            Dict with ``generated_at`` (ISO 8601), ``tiles`` (one per registered plugin, with
+            ``id``, ``name``, ``description``, ``status``, ``plugin_type``, ``author``, ``version``,
+            ``stages``, ``security_profile`` and the other contract fields) and ``refused``
+            (registered plugins the catalog could not represent, each with ``id`` and ``reason``).
+
+        Raises:
+            SmartMemoryPermissionError: not authenticated (401) or not allowed (403).
+            SmartMemoryServerError: the service could not read its plugin registry (503).
+        """
+        return self._request("GET", "/memory/plugins/catalog")
+
     def __repr__(self) -> str:
         auth_status = "authenticated" if self.api_key else "unauthenticated"
         return f"SmartMemoryClient(base_url='{self.base_url}', {auth_status})"
