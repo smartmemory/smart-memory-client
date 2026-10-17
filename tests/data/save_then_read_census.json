@@ -1,5 +1,6 @@
 {
  "blind_spots": {
+  "dynamic_dispatch": {},
   "non_python": [],
   "wait_users": {},
   "waits": []
@@ -107,7 +108,7 @@
    ]
   }
  ],
- "engine_sha": "5095ffe92c264b19",
+ "engine_sha": "26e1cd5c1b3af891",
  "ignore": [
   "tests/public_wait.py",
   "tests/test_public_wait.py",
@@ -333,6 +334,86 @@
    "file": "tests/test_origin_propagation.py",
    "function": "test_ingest_and_conversation_context",
    "line": 14,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "add",
+   "file": "tests/test_url_contracts.py",
+   "function": "test_public_api_method_urls",
+   "line": 242,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "code_index",
+   "file": "tests/test_url_contracts.py",
+   "function": "test_public_api_method_urls",
+   "line": 242,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "ingest",
+   "file": "tests/test_url_contracts.py",
+   "function": "test_public_api_method_urls",
+   "line": 242,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "ingest_conversation",
+   "file": "tests/test_url_contracts.py",
+   "function": "test_public_api_method_urls",
+   "line": 242,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "ingest_full",
+   "file": "tests/test_url_contracts.py",
+   "function": "test_public_api_method_urls",
+   "line": 242,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "code_index",
+   "file": "tests/test_url_contracts.py",
+   "function": "test_code_index_sends_exact_service_body",
+   "line": 270,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "code_index",
+   "file": "tests/test_url_contracts.py",
+   "function": "test_code_index_defaults_and_validates_before_request",
+   "line": 292,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "code_index",
+   "file": "tests/test_url_contracts.py",
+   "function": "test_code_index_defaults_and_validates_before_request",
+   "line": 303,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "code_index",
+   "file": "tests/test_url_contracts.py",
+   "function": "test_code_index_defaults_and_validates_before_request",
+   "line": 305,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "code_index",
+   "file": "tests/test_url_contracts.py",
+   "function": "test_code_index_sends_repo_identity_only_when_given",
+   "line": 446,
    "memory_like": true,
    "receiver": "client"
   }
@@ -1096,6 +1177,183 @@
    "via": [
     "direct"
    ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_url_contracts.py",
+   "function": "test_code_index_defaults_and_validates_before_request",
+   "key": "tests/test_url_contracts.py::test_code_index_defaults_and_validates_before_request",
+   "line": 290,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     292,
+     "code_index"
+    ],
+    [
+     303,
+     "code_index"
+    ],
+    [
+     305,
+     "code_index"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_url_contracts.py",
+   "function": "test_code_index_sends_exact_service_body",
+   "key": "tests/test_url_contracts.py::test_code_index_sends_exact_service_body",
+   "line": 249,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     270,
+     "code_index"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_url_contracts.py",
+   "function": "test_code_index_sends_repo_identity_only_when_given",
+   "key": "tests/test_url_contracts.py::test_code_index_sends_repo_identity_only_when_given",
+   "line": 444,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     446,
+     "code_index"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_url_contracts.py",
+   "function": "test_public_api_method_urls",
+   "key": "tests/test_url_contracts.py::test_public_api_method_urls",
+   "line": 232,
+   "reads": [
+    [
+     242,
+     "get"
+    ],
+    [
+     242,
+     "get_causal_chain"
+    ],
+    [
+     242,
+     "get_decision"
+    ],
+    [
+     242,
+     "get_lineage"
+    ],
+    [
+     242,
+     "get_links"
+    ],
+    [
+     242,
+     "get_neighbors"
+    ],
+    [
+     242,
+     "get_plan"
+    ],
+    [
+     242,
+     "get_provenance_chain"
+    ],
+    [
+     242,
+     "get_reasoning_trace"
+    ],
+    [
+     242,
+     "get_working_context"
+    ],
+    [
+     242,
+     "list_decisions"
+    ],
+    [
+     242,
+     "list_memories"
+    ],
+    [
+     242,
+     "list_pending_decisions"
+    ],
+    [
+     242,
+     "query_reasoning"
+    ],
+    [
+     242,
+     "search"
+    ],
+    [
+     242,
+     "search_advanced"
+    ],
+    [
+     242,
+     "search_by_metadata"
+    ]
+   ],
+   "reads_after_save": true,
+   "saves": [
+    [
+     242,
+     "add"
+    ],
+    [
+     242,
+     "code_index"
+    ],
+    [
+     242,
+     "ingest"
+    ],
+    [
+     242,
+     "ingest_conversation"
+    ],
+    [
+     242,
+     "ingest_full"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
   }
  ],
  "vocab": {
@@ -1109,9 +1367,99 @@
    "import_registry": "ontology registry admin (/memory/ontology/registry/<id>/import)",
    "store_reasoning_trace": "reasoning trace log, not a memory item (/memory/reasoning/traces/store)"
   },
+  "other_post_methods": [
+   "acquire_lease",
+   "allocate_sequence",
+   "apply_changeset",
+   "apply_governance_decision",
+   "approve_ontology_type",
+   "ask",
+   "assign_ontology_review",
+   "auto_fix_violations",
+   "cancel_subscription",
+   "challenge",
+   "cluster",
+   "compare_versions",
+   "complete_plan",
+   "contradict_decision",
+   "create_agent",
+   "create_api_key",
+   "create_checkout_session",
+   "create_decision",
+   "create_opinion",
+   "create_pending_decision",
+   "create_registry",
+   "create_team",
+   "create_workspace",
+   "declare_relation",
+   "declare_type",
+   "dedup_entities",
+   "detect_bias",
+   "edit_promote_ontology_type",
+   "enrich",
+   "extract_reasoning",
+   "fail_plan",
+   "feedback",
+   "get_decision_conflicts",
+   "get_working_context",
+   "ground",
+   "link",
+   "logout",
+   "logout_all",
+   "merge_ontology_review_type",
+   "migrate_ontology_type_instances",
+   "parse_wikilinks",
+   "personalize",
+   "promote_procedure_candidate",
+   "prune",
+   "query_reasoning",
+   "recall_pack",
+   "record_enforcement_event",
+   "refresh_token",
+   "reinforce_decision",
+   "reinforce_opinions",
+   "reject_ontology_type",
+   "renew_lease",
+   "resolve_aliases",
+   "resolve_conflict",
+   "resolve_drift_event",
+   "resolve_ontology_hitl",
+   "resolve_requirement",
+   "retire_ontology_type",
+   "retract_decision",
+   "rollback",
+   "rollback_registry",
+   "run_dream_phase",
+   "run_enrichment",
+   "run_enrichment_stage",
+   "run_extraction_stage",
+   "run_governance_analysis",
+   "run_grounding_ontology",
+   "run_grounding_stage",
+   "run_inference",
+   "run_linking_stage",
+   "run_storage_stage",
+   "search",
+   "search_advanced",
+   "share_workspace",
+   "submit_procedure_match_feedback",
+   "submit_result_feedback",
+   "summary_generate",
+   "supersede",
+   "supersede_decision",
+   "supersede_link",
+   "sweep_drift",
+   "synthesize_observations",
+   "synthesize_opinions",
+   "trigger_evolution",
+   "trigger_stripe_webhook",
+   "try_activate_decision",
+   "upgrade_subscription"
+  ],
   "read_tools": [],
   "save_methods": [
    "add",
+   "code_index",
    "import_chat_export",
    "import_okf",
    "ingest",

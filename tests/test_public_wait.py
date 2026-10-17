@@ -28,6 +28,7 @@ from tests.public_wait import (
     Observation,
     PublicWaitArgumentError,
     PublicWaitRefused,
+    PublicWaitStatusUnobservable,
     await_public,
     observe_get,
     observe_search,
@@ -478,30 +479,14 @@ def listing(*ids):
 
 
 NOT_FOUND, FOUND = reply(404, text="no such item"), reply(200, ITEM)
+UNOBSERVABLE = (
+    "{} returned a row but the SDK drops its read_status, so stored cannot be told from failed "
+    "(status_unobservable, owner C49-SDK-STATUS-1)"
+)
 CARRY = "this public seam carries no extraction or terminal status, so wait={!r} is unobservable (only 'stored' is); last read: "
 
 # id, replies, wait, deadline_s, outcome, attempts, calls, detail
 GET_ROWS = [
-    (
-        "readable on the first get",
-        [FOUND],
-        "stored",
-        1.0,
-        "reached",
-        1,
-        1,
-        "get('m-1') returned the item",
-    ),
-    (
-        "404 twice then readable",
-        [NOT_FOUND, NOT_FOUND, FOUND],
-        "stored",
-        1.0,
-        "reached",
-        3,
-        3,
-        "get('m-1') returned the item",
-    ),
     (
         "404 past the deadline is a visible timeout",
         [NOT_FOUND],
@@ -570,11 +555,32 @@ GET_REFUSAL_ROWS = [
         "get('m-1') failed (SmartMemoryClientError: Request failed: refused)",
     ),
     (
-        "extracted is unobservable even when the item is readable",
+        "a readable item is unobservable: the SDK dropped its status",
+        [FOUND],
+        "stored",
+        1,
+        UNOBSERVABLE.format("get('m-1')"),
+    ),
+    (
+        "404 twice then readable is refused at the readable read, not reported stored",
+        [NOT_FOUND, NOT_FOUND, FOUND],
+        "stored",
+        3,
+        UNOBSERVABLE.format("get('m-1')"),
+    ),
+    (
+        "extracted is refused for the same reason on a readable item",
         [FOUND],
         "extracted",
         1,
-        CARRY.format("extracted") + "get('m-1') returned the item",
+        UNOBSERVABLE.format("get('m-1')"),
+    ),
+    (
+        "extracted is unobservable on a 404",
+        [NOT_FOUND],
+        "extracted",
+        1,
+        CARRY.format("extracted") + "get('m-1') answered 404, not readable yet",
     ),
     (
         "terminal is unobservable on a 404 too",
@@ -597,26 +603,6 @@ def test_get_family_refusals_are_typed_logged_once_and_never_retried(row, caplog
 
 # id, replies, wait, deadline_s, outcome, attempts, calls, detail
 SEARCH_ROWS = [
-    (
-        "listed on the first search",
-        [listing("m-1")],
-        "stored",
-        1.0,
-        "reached",
-        1,
-        1,
-        "search('q') listed 'm-1'",
-    ),
-    (
-        "empty twice then listed",
-        [listing(), listing("m-0"), listing("m-0", "m-1")],
-        "stored",
-        1.0,
-        "reached",
-        3,
-        3,
-        "search('q') listed 'm-1'",
-    ),
     (
         "never listed past the deadline is a visible timeout",
         [listing("m-0")],
@@ -656,6 +642,32 @@ def test_search_family_outcomes(row, caplog):
     assert result.last.detail == detail and warnings(caplog) == []
 
 
+# id, replies, calls
+SEARCH_REFUSAL_ROWS = [
+    ("listed on the first search", [listing("m-1")], 1),
+    (
+        "empty twice then listed is refused at the listed read, not reported stored",
+        [listing(), listing("m-0"), listing("m-0", "m-1")],
+        3,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "row", SEARCH_REFUSAL_ROWS, ids=[r[0] for r in SEARCH_REFUSAL_ROWS]
+)
+def test_a_listed_row_is_unobservable_because_the_sdk_dropped_its_status(row, caplog):
+    _, replies, calls = row
+    client, transport = sdk(replies)
+    with (
+        patch("httpx.Client.request", new=transport),
+        pytest.raises(PublicWaitStatusUnobservable),
+    ):
+        drive(observe_search(client, "q", "m-1"), wait="stored", deadline_s=1.0)
+    assert transport.calls == calls
+    assert warnings(caplog) == [WARN_PREFIX + UNOBSERVABLE.format("search('q')")]
+
+
 def test_a_search_failure_is_refused_not_read_as_not_listed(caplog):
     client, transport = sdk([reply(500, text="boom"), listing("m-1")])
     with patch("httpx.Client.request", new=transport), pytest.raises(PublicWaitRefused):
@@ -671,6 +683,104 @@ def test_a_search_that_is_not_a_list_is_refused(caplog):
     with pytest.raises(PublicWaitRefused):
         drive(observe_search(stub, "q", "m-1"), wait="stored", deadline_s=1.0)
     assert warnings(caplog) == [WARN_PREFIX + "search('q') returned dict, not a list"]
+
+
+def _status(extraction, stage, execution, outcome):
+    return {
+        **ITEM,
+        "read_status": {
+            "extraction_state": extraction,
+            "processing_stage": stage,
+            "execution_state": execution,
+            "outcome": outcome,
+            "revision": 1,
+        },
+    }
+
+
+def _real(payload):
+    """A real ``httpx.Response(200)`` so the SDK's own parsing, not a mock, decides what survives."""
+    return httpx.Response(
+        200, json=payload, request=httpx.Request("GET", BASE_URL + "/memory/m-1")
+    )
+
+
+FAILED_ROW = _status("failed", "stored", "failed", "failed")
+QUEUED_ROW = _status("extraction_pending", "received", "queued", None)
+GAP = pytest.mark.xfail(
+    strict=True,
+    raises=PublicWaitRefused,
+    reason="C49-SDK-STATUS-1 (filed 2026-10-17, unscheduled): the SDK drops read_status from get and search rows",
+)
+# id, family, response row, wait, expected outcome. Each row is what the owning unit must make true: the SDK read
+# keeps the service's status, so a failed run is `failed` and a queued one is still pending, never `stored`.
+FAILED_THROUGH_SDK = [
+    pytest.param(
+        "get", FAILED_ROW, "stored", "failed", id="get: a failed run", marks=GAP
+    ),
+    pytest.param(
+        "search", FAILED_ROW, "stored", "failed", id="search: a failed run", marks=GAP
+    ),
+    pytest.param(
+        "get",
+        QUEUED_ROW,
+        "stored",
+        "client_timed_out",
+        id="get: a queued run is not stored",
+        marks=GAP,
+    ),
+    pytest.param(
+        "search",
+        QUEUED_ROW,
+        "stored",
+        "client_timed_out",
+        id="search: a queued run is not stored",
+        marks=GAP,
+    ),
+]
+
+
+@pytest.mark.parametrize(("family", "payload", "wait", "outcome"), FAILED_THROUGH_SDK)
+def test_the_sdk_read_keeps_the_run_status_the_service_sent(
+    family, payload, wait, outcome
+):
+    client = SmartMemoryClient(base_url=BASE_URL, api_key="test_token_abc123")
+    body = payload if family == "get" else {"results": [payload], "group_roots": []}
+    observe = (
+        observe_get(client, "m-1")
+        if family == "get"
+        else observe_search(client, "q", "m-1")
+    )
+    with patch("httpx.Client.request", new=Transport([_real(body)])):
+        result, _ = drive(observe, wait=wait, deadline_s=0)
+    assert result.outcome == outcome
+
+
+# id, family, expected refusal message
+REAL_FAILED_ROWS = [
+    ("get", "get", UNOBSERVABLE.format("get('m-1')")),
+    ("search", "search", UNOBSERVABLE.format("search('q')")),
+]
+
+
+@pytest.mark.parametrize("row", REAL_FAILED_ROWS, ids=[r[0] for r in REAL_FAILED_ROWS])
+def test_a_failed_row_through_the_real_sdk_is_never_reported_stored(row, caplog):
+    family, message = row[1], row[2]
+    client = SmartMemoryClient(base_url=BASE_URL, api_key="test_token_abc123")
+    body = (
+        FAILED_ROW if family == "get" else {"results": [FAILED_ROW], "group_roots": []}
+    )
+    observe = (
+        observe_get(client, "m-1")
+        if family == "get"
+        else observe_search(client, "q", "m-1")
+    )
+    with (
+        patch("httpx.Client.request", new=Transport([_real(body)])),
+        pytest.raises(PublicWaitStatusUnobservable),
+    ):
+        drive(observe, wait="stored", deadline_s=0)
+    assert warnings(caplog) == [WARN_PREFIX + message]
 
 
 def test_the_sdk_gap_is_pinned_and_fails_when_the_carrier_arrives():

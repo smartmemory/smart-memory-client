@@ -41,6 +41,12 @@ READ_NAME = re.compile(
     r"^(get|search|recall|list|query|explain|find|read|traverse|stats)(_\w+)?$"
 )
 WAIT_NAME = re.compile(r"\b(sleep|poll|wait_for|await_\w+|wait)\s*\(")
+# Direct store setup: a test that seeds the store without the public save seam still saves, so it is a unit.
+STORE_SETUP = {"add_node", "publish", "publish_bundle", "code_index"}
+# ``x.add.assert_called_once()``, ``x.add.return_value``: the attribute is configured or asserted, not used as a save.
+MOCK_ATTR = re.compile(
+    r"^(assert\w*|return_value|side_effect|called|call_args\w*|call_count|await_\w+|mock_calls|method_calls|reset_mock)$"
+)
 
 
 def _name(node):
@@ -100,22 +106,163 @@ def _memory_like(receiver):
     return bool(MEMORY_RECEIVER.search(receiver.split(".")[-1]))
 
 
-def call_sites(fn, vocab):
-    """Every save and read call in ``fn``: sorted (line, kind, name, receiver, memory_like)."""
-    out = set()
+def _parametrized(fn, tables):
+    """``{parameter: [(line, string)]}`` for the string cells of every ``parametrize`` table on ``fn`` (a literal table, or a
+    module-level name bound to one), so a ``getattr(client, method_name)`` dispatch is read as the methods the table names."""
+    out = {}
+    for d in fn.decorator_list:
+        if not (
+            isinstance(d, ast.Call)
+            and _name(d.func).split(".")[-1] == "parametrize"
+            and len(d.args) >= 2
+        ):
+            continue
+        names, rows = d.args[0], d.args[1]
+        if isinstance(names, ast.Constant) and isinstance(names.value, str):
+            argnames = [n.strip() for n in names.value.split(",")]
+        elif isinstance(names, (ast.Tuple, ast.List)):
+            argnames = [
+                e.value
+                for e in names.elts
+                if isinstance(e, ast.Constant) and isinstance(e.value, str)
+            ]
+        else:
+            continue
+        if isinstance(rows, ast.Name):
+            rows = tables.get(rows.id)
+        if not isinstance(rows, (ast.List, ast.Tuple)):
+            continue
+        for row in rows.elts:
+            if isinstance(row, ast.Call) and _name(row.func).split(".")[-1] == "param":
+                cells = row.args
+            elif isinstance(row, (ast.Tuple, ast.List)) and len(argnames) > 1:
+                cells = row.elts
+            else:
+                cells = [row]
+            for i, arg in enumerate(argnames):
+                if (
+                    i < len(cells)
+                    and isinstance(cells[i], ast.Constant)
+                    and isinstance(cells[i].value, str)
+                ):
+                    out.setdefault(arg, []).append((cells[i].lineno, cells[i].value))
+    return out
+
+
+def _dispatch(fn, tables):
+    """The ``getattr(receiver, name)`` dispatches of ``fn``: ``(resolved, unresolved)``. ``resolved`` is
+    ``(line, name, receiver)`` for a constant name or each string a parametrize table feeds into the name parameter
+    (the line is the ``getattr`` call that runs it, so the order of the table never changes the verdict);
+    ``unresolved`` is the line of a dispatch whose name no literal table names (reported, never ignored)."""
+    resolved, unresolved, table = [], [], _parametrized(fn, tables)
+    params = {a.arg for a in fn.args.args + fn.args.kwonlyargs}
     for node in _own_nodes(fn):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            attr, recv = node.func.attr, _name(node.func.value)
-            if attr in vocab["save_methods"]:
+        if not (
+            isinstance(node, ast.Call)
+            and _name(node.func) == "getattr"
+            and len(node.args) >= 2
+        ):
+            continue
+        recv, what = _name(node.args[0]), node.args[1]
+        if isinstance(what, ast.Constant) and isinstance(what.value, str):
+            resolved.append((node.lineno, what.value, recv))
+        elif isinstance(what, ast.Name) and what.id in params and what.id in table:
+            resolved += [(node.lineno, value, recv) for _, value in table[what.id]]
+        elif _memory_like(recv):
+            unresolved.append(node.lineno)
+    return resolved, unresolved
+
+
+def call_sites(fn, vocab, tables=None):
+    """Every save and read site in ``fn``: sorted (line, kind, name, receiver, memory_like).
+
+    Beyond ``recv.method(...)`` it recognizes an attribute used as a value (``run = client.add``), a ``getattr``
+    dispatch (a constant, or the strings of a parametrize table), a store-setup call (``STORE_SETUP``) and the
+    registered tool names as string constants.
+    """
+    out, tables = set(), tables or {}
+    configured = {
+        id(n.value)
+        for n in _own_nodes(fn)
+        if isinstance(n, ast.Attribute) and MOCK_ATTR.match(n.attr)
+    }
+    for node in _own_nodes(fn):
+        if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load):
+            attr, recv = node.attr, _name(node.value)
+            if attr in STORE_SETUP:
+                out.add((node.lineno, "save", attr, recv, True))
+            elif attr in vocab["save_methods"] and id(node) not in configured:
                 out.add((node.lineno, "save", attr, recv, _memory_like(recv)))
-            elif READ_NAME.match(attr):
-                out.add((node.lineno, "read", attr, recv, _memory_like(recv)))
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and READ_NAME.match(node.func.attr)
+        ):
+            recv = _name(node.func.value)
+            out.add((node.lineno, "read", node.func.attr, recv, _memory_like(recv)))
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
             if node.value in vocab["save_tools"]:
                 out.add((node.lineno, "save", node.value, "<tool-name>", True))
             elif node.value in vocab["read_tools"]:
                 out.add((node.lineno, "read", node.value, "<tool-name>", True))
+    for line, name, recv in _dispatch(fn, tables)[0]:
+        if name in STORE_SETUP:
+            out.add((line, "save", name, recv, True))
+        elif name in vocab["save_methods"]:
+            out.add((line, "save", name, recv, _memory_like(recv)))
+        elif READ_NAME.match(name):
+            out.add((line, "read", name, recv, _memory_like(recv)))
     return sorted(out)
+
+
+def _module_tables(tree):
+    """Module-level ``NAME = [...]`` / ``(...)`` literals, so a parametrize table held in a name can be read."""
+    return {
+        t.id: node.value
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, (ast.List, ast.Tuple))
+        for t in node.targets
+        if isinstance(t, ast.Name)
+    }
+
+
+def _imports(tree, stems):
+    """``(names, modules)`` this file imports from other test files: ``names`` maps a local name to
+    ``([files], original name)``, ``modules`` maps a local module alias to ``[files]``. ``stems`` is
+    ``{module stem: [repo-relative files]}``."""
+    names, modules = {}, {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            stem = (node.module or "").split(".")[-1]
+            for a in node.names:
+                if stem in stems:
+                    names[a.asname or a.name] = (stems[stem], a.name)
+                elif a.name in stems:
+                    modules[a.asname or a.name] = stems[a.name]
+        elif isinstance(node, ast.Import):
+            for a in node.names:
+                if a.name.split(".")[-1] in stems:
+                    modules[a.asname or a.name] = stems[a.name.split(".")[-1]]
+    return names, modules
+
+
+def _imported(imports, crel, rel, bare, cinfo, how):
+    """The line at which ``cinfo`` (in ``crel``) uses ``bare`` defined in ``rel``, when ``crel`` imports it from ``rel``
+    (``from m import bare [as x]``, or ``module.bare`` through an imported module alias); 0 when it does not."""
+    names, modules = imports.get(crel, ({}, {}))
+    if crel == rel:
+        return 0
+    for local, (files, orig) in names.items():
+        if rel in files and orig == bare:
+            if how == "params":
+                return cinfo["line"] if local in cinfo["params"] else 0
+            return cinfo["call_full"].get(local, 0)
+    if how == "calls":
+        for alias, files in modules.items():
+            if rel in files and f"{alias}.{bare}" in cinfo["call_full"]:
+                return cinfo["call_full"][f"{alias}.{bare}"]
+    return 0
 
 
 def _test_files(repo, tests_dir):
@@ -135,24 +282,32 @@ def scan(repo, vocab, *, tests_dir="tests", ignore=(), read_source=None):
     """
     repo = Path(repo)
     read_source = read_source or (lambda p: Path(p).read_text())
-    sites, funcs, parse_errors = [], {}, []
+    sites, funcs, parse_errors, dynamic, imports = [], {}, [], [], {}
+    trees, stems = {}, {}
     for path in _test_files(repo, tests_dir):
         rel = path.relative_to(repo).as_posix()
         if rel in ignore:
             continue
         try:
-            tree = ast.parse(read_source(path))
+            trees[rel] = ast.parse(read_source(path))
         except (SyntaxError, UnicodeDecodeError, OSError) as exc:
             parse_errors.append({"file": rel, "error": f"{type(exc).__name__}: {exc}"})
             continue
+        stems.setdefault(path.stem, []).append(rel)
+    for rel, tree in trees.items():
+        imports[rel] = _imports(tree, stems)
+        tables = _module_tables(tree)
         for qual, fn in _walk_functions(tree):
-            calls = call_sites(fn, vocab)
-            call_lines = {}
+            calls = call_sites(fn, vocab, tables)
+            dynamic += [f"{rel}:{line}" for line in _dispatch(fn, tables)[1]]
+            call_lines, call_full = {}, {}
             for n in _own_nodes(fn):
                 if isinstance(n, ast.Call):
-                    call_lines[_name(n.func).split(".")[-1]] = min(
-                        n.lineno, call_lines.get(_name(n.func).split(".")[-1], n.lineno)
+                    full = _name(n.func)
+                    call_lines[full.split(".")[-1]] = min(
+                        n.lineno, call_lines.get(full.split(".")[-1], n.lineno)
                     )
+                    call_full[full] = min(n.lineno, call_full.get(full, n.lineno))
             funcs[(rel, qual)] = {
                 "line": fn.lineno,
                 "bare": fn.name,
@@ -160,6 +315,7 @@ def scan(repo, vocab, *, tests_dir="tests", ignore=(), read_source=None):
                 "params": [a.arg for a in fn.args.args + fn.args.kwonlyargs],
                 "calls": calls,
                 "call_lines": call_lines,
+                "call_full": call_full,
             }
             for line, kind, name, recv, mem in calls:
                 if kind == "save":
@@ -214,14 +370,19 @@ def scan(repo, vocab, *, tests_dir="tests", ignore=(), read_source=None):
                 )
             elif info["fixture"]:
                 hit, point = (
-                    crel.rsplit("/", 1)[0] == rel.rsplit("/", 1)[0]
+                    (
+                        crel.rsplit("/", 1)[0] == rel.rsplit("/", 1)[0]
+                        or _imported(imports, crel, rel, info["bare"], cinfo, "params")
+                    )
                     and info["bare"] in cinfo["params"],
                     cinfo["line"],
                 )
             else:
+                imported = _imported(imports, crel, rel, info["bare"], cinfo, "calls")
                 hit, point = (
-                    crel == rel and info["bare"] in cinfo["call_lines"],
-                    cinfo["call_lines"].get(info["bare"], cinfo["line"]),
+                    (crel == rel and info["bare"] in cinfo["call_lines"])
+                    or bool(imported),
+                    imported or cinfo["call_lines"].get(info["bare"], cinfo["line"]),
                 )
             if hit:
                 kind = {"autouse": "autouse fixture", "fixture": "fixture"}.get(
@@ -240,6 +401,7 @@ def scan(repo, vocab, *, tests_dir="tests", ignore=(), read_source=None):
         "sites": sorted(sites, key=lambda s: (s["file"], s["line"], s["call"])),
         "rows": sorted(rows, key=lambda r: r["key"]),
         "parse_errors": parse_errors,
+        "dynamic": sorted(dynamic),
     }
 
 
@@ -311,7 +473,9 @@ IGNORE = (
     "tests/test_public_wait.py",
     "tests/test_save_then_read_census.py",
 )
-SAVE_PATH = re.compile(r"^/memory/(add|ingest(/.*)?|import(/.*)?|okf/import)$")
+SAVE_PATH = re.compile(
+    r"^/memory/(add|ingest(/.*)?|import(/.*)?|okf/import|code/index)$"
+)
 MAYBE_SAVE = re.compile(r"add|ingest|import|save|store|bulk|upload|document")
 # Methods that POST under a save-like name or path and are NOT a memory save, each with its reason.
 NOT_SAVE = {
@@ -325,6 +489,7 @@ NOT_SAVE = {
     "store_reasoning_trace": "reasoning trace log, not a memory item (/memory/reasoning/traces/store)",
 }
 NON_MEMORY = ["tests/conftest.py:142"]
+DYNAMIC = {}
 WAIT_USERS = {}
 OWNED_BY_U4_42 = None
 SDK_OWNER = "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)"
@@ -334,7 +499,7 @@ def derive_vocab(repo):
     """Save methods are the SmartMemoryClient methods that POST to a save path. A save-looking POST outside the
     path set must be named in NOT_SAVE with a reason, so a new save path cannot slip past the census."""
     tree = ast.parse((Path(repo) / "smartmemory_client" / "client.py").read_text())
-    methods, unnamed = set(), []
+    methods, unnamed, other_posts = set(), [], set()
     for cls in (
         n
         for n in ast.walk(tree)
@@ -360,6 +525,8 @@ def derive_vocab(repo):
                     methods.add(fn.name)
                 elif MAYBE_SAVE.search(fn.name + path) and fn.name not in NOT_SAVE:
                     unnamed.append(fn.name)
+                else:
+                    other_posts.add(fn.name)
     if unnamed:
         raise SystemExit(
             f"POST methods with a save-like name or path need a NOT_SAVE reason or a save path: {sorted(set(unnamed))}"
@@ -369,6 +536,8 @@ def derive_vocab(repo):
         "save_tools": [],
         "read_tools": [],
         "not_save": dict(sorted(NOT_SAVE.items())),
+        # every other POST method, listed so a path left out of SAVE_PATH is visible in the fixture, never silent
+        "other_post_methods": sorted(other_posts - methods - set(NOT_SAVE)),
     }
 
 
@@ -501,6 +670,10 @@ for _key in (
     "test_embed_control_and_supersede_link.py::TestEmbedControl.test_wire_field_name_matches_contract",
     "test_okf_portability.py::test_import_okf_uploads_archive_as_multipart_with_workspace_auth",
     "test_origin_propagation.py::test_ingest_and_conversation_context",
+    "test_url_contracts.py::test_code_index_defaults_and_validates_before_request",
+    "test_url_contracts.py::test_code_index_sends_exact_service_body",
+    "test_url_contracts.py::test_code_index_sends_repo_identity_only_when_given",
+    "test_url_contracts.py::test_public_api_method_urls",
 ):
     DISPOSITIONS["tests/" + _key] = D("mocked_seam", MOCK)
 
@@ -518,6 +691,7 @@ CLASSES = {
     "deferred_real_worker": "real core or worker save-then-read candidate, carried into the later-ring real-worker harness (graph: C-49.contract.mcp-suites)",
 }
 DEFERRED = ("deferred_ring3_sdk_harness", "deferred_real_worker")
+OWNER_ID = re.compile(r"^[A-Z0-9][A-Z0-9.\-]+")
 
 
 def engine_sha(script_text):
@@ -557,6 +731,7 @@ def build(repo, *, script_text=None):
             "waits": spots["waits"],
             "wait_users": WAIT_USERS,
             "non_python": spots["non_python"],
+            "dynamic_dispatch": {line: DYNAMIC.get(line) for line in found["dynamic"]},
         },
         "core_wait_imports": import_edges(
             repo, "smartmemory.testing.waits", ignore=IGNORE
@@ -602,6 +777,10 @@ def problems(doc, repo):
             if not d.get("where") or not d.get("owner"):
                 out.append(
                     f"{unit['key']}: a deferral names where (file:line) and its owner step"
+                )
+            elif not OWNER_ID.match(d["owner"]):
+                out.append(
+                    f"{unit['key']}: owner {d['owner']!r} is not a graph step id or a filed unit id (a description is not an owner)"
                 )
             prepared = d.get("prepared", "")
             try:
@@ -655,6 +834,13 @@ def problems(doc, repo):
         set(WAIT_USERS) - {w.rsplit(":", 1)[0] for w in doc["blind_spots"]["waits"]}
     ):
         out.append(f"WAIT_USERS names {user}, which no longer waits")
+    dynamic = set(doc["blind_spots"]["dynamic_dispatch"])
+    for line in sorted(dynamic - set(DYNAMIC)):
+        out.append(
+            f"{line}: a getattr dispatch on a memory-like receiver whose name no literal table names, name it in DYNAMIC with a reason"
+        )
+    for line in sorted(set(DYNAMIC) - dynamic):
+        out.append(f"DYNAMIC names {line}, which is not an unresolved dispatch now")
     if doc["parse_errors"]:
         out.append(
             f"{len(doc['parse_errors'])} test file(s) could not be parsed: {doc['parse_errors']}"

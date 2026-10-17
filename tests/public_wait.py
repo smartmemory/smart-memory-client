@@ -20,9 +20,14 @@ This mirrors the vocabulary of core's local wait helper (core's own testing pack
 outer-repo suites must not (core ``tests/contract/test_no_hidden_sync_pin.py``). No new SDK API is added: the
 adapters below read through ``SmartMemoryClient.get`` and ``search`` only.
 
-SDK gap, owned by C-01.activate.save.hosted-adapters (ring 3): ``MemoryItem`` carries no ``read_status``, so the SDK
-can observe the ``stored`` milestone only. ``wait="extracted"`` and ``wait="terminal"`` are refused by name, never
-polled to a timeout, until the SDK gains the carrier (``test_public_wait.py`` pins the gap and fails when it closes).
+SDK gap, owned by C49-SDK-STATUS-1 (filed 2026-10-17, unscheduled; no graph step names ``read_status`` on SDK get or
+search, and C-01.activate.save.hosted-adapters covers the save receipt, not the read): ``MemoryItem`` carries no
+``read_status``, so a row the SDK returns cannot be told ``stored`` from ``failed``. A readable row is therefore the
+typed ``PublicWaitStatusUnobservable`` refusal (one WARNING), never ``stored``. What stays observable: a 404 or an
+absent search row is "not readable yet" (``client_timed_out`` at the deadline), and a transport or HTTP error is a
+refusal. The unmet part of R18 and G11 (failed through get and search) is OWNED by C49-SDK-STATUS-1: the xfail rows
+in ``test_public_wait.py`` (``FAILED_THROUGH_SDK``) are its conformance expectations and turn green when the SDK
+carries the status (they are strict, so a green row without removing its marker fails the suite).
 """
 
 from __future__ import annotations
@@ -227,12 +232,27 @@ def await_public(
 # --- CORE END ---
 
 
+STATUS_OWNER = "C49-SDK-STATUS-1"
+
+
+class PublicWaitStatusUnobservable(PublicWaitRefused):
+    """The SDK dropped the run status from a readable row, so ``stored`` cannot be told from ``failed``."""
+
+
+def _unobservable(read: str) -> PublicWaitStatusUnobservable:
+    return refuse(
+        f"{read} returned a row but the SDK drops its read_status, so stored cannot be told from failed "
+        f"(status_unobservable, owner {STATUS_OWNER})",
+        PublicWaitStatusUnobservable,
+    )
+
+
 def observe_get(client, item_id: str) -> Callable[[], Observation]:
-    """Read ``item_id`` through ``SmartMemoryClient.get``. A readable item is the ``stored`` milestone.
+    """Read ``item_id`` through ``SmartMemoryClient.get``.
 
     A 404 (``SmartMemoryNotFoundError``) means not readable yet: queued, visible as ``client_timed_out`` at the
-    deadline. Any other SDK error (auth, 5xx, validation, transport) is a refusal, never read as absence. The SDK
-    carries no status, so every observation says so and only ``wait="stored"`` is answerable.
+    deadline. Any other SDK error (auth, 5xx, validation, transport) is a refusal, never read as absence. A readable
+    item is ``PublicWaitStatusUnobservable``: the SDK dropped its status, so it is never reported as ``stored``.
     """
     from smartmemory_client import SmartMemoryClientError, SmartMemoryNotFoundError
 
@@ -251,11 +271,7 @@ def observe_get(client, item_id: str) -> Callable[[], Observation]:
                 status_carried=False,
                 detail=f"get({shown(item_id)}) returned None, not readable yet",
             )
-        return Observation(
-            stage="stored",
-            status_carried=False,
-            detail=f"get({shown(item_id)}) returned the item",
-        )
+        raise _unobservable(f"get({shown(item_id)})")
 
     return observe
 
@@ -263,7 +279,8 @@ def observe_get(client, item_id: str) -> Callable[[], Observation]:
 def observe_search(
     client, query: str, item_id: str, **search_kwargs
 ) -> Callable[[], Observation]:
-    """Read through ``SmartMemoryClient.search``: the item appearing in the results is the ``stored`` milestone."""
+    """Read through ``SmartMemoryClient.search``. An item absent from the results is not readable yet. A listed item is
+    ``PublicWaitStatusUnobservable`` (the SDK dropped its status), never ``stored``."""
     from smartmemory_client import SmartMemoryClientError
 
     def observe() -> Observation:
@@ -276,11 +293,7 @@ def observe_search(
                 f"search({shown(query)}) returned {type(found).__name__}, not a list"
             )
         if any(getattr(row, "item_id", None) == item_id for row in found):
-            return Observation(
-                stage="stored",
-                status_carried=False,
-                detail=f"search({shown(query)}) listed {shown(item_id)}",
-            )
+            raise _unobservable(f"search({shown(query)})")
         return Observation(
             status_carried=False,
             detail=f"search({shown(query)}) did not list {shown(item_id)} ({len(found)} rows)",
