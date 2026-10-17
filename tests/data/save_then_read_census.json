@@ -1,0 +1,1123 @@
+{
+ "blind_spots": {
+  "non_python": [],
+  "wait_users": {},
+  "waits": []
+ },
+ "core_wait_imports": [],
+ "deferred": [
+  {
+   "class": "deferred_ring3_sdk_harness",
+   "key": "tests/integration/test_crud_golden.py::TestCRUDGoldenFlow.test_add_get_delete_flow",
+   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "prepared": "await_public(observe_get(client, item_id), wait=\"stored\", deadline_s=30.0)",
+   "where": [
+    "tests/integration/test_crud_golden.py:31",
+    "tests/integration/test_crud_golden.py:37"
+   ]
+  },
+  {
+   "class": "deferred_ring3_sdk_harness",
+   "key": "tests/integration/test_crud_golden.py::TestCRUDGoldenFlow.test_add_search_flow_with_pipeline",
+   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "prepared": "await_public(observe_search(client, unique_id, item_id, top_k=10), wait=\"stored\", deadline_s=30.0)",
+   "where": [
+    "tests/integration/test_crud_golden.py:66",
+    "tests/integration/test_crud_golden.py:70"
+   ]
+  },
+  {
+   "class": "deferred_ring3_sdk_harness",
+   "key": "tests/integration/test_crud_golden.py::TestCRUDGoldenFlow.test_add_with_metadata",
+   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "prepared": "await_public(observe_get(client, item_id), wait=\"stored\", deadline_s=30.0)",
+   "where": [
+    "tests/integration/test_crud_golden.py:90",
+    "tests/integration/test_crud_golden.py:96"
+   ]
+  },
+  {
+   "class": "deferred_ring3_sdk_harness",
+   "key": "tests/integration/test_crud_golden.py::TestCRUDGoldenFlow.test_search_with_filters",
+   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "prepared": "await_public(observe_search(client, unique_id, semantic_id, memory_type=\"semantic\"), wait=\"stored\", deadline_s=30.0)",
+   "where": [
+    "tests/integration/test_crud_golden.py:127",
+    "tests/integration/test_crud_golden.py:138"
+   ]
+  },
+  {
+   "class": "deferred_ring3_sdk_harness",
+   "key": "tests/integration/test_graph_operations.py::TestGraphOperationsFlow.test_link_and_get_neighbors",
+   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "prepared": "await_public(observe_get(client, self.target_id), wait=\"stored\", deadline_s=30.0)",
+   "where": [
+    "tests/integration/test_graph_operations.py:34",
+    "tests/integration/test_graph_operations.py:60"
+   ]
+  },
+  {
+   "class": "deferred_ring3_sdk_harness",
+   "key": "tests/integration/test_graph_operations.py::TestZettelkastenOperations.test_backlinks_and_forward_links",
+   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "prepared": "await_public(observe_get(client, self.note2_id), wait=\"stored\", deadline_s=30.0)",
+   "where": [
+    "tests/integration/test_graph_operations.py:139",
+    "tests/integration/test_graph_operations.py:161"
+   ]
+  },
+  {
+   "class": "deferred_ring3_sdk_harness",
+   "key": "tests/integration/test_graph_operations.py::TestZettelkastenOperations.test_get_connections",
+   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "prepared": "await_public(observe_get(client, self.note2_id), wait=\"stored\", deadline_s=30.0)",
+   "where": [
+    "tests/integration/test_graph_operations.py:139",
+    "tests/integration/test_graph_operations.py:175"
+   ]
+  },
+  {
+   "class": "deferred_ring3_sdk_harness",
+   "key": "tests/integration/test_local_service_fixture.py::test_owned_local_service_roundtrip",
+   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "prepared": "await_public(observe_get(client, item_id), wait=\"stored\", deadline_s=30.0)",
+   "where": [
+    "tests/integration/test_local_service_fixture.py:17",
+    "tests/integration/test_local_service_fixture.py:19"
+   ]
+  },
+  {
+   "class": "deferred_ring3_sdk_harness",
+   "key": "tests/integration/test_search_citations_roundtrip.py::TestSearchCitationRoundTrip.test_search_cite_false_leaves_last_citations_empty",
+   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "prepared": "await_public(observe_search(client, f\"sdk no-cite roundtrip {tag}\", item_id, top_k=5), wait=\"stored\", deadline_s=30.0)",
+   "where": [
+    "tests/integration/test_search_citations_roundtrip.py:53",
+    "tests/integration/test_search_citations_roundtrip.py:59"
+   ]
+  },
+  {
+   "class": "deferred_ring3_sdk_harness",
+   "key": "tests/integration/test_search_citations_roundtrip.py::TestSearchCitationRoundTrip.test_search_cite_true_populates_last_citations",
+   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "prepared": "await_public(observe_search(client, f\"sdk citation roundtrip {tag}\", item_id, top_k=10, cite=True), wait=\"stored\", deadline_s=30.0)",
+   "where": [
+    "tests/integration/test_search_citations_roundtrip.py:26",
+    "tests/integration/test_search_citations_roundtrip.py:32"
+   ]
+  }
+ ],
+ "engine_sha": "5095ffe92c264b19",
+ "ignore": [
+  "tests/public_wait.py",
+  "tests/test_public_wait.py",
+  "tests/test_save_then_read_census.py"
+ ],
+ "non_memory_sites": [
+  "tests/conftest.py:142"
+ ],
+ "owned_by_u4_42": null,
+ "parse_errors": [],
+ "repo": "smart-memory-client",
+ "sites": [
+  {
+   "call": "add",
+   "file": "tests/conftest.py",
+   "function": "test_user",
+   "line": 142,
+   "memory_like": false,
+   "receiver": "class_tenants"
+  },
+  {
+   "call": "add",
+   "file": "tests/integration/test_crud_golden.py",
+   "function": "TestCRUDGoldenFlow.test_add_get_delete_flow",
+   "line": 31,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "add",
+   "file": "tests/integration/test_crud_golden.py",
+   "function": "TestCRUDGoldenFlow.test_add_search_flow_with_pipeline",
+   "line": 66,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "add",
+   "file": "tests/integration/test_crud_golden.py",
+   "function": "TestCRUDGoldenFlow.test_add_with_metadata",
+   "line": 90,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "add",
+   "file": "tests/integration/test_crud_golden.py",
+   "function": "TestCRUDGoldenFlow.test_add_different_memory_types",
+   "line": 112,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "add",
+   "file": "tests/integration/test_crud_golden.py",
+   "function": "TestCRUDGoldenFlow.test_search_with_filters",
+   "line": 127,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "add",
+   "file": "tests/integration/test_crud_golden.py",
+   "function": "TestCRUDGoldenFlow.test_search_with_filters",
+   "line": 133,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "ingest",
+   "file": "tests/integration/test_crud_golden.py",
+   "function": "TestIngestFlow.test_ingest_content",
+   "line": 185,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "add",
+   "file": "tests/integration/test_graph_operations.py",
+   "function": "TestGraphOperationsFlow.setup_test_items",
+   "line": 31,
+   "memory_like": true,
+   "receiver": "self.client"
+  },
+  {
+   "call": "add",
+   "file": "tests/integration/test_graph_operations.py",
+   "function": "TestGraphOperationsFlow.setup_test_items",
+   "line": 34,
+   "memory_like": true,
+   "receiver": "self.client"
+  },
+  {
+   "call": "add",
+   "file": "tests/integration/test_graph_operations.py",
+   "function": "TestGraphOperationsFlow.test_link_with_different_types",
+   "line": 74,
+   "memory_like": true,
+   "receiver": "self.client"
+  },
+  {
+   "call": "add",
+   "file": "tests/integration/test_graph_operations.py",
+   "function": "TestZettelkastenOperations.setup_zettel_items",
+   "line": 136,
+   "memory_like": true,
+   "receiver": "self.client"
+  },
+  {
+   "call": "add",
+   "file": "tests/integration/test_graph_operations.py",
+   "function": "TestZettelkastenOperations.setup_zettel_items",
+   "line": 139,
+   "memory_like": true,
+   "receiver": "self.client"
+  },
+  {
+   "call": "add",
+   "file": "tests/integration/test_local_service_fixture.py",
+   "function": "test_owned_local_service_roundtrip",
+   "line": 17,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "add",
+   "file": "tests/integration/test_search_citations_roundtrip.py",
+   "function": "TestSearchCitationRoundTrip.test_search_cite_true_populates_last_citations",
+   "line": 26,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "add",
+   "file": "tests/integration/test_search_citations_roundtrip.py",
+   "function": "TestSearchCitationRoundTrip.test_search_cite_false_leaves_last_citations_empty",
+   "line": 53,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "import_chat_export",
+   "file": "tests/test_chat_export_import.py",
+   "function": "test_import_chat_export_posts_multipart_with_form_fields",
+   "line": 44,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "import_chat_export",
+   "file": "tests/test_chat_export_import.py",
+   "function": "test_zip_payload_is_sent_with_a_zip_content_type",
+   "line": 71,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "import_chat_export",
+   "file": "tests/test_chat_export_import.py",
+   "function": "test_defaults_are_auto_detection_and_a_25_conversation_cap",
+   "line": 83,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "import_chat_export",
+   "file": "tests/test_chat_export_import.py",
+   "function": "test_warnings_survive_to_the_caller",
+   "line": 110,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "add",
+   "file": "tests/test_client.py",
+   "function": "test_add_memory_requires_auth",
+   "line": 125,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "add",
+   "file": "tests/test_client_errors.py",
+   "function": "TestAddProfileNameSymmetry.test_add_with_profile_name_includes_it_in_body",
+   "line": 406,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "add",
+   "file": "tests/test_client_errors.py",
+   "function": "TestAddProfileNameSymmetry.test_add_without_profile_name_omits_it",
+   "line": 413,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "add",
+   "file": "tests/test_embed_control_and_supersede_link.py",
+   "function": "TestEmbedControl._add_body",
+   "line": 66,
+   "memory_like": true,
+   "receiver": "_client()"
+  },
+  {
+   "call": "import_okf",
+   "file": "tests/test_okf_portability.py",
+   "function": "test_import_okf_uploads_archive_as_multipart_with_workspace_auth",
+   "line": 55,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "ingest",
+   "file": "tests/test_origin_propagation.py",
+   "function": "test_ingest_and_conversation_context",
+   "line": 12,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "ingest_conversation",
+   "file": "tests/test_origin_propagation.py",
+   "function": "test_ingest_and_conversation_context",
+   "line": 14,
+   "memory_like": true,
+   "receiver": "client"
+  }
+ ],
+ "units": [
+  {
+   "disposition": {
+    "class": "save_only",
+    "why": "adds four items and only cleans up; nothing is read back"
+   },
+   "file": "tests/integration/test_crud_golden.py",
+   "function": "TestCRUDGoldenFlow.test_add_different_memory_types",
+   "key": "tests/integration/test_crud_golden.py::TestCRUDGoldenFlow.test_add_different_memory_types",
+   "line": 102,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     112,
+     "add"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "deferred_ring3_sdk_harness",
+    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "prepared": "await_public(observe_get(client, item_id), wait=\"stored\", deadline_s=30.0)",
+    "where": [
+     "tests/integration/test_crud_golden.py:31",
+     "tests/integration/test_crud_golden.py:37"
+    ],
+    "why": "add then an immediate get against the real service: reads an item whose visibility the service has not promised"
+   },
+   "file": "tests/integration/test_crud_golden.py",
+   "function": "TestCRUDGoldenFlow.test_add_get_delete_flow",
+   "key": "tests/integration/test_crud_golden.py::TestCRUDGoldenFlow.test_add_get_delete_flow",
+   "line": 21,
+   "reads": [
+    [
+     37,
+     "get"
+    ],
+    [
+     46,
+     "get"
+    ]
+   ],
+   "reads_after_save": true,
+   "saves": [
+    [
+     31,
+     "add"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "deferred_ring3_sdk_harness",
+    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "prepared": "await_public(observe_search(client, unique_id, item_id, top_k=10), wait=\"stored\", deadline_s=30.0)",
+    "where": [
+     "tests/integration/test_crud_golden.py:66",
+     "tests/integration/test_crud_golden.py:70"
+    ],
+    "why": "add(use_pipeline=True) then an immediate search that asserts only the result type, so a queued save is read as empty"
+   },
+   "file": "tests/integration/test_crud_golden.py",
+   "function": "TestCRUDGoldenFlow.test_add_search_flow_with_pipeline",
+   "key": "tests/integration/test_crud_golden.py::TestCRUDGoldenFlow.test_add_search_flow_with_pipeline",
+   "line": 50,
+   "reads": [
+    [
+     70,
+     "search"
+    ]
+   ],
+   "reads_after_save": true,
+   "saves": [
+    [
+     66,
+     "add"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "deferred_ring3_sdk_harness",
+    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "prepared": "await_public(observe_get(client, item_id), wait=\"stored\", deadline_s=30.0)",
+    "where": [
+     "tests/integration/test_crud_golden.py:90",
+     "tests/integration/test_crud_golden.py:96"
+    ],
+    "why": "add then an immediate get against the real service"
+   },
+   "file": "tests/integration/test_crud_golden.py",
+   "function": "TestCRUDGoldenFlow.test_add_with_metadata",
+   "key": "tests/integration/test_crud_golden.py::TestCRUDGoldenFlow.test_add_with_metadata",
+   "line": 78,
+   "reads": [
+    [
+     96,
+     "get"
+    ]
+   ],
+   "reads_after_save": true,
+   "saves": [
+    [
+     90,
+     "add"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "deferred_ring3_sdk_harness",
+    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "prepared": "await_public(observe_search(client, unique_id, semantic_id, memory_type=\"semantic\"), wait=\"stored\", deadline_s=30.0)",
+    "where": [
+     "tests/integration/test_crud_golden.py:127",
+     "tests/integration/test_crud_golden.py:138"
+    ],
+    "why": "two adds then an immediate filtered search that asserts at least one row"
+   },
+   "file": "tests/integration/test_crud_golden.py",
+   "function": "TestCRUDGoldenFlow.test_search_with_filters",
+   "key": "tests/integration/test_crud_golden.py::TestCRUDGoldenFlow.test_search_with_filters",
+   "line": 120,
+   "reads": [
+    [
+     138,
+     "search"
+    ]
+   ],
+   "reads_after_save": true,
+   "saves": [
+    [
+     127,
+     "add"
+    ],
+    [
+     133,
+     "add"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "save_only",
+    "why": "ingest returns a dict whose item_id or queued key is asserted; nothing is read back through a seam"
+   },
+   "file": "tests/integration/test_crud_golden.py",
+   "function": "TestIngestFlow.test_ingest_content",
+   "key": "tests/integration/test_crud_golden.py::TestIngestFlow.test_ingest_content",
+   "line": 173,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     185,
+     "ingest"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "save_only",
+    "why": "autouse fixture that adds two items; its readers are the consumer rows below"
+   },
+   "file": "tests/integration/test_graph_operations.py",
+   "function": "TestGraphOperationsFlow.setup_test_items",
+   "key": "tests/integration/test_graph_operations.py::TestGraphOperationsFlow.setup_test_items",
+   "line": 22,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     31,
+     "add"
+    ],
+    [
+     34,
+     "add"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "deferred_ring3_sdk_harness",
+    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "prepared": "await_public(observe_get(client, self.target_id), wait=\"stored\", deadline_s=30.0)",
+    "where": [
+     "tests/integration/test_graph_operations.py:34",
+     "tests/integration/test_graph_operations.py:60"
+    ],
+    "why": "fixture saves two items, then link and get_neighbors read the graph with no wait for the saves"
+   },
+   "file": "tests/integration/test_graph_operations.py",
+   "function": "TestGraphOperationsFlow.test_link_and_get_neighbors",
+   "key": "tests/integration/test_graph_operations.py::TestGraphOperationsFlow.test_link_and_get_neighbors",
+   "line": 50,
+   "reads": [
+    [
+     60,
+     "get_neighbors"
+    ]
+   ],
+   "reads_after_save": true,
+   "saves": [],
+   "via": [
+    "autouse fixture tests/integration/test_graph_operations.py::TestGraphOperationsFlow.setup_test_items"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "save_only",
+    "why": "uses the saving fixture and links a missing source; nothing is read back"
+   },
+   "file": "tests/integration/test_graph_operations.py",
+   "function": "TestGraphOperationsFlow.test_link_nonexistent_source",
+   "key": "tests/integration/test_graph_operations.py::TestGraphOperationsFlow.test_link_nonexistent_source",
+   "line": 86,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [],
+   "via": [
+    "autouse fixture tests/integration/test_graph_operations.py::TestGraphOperationsFlow.setup_test_items"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "save_only",
+    "why": "uses the saving fixture and links a missing target; nothing is read back"
+   },
+   "file": "tests/integration/test_graph_operations.py",
+   "function": "TestGraphOperationsFlow.test_link_nonexistent_target",
+   "key": "tests/integration/test_graph_operations.py::TestGraphOperationsFlow.test_link_nonexistent_target",
+   "line": 103,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [],
+   "via": [
+    "autouse fixture tests/integration/test_graph_operations.py::TestGraphOperationsFlow.setup_test_items"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "save_only",
+    "why": "adds targets and links them; the link result is asserted, no read follows"
+   },
+   "file": "tests/integration/test_graph_operations.py",
+   "function": "TestGraphOperationsFlow.test_link_with_different_types",
+   "key": "tests/integration/test_graph_operations.py::TestGraphOperationsFlow.test_link_with_different_types",
+   "line": 67,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     74,
+     "add"
+    ]
+   ],
+   "via": [
+    "autouse fixture tests/integration/test_graph_operations.py::TestGraphOperationsFlow.setup_test_items",
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "save_only",
+    "why": "autouse fixture that adds two zettels; its readers are the consumer rows below"
+   },
+   "file": "tests/integration/test_graph_operations.py",
+   "function": "TestZettelkastenOperations.setup_zettel_items",
+   "key": "tests/integration/test_graph_operations.py::TestZettelkastenOperations.setup_zettel_items",
+   "line": 127,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     136,
+     "add"
+    ],
+    [
+     139,
+     "add"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "deferred_ring3_sdk_harness",
+    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "prepared": "await_public(observe_get(client, self.note2_id), wait=\"stored\", deadline_s=30.0)",
+    "where": [
+     "tests/integration/test_graph_operations.py:139",
+     "tests/integration/test_graph_operations.py:161"
+    ],
+    "why": "fixture saves two zettels, then forward links and backlinks are read with no wait for the saves"
+   },
+   "file": "tests/integration/test_graph_operations.py",
+   "function": "TestZettelkastenOperations.test_backlinks_and_forward_links",
+   "key": "tests/integration/test_graph_operations.py::TestZettelkastenOperations.test_backlinks_and_forward_links",
+   "line": 155,
+   "reads": [
+    [
+     161,
+     "get_forward_links"
+    ],
+    [
+     165,
+     "get_backlinks"
+    ]
+   ],
+   "reads_after_save": true,
+   "saves": [],
+   "via": [
+    "autouse fixture tests/integration/test_graph_operations.py::TestZettelkastenOperations.setup_zettel_items"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "deferred_ring3_sdk_harness",
+    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "prepared": "await_public(observe_get(client, self.note2_id), wait=\"stored\", deadline_s=30.0)",
+    "where": [
+     "tests/integration/test_graph_operations.py:139",
+     "tests/integration/test_graph_operations.py:175"
+    ],
+    "why": "fixture saves two zettels, then get_connections is read with no wait for the saves"
+   },
+   "file": "tests/integration/test_graph_operations.py",
+   "function": "TestZettelkastenOperations.test_get_connections",
+   "key": "tests/integration/test_graph_operations.py::TestZettelkastenOperations.test_get_connections",
+   "line": 168,
+   "reads": [
+    [
+     175,
+     "get_connections"
+    ]
+   ],
+   "reads_after_save": true,
+   "saves": [],
+   "via": [
+    "autouse fixture tests/integration/test_graph_operations.py::TestZettelkastenOperations.setup_zettel_items"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "deferred_ring3_sdk_harness",
+    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "prepared": "await_public(observe_get(client, item_id), wait=\"stored\", deadline_s=30.0)",
+    "where": [
+     "tests/integration/test_local_service_fixture.py:17",
+     "tests/integration/test_local_service_fixture.py:19"
+    ],
+    "why": "add(use_pipeline=False, embed=False) then an immediate get and a direct service read"
+   },
+   "file": "tests/integration/test_local_service_fixture.py",
+   "function": "test_owned_local_service_roundtrip",
+   "key": "tests/integration/test_local_service_fixture.py::test_owned_local_service_roundtrip",
+   "line": 5,
+   "reads": [
+    [
+     11,
+     "find_one"
+    ],
+    [
+     19,
+     "get"
+    ],
+    [
+     28,
+     "get"
+    ]
+   ],
+   "reads_after_save": true,
+   "saves": [
+    [
+     17,
+     "add"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "deferred_ring3_sdk_harness",
+    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "prepared": "await_public(observe_search(client, f\"sdk no-cite roundtrip {tag}\", item_id, top_k=5), wait=\"stored\", deadline_s=30.0)",
+    "where": [
+     "tests/integration/test_search_citations_roundtrip.py:53",
+     "tests/integration/test_search_citations_roundtrip.py:59"
+    ],
+    "why": "add then an immediate search whose empty-citations assertion would pass on an empty result"
+   },
+   "file": "tests/integration/test_search_citations_roundtrip.py",
+   "function": "TestSearchCitationRoundTrip.test_search_cite_false_leaves_last_citations_empty",
+   "key": "tests/integration/test_search_citations_roundtrip.py::TestSearchCitationRoundTrip.test_search_cite_false_leaves_last_citations_empty",
+   "line": 50,
+   "reads": [
+    [
+     59,
+     "search"
+    ]
+   ],
+   "reads_after_save": true,
+   "saves": [
+    [
+     53,
+     "add"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "deferred_ring3_sdk_harness",
+    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "prepared": "await_public(observe_search(client, f\"sdk citation roundtrip {tag}\", item_id, top_k=10, cite=True), wait=\"stored\", deadline_s=30.0)",
+    "where": [
+     "tests/integration/test_search_citations_roundtrip.py:26",
+     "tests/integration/test_search_citations_roundtrip.py:32"
+    ],
+    "why": "six adds then an immediate cite=True search that asserts at least one row"
+   },
+   "file": "tests/integration/test_search_citations_roundtrip.py",
+   "function": "TestSearchCitationRoundTrip.test_search_cite_true_populates_last_citations",
+   "key": "tests/integration/test_search_citations_roundtrip.py::TestSearchCitationRoundTrip.test_search_cite_true_populates_last_citations",
+   "line": 21,
+   "reads": [
+    [
+     32,
+     "search"
+    ]
+   ],
+   "reads_after_save": true,
+   "saves": [
+    [
+     26,
+     "add"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_chat_export_import.py",
+   "function": "test_defaults_are_auto_detection_and_a_25_conversation_cap",
+   "key": "tests/test_chat_export_import.py::test_defaults_are_auto_detection_and_a_25_conversation_cap",
+   "line": 78,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     83,
+     "import_chat_export"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_chat_export_import.py",
+   "function": "test_import_chat_export_posts_multipart_with_form_fields",
+   "key": "tests/test_chat_export_import.py::test_import_chat_export_posts_multipart_with_form_fields",
+   "line": 30,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     44,
+     "import_chat_export"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_chat_export_import.py",
+   "function": "test_warnings_survive_to_the_caller",
+   "key": "tests/test_chat_export_import.py::test_warnings_survive_to_the_caller",
+   "line": 93,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     110,
+     "import_chat_export"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_chat_export_import.py",
+   "function": "test_zip_payload_is_sent_with_a_zip_content_type",
+   "key": "tests/test_chat_export_import.py::test_zip_payload_is_sent_with_a_zip_content_type",
+   "line": 65,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     71,
+     "import_chat_export"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_client.py",
+   "function": "test_add_memory_requires_auth",
+   "key": "tests/test_client.py::test_add_memory_requires_auth",
+   "line": 121,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     125,
+     "add"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_client_errors.py",
+   "function": "TestAddProfileNameSymmetry.test_add_with_profile_name_includes_it_in_body",
+   "key": "tests/test_client_errors.py::TestAddProfileNameSymmetry.test_add_with_profile_name_includes_it_in_body",
+   "line": 404,
+   "reads": [
+    [
+     408,
+     "get"
+    ]
+   ],
+   "reads_after_save": true,
+   "saves": [
+    [
+     406,
+     "add"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_client_errors.py",
+   "function": "TestAddProfileNameSymmetry.test_add_without_profile_name_omits_it",
+   "key": "tests/test_client_errors.py::TestAddProfileNameSymmetry.test_add_without_profile_name_omits_it",
+   "line": 411,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     413,
+     "add"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_embed_control_and_supersede_link.py",
+   "function": "TestEmbedControl._add_body",
+   "key": "tests/test_embed_control_and_supersede_link.py::TestEmbedControl._add_body",
+   "line": 58,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     66,
+     "add"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_embed_control_and_supersede_link.py",
+   "function": "TestEmbedControl.test_embed_false_forwarded",
+   "key": "tests/test_embed_control_and_supersede_link.py::TestEmbedControl.test_embed_false_forwarded",
+   "line": 73,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [],
+   "via": [
+    "helper tests/test_embed_control_and_supersede_link.py::TestEmbedControl._add_body"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_embed_control_and_supersede_link.py",
+   "function": "TestEmbedControl.test_embed_true_forwarded",
+   "key": "tests/test_embed_control_and_supersede_link.py::TestEmbedControl.test_embed_true_forwarded",
+   "line": 76,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [],
+   "via": [
+    "helper tests/test_embed_control_and_supersede_link.py::TestEmbedControl._add_body"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_embed_control_and_supersede_link.py",
+   "function": "TestEmbedControl.test_omitted_embed_is_absent_from_the_wire",
+   "key": "tests/test_embed_control_and_supersede_link.py::TestEmbedControl.test_omitted_embed_is_absent_from_the_wire",
+   "line": 69,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [],
+   "via": [
+    "helper tests/test_embed_control_and_supersede_link.py::TestEmbedControl._add_body"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_embed_control_and_supersede_link.py",
+   "function": "TestEmbedControl.test_wire_field_name_matches_contract",
+   "key": "tests/test_embed_control_and_supersede_link.py::TestEmbedControl.test_wire_field_name_matches_contract",
+   "line": 79,
+   "reads": [
+    [
+     80,
+     "read_text"
+    ]
+   ],
+   "reads_after_save": false,
+   "saves": [],
+   "via": [
+    "helper tests/test_embed_control_and_supersede_link.py::TestEmbedControl._add_body"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_okf_portability.py",
+   "function": "test_import_okf_uploads_archive_as_multipart_with_workspace_auth",
+   "key": "tests/test_okf_portability.py::test_import_okf_uploads_archive_as_multipart_with_workspace_auth",
+   "line": 49,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     55,
+     "import_okf"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_origin_propagation.py",
+   "function": "test_ingest_and_conversation_context",
+   "key": "tests/test_origin_propagation.py::test_ingest_and_conversation_context",
+   "line": 8,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     12,
+     "ingest"
+    ],
+    [
+     14,
+     "ingest_conversation"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  }
+ ],
+ "vocab": {
+  "not_save": {
+   "add_edge": "links two existing items, saves no content (/memory/edge)",
+   "add_team_member": "membership admin, no memory content (/memory/teams/<id>/members)",
+   "archive_put": "stores an archive blob keyed by the caller, outside the pipeline (/memory/archive/store)",
+   "bulk_graph_upsert": "graph upsert of nodes and edges, no pipeline or extraction (/memory/graph/bulk)",
+   "bulk_ontology_review_action": "ontology review queue admin (/memory/ontology/queue/bulk)",
+   "get_edges_bulk": "a read posted as a body (/memory/graph/edges)",
+   "import_registry": "ontology registry admin (/memory/ontology/registry/<id>/import)",
+   "store_reasoning_trace": "reasoning trace log, not a memory item (/memory/reasoning/traces/store)"
+  },
+  "read_tools": [],
+  "save_methods": [
+   "add",
+   "import_chat_export",
+   "import_okf",
+   "ingest",
+   "ingest_conversation",
+   "ingest_full"
+  ],
+  "save_tools": []
+ }
+}
