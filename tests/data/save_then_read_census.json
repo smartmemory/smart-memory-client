@@ -10,7 +10,7 @@
   {
    "class": "deferred_ring3_sdk_harness",
    "key": "tests/integration/test_crud_golden.py::TestCRUDGoldenFlow.test_add_get_delete_flow",
-   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "owner": "C-01.activate.save.hosted-adapters",
    "prepared": "await_public(observe_get(client, item_id), wait=\"stored\", deadline_s=30.0)",
    "where": [
     "tests/integration/test_crud_golden.py:31",
@@ -20,7 +20,7 @@
   {
    "class": "deferred_ring3_sdk_harness",
    "key": "tests/integration/test_crud_golden.py::TestCRUDGoldenFlow.test_add_search_flow_with_pipeline",
-   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "owner": "C-01.activate.save.hosted-adapters",
    "prepared": "await_public(observe_search(client, unique_id, item_id, top_k=10), wait=\"stored\", deadline_s=30.0)",
    "where": [
     "tests/integration/test_crud_golden.py:66",
@@ -30,7 +30,7 @@
   {
    "class": "deferred_ring3_sdk_harness",
    "key": "tests/integration/test_crud_golden.py::TestCRUDGoldenFlow.test_add_with_metadata",
-   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "owner": "C-01.activate.save.hosted-adapters",
    "prepared": "await_public(observe_get(client, item_id), wait=\"stored\", deadline_s=30.0)",
    "where": [
     "tests/integration/test_crud_golden.py:90",
@@ -40,7 +40,7 @@
   {
    "class": "deferred_ring3_sdk_harness",
    "key": "tests/integration/test_crud_golden.py::TestCRUDGoldenFlow.test_search_with_filters",
-   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "owner": "C-01.activate.save.hosted-adapters",
    "prepared": "await_public(observe_search(client, unique_id, semantic_id, memory_type=\"semantic\"), wait=\"stored\", deadline_s=30.0)",
    "where": [
     "tests/integration/test_crud_golden.py:127",
@@ -50,7 +50,7 @@
   {
    "class": "deferred_ring3_sdk_harness",
    "key": "tests/integration/test_graph_operations.py::TestGraphOperationsFlow.test_link_and_get_neighbors",
-   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "owner": "C-01.activate.save.hosted-adapters",
    "prepared": "await_public(observe_get(client, self.target_id), wait=\"stored\", deadline_s=30.0)",
    "where": [
     "tests/integration/test_graph_operations.py:34",
@@ -60,7 +60,7 @@
   {
    "class": "deferred_ring3_sdk_harness",
    "key": "tests/integration/test_graph_operations.py::TestZettelkastenOperations.test_backlinks_and_forward_links",
-   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "owner": "C-01.activate.save.hosted-adapters",
    "prepared": "await_public(observe_get(client, self.note2_id), wait=\"stored\", deadline_s=30.0)",
    "where": [
     "tests/integration/test_graph_operations.py:139",
@@ -70,7 +70,7 @@
   {
    "class": "deferred_ring3_sdk_harness",
    "key": "tests/integration/test_graph_operations.py::TestZettelkastenOperations.test_get_connections",
-   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "owner": "C-01.activate.save.hosted-adapters",
    "prepared": "await_public(observe_get(client, self.note2_id), wait=\"stored\", deadline_s=30.0)",
    "where": [
     "tests/integration/test_graph_operations.py:139",
@@ -80,7 +80,7 @@
   {
    "class": "deferred_ring3_sdk_harness",
    "key": "tests/integration/test_local_service_fixture.py::test_owned_local_service_roundtrip",
-   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "owner": "C-01.activate.save.hosted-adapters",
    "prepared": "await_public(observe_get(client, item_id), wait=\"stored\", deadline_s=30.0)",
    "where": [
     "tests/integration/test_local_service_fixture.py:17",
@@ -90,7 +90,7 @@
   {
    "class": "deferred_ring3_sdk_harness",
    "key": "tests/integration/test_search_citations_roundtrip.py::TestSearchCitationRoundTrip.test_search_cite_false_leaves_last_citations_empty",
-   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "owner": "C-01.activate.save.hosted-adapters",
    "prepared": "await_public(observe_search(client, f\"sdk no-cite roundtrip {tag}\", item_id, top_k=5), wait=\"stored\", deadline_s=30.0)",
    "where": [
     "tests/integration/test_search_citations_roundtrip.py:53",
@@ -100,7 +100,7 @@
   {
    "class": "deferred_ring3_sdk_harness",
    "key": "tests/integration/test_search_citations_roundtrip.py::TestSearchCitationRoundTrip.test_search_cite_true_populates_last_citations",
-   "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+   "owner": "C-01.activate.save.hosted-adapters",
    "prepared": "await_public(observe_search(client, f\"sdk citation roundtrip {tag}\", item_id, top_k=10, cite=True), wait=\"stored\", deadline_s=30.0)",
    "where": [
     "tests/integration/test_search_citations_roundtrip.py:26",
@@ -443,7 +443,7 @@
   {
    "disposition": {
     "class": "deferred_ring3_sdk_harness",
-    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "owner": "C-01.activate.save.hosted-adapters",
     "prepared": "await_public(observe_get(client, item_id), wait=\"stored\", deadline_s=30.0)",
     "where": [
      "tests/integration/test_crud_golden.py:31",
@@ -479,7 +479,7 @@
   {
    "disposition": {
     "class": "deferred_ring3_sdk_harness",
-    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "owner": "C-01.activate.save.hosted-adapters",
     "prepared": "await_public(observe_search(client, unique_id, item_id, top_k=10), wait=\"stored\", deadline_s=30.0)",
     "where": [
      "tests/integration/test_crud_golden.py:66",
@@ -511,7 +511,7 @@
   {
    "disposition": {
     "class": "deferred_ring3_sdk_harness",
-    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "owner": "C-01.activate.save.hosted-adapters",
     "prepared": "await_public(observe_get(client, item_id), wait=\"stored\", deadline_s=30.0)",
     "where": [
      "tests/integration/test_crud_golden.py:90",
@@ -543,7 +543,7 @@
   {
    "disposition": {
     "class": "deferred_ring3_sdk_harness",
-    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "owner": "C-01.activate.save.hosted-adapters",
     "prepared": "await_public(observe_search(client, unique_id, semantic_id, memory_type=\"semantic\"), wait=\"stored\", deadline_s=30.0)",
     "where": [
      "tests/integration/test_crud_golden.py:127",
@@ -625,7 +625,7 @@
   {
    "disposition": {
     "class": "deferred_ring3_sdk_harness",
-    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "owner": "C-01.activate.save.hosted-adapters",
     "prepared": "await_public(observe_get(client, self.target_id), wait=\"stored\", deadline_s=30.0)",
     "where": [
      "tests/integration/test_graph_operations.py:34",
@@ -731,7 +731,7 @@
   {
    "disposition": {
     "class": "deferred_ring3_sdk_harness",
-    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "owner": "C-01.activate.save.hosted-adapters",
     "prepared": "await_public(observe_get(client, self.note2_id), wait=\"stored\", deadline_s=30.0)",
     "where": [
      "tests/integration/test_graph_operations.py:139",
@@ -762,7 +762,7 @@
   {
    "disposition": {
     "class": "deferred_ring3_sdk_harness",
-    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "owner": "C-01.activate.save.hosted-adapters",
     "prepared": "await_public(observe_get(client, self.note2_id), wait=\"stored\", deadline_s=30.0)",
     "where": [
      "tests/integration/test_graph_operations.py:139",
@@ -789,7 +789,7 @@
   {
    "disposition": {
     "class": "deferred_ring3_sdk_harness",
-    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "owner": "C-01.activate.save.hosted-adapters",
     "prepared": "await_public(observe_get(client, item_id), wait=\"stored\", deadline_s=30.0)",
     "where": [
      "tests/integration/test_local_service_fixture.py:17",
@@ -829,7 +829,7 @@
   {
    "disposition": {
     "class": "deferred_ring3_sdk_harness",
-    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "owner": "C-01.activate.save.hosted-adapters",
     "prepared": "await_public(observe_search(client, f\"sdk no-cite roundtrip {tag}\", item_id, top_k=5), wait=\"stored\", deadline_s=30.0)",
     "where": [
      "tests/integration/test_search_citations_roundtrip.py:53",
@@ -861,7 +861,7 @@
   {
    "disposition": {
     "class": "deferred_ring3_sdk_harness",
-    "owner": "C-01.activate.save.hosted-adapters (client receipt/status SDK, ring 3) via the real-SDK harness suite (graph C-49.contract.sdk-suites)",
+    "owner": "C-01.activate.save.hosted-adapters",
     "prepared": "await_public(observe_search(client, f\"sdk citation roundtrip {tag}\", item_id, top_k=10, cite=True), wait=\"stored\", deadline_s=30.0)",
     "where": [
      "tests/integration/test_search_citations_roundtrip.py:26",
