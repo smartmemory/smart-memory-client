@@ -3346,6 +3346,20 @@ class SmartMemoryClient:
         """Revoke a Team's grant from a Workspace."""
         self._request("DELETE", f"/memory/workspaces/{workspace_id}/share/{team_id}")
 
+    def get_workspace_access(self, workspace_id: str) -> Dict[str, Any]:
+        """Read a Workspace's Team grants and direct user grants.
+
+        ``GET /memory/workspaces/{workspace_id}/access`` (SVC-WORKSPACE-ACCESS-1).
+        Returns ``{workspace_id, teams: [{team_id, name, permission,
+        team_exists}], users: [{user_id, permission}]}``. A grant whose Team
+        was deleted is listed with ``team_exists`` False and ``name`` None.
+        Readable by whoever may share or revoke on that Workspace (a tenant
+        admin or a Workspace admin). Raises ``SmartMemoryPermissionError`` (403)
+        for anyone else in the tenant and ``SmartMemoryNotFoundError`` (404)
+        for another tenant's or an unknown Workspace id.
+        """
+        return self._request("GET", f"/memory/workspaces/{workspace_id}/access")
+
     # ============================================================================
     # Teams
     # ============================================================================
