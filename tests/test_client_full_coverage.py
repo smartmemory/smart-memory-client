@@ -400,6 +400,9 @@ class TestClientFullCoverage:
             "DELETE", "/subscription/billing-managers/user%2Fwith%20space"
         )
 
+        client.list_billing_managers()
+        mock_request.assert_called_with("GET", "/subscription/billing-managers")
+
     # ============================================================================
     # Teams
     # ============================================================================

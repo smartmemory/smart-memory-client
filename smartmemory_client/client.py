@@ -3264,13 +3264,16 @@ class SmartMemoryClient:
         """Get current subscription details.
 
         The result includes ``can_manage_billing`` (bool): whether the caller may change the plan.
+        It is false for every caller of an internal comp tenant, whose billing a superadmin manages.
         """
         return self._request("GET", "/subscription/current")
 
     def grant_billing_manager(self, user_id: str) -> Dict[str, Any]:
         """Let a member of your organization manage billing (organization admins only).
 
-        Returns ``{"user_id": ..., "can_manage_billing": True}``. Idempotent. Grants no workspace access.
+        Returns ``{"user_id": ..., "listed": True}``: ``listed`` is the explicit list entry, not the
+        effective permission (an admin can manage billing either way, see ``get_subscription``).
+        Idempotent. Grants no workspace access.
         """
         return self._request(
             "PUT", f"/subscription/billing-managers/{quote(user_id, safe='')}"
@@ -3279,11 +3282,19 @@ class SmartMemoryClient:
     def revoke_billing_manager(self, user_id: str) -> Dict[str, Any]:
         """Take billing management back from a member (organization admins only).
 
-        Returns ``{"user_id": ..., "can_manage_billing": False}``. Idempotent.
+        Returns ``{"user_id": ..., "listed": False}``. Idempotent.
         """
         return self._request(
             "DELETE", f"/subscription/billing-managers/{quote(user_id, safe='')}"
         )
+
+    def list_billing_managers(self) -> Dict[str, Any]:
+        """List the members an organization admin let manage billing.
+
+        Returns ``{"user_ids": [...]}``, current members of your organization only. Any signed-in
+        member may read it. Raises ``SmartMemoryPermissionError`` for an API key.
+        """
+        return self._request("GET", "/subscription/billing-managers")
 
     def cancel_subscription(self, immediately: bool = False) -> Dict[str, Any]:
         """Cancel subscription."""
