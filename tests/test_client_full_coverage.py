@@ -392,6 +392,14 @@ class TestClientFullCoverage:
             "POST", "/subscription/cancel", params={"immediately": True}
         )
 
+        client.grant_billing_manager("user_1")
+        mock_request.assert_called_with("PUT", "/subscription/billing-managers/user_1")
+
+        client.revoke_billing_manager("user/with space")
+        mock_request.assert_called_with(
+            "DELETE", "/subscription/billing-managers/user%2Fwith%20space"
+        )
+
     # ============================================================================
     # Teams
     # ============================================================================

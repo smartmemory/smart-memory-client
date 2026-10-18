@@ -3261,8 +3261,29 @@ class SmartMemoryClient:
         return self._request("POST", "/subscription/upgrade", json_body=body)
 
     def get_subscription(self) -> Dict[str, Any]:
-        """Get current subscription details."""
+        """Get current subscription details.
+
+        The result includes ``can_manage_billing`` (bool): whether the caller may change the plan.
+        """
         return self._request("GET", "/subscription/current")
+
+    def grant_billing_manager(self, user_id: str) -> Dict[str, Any]:
+        """Let a member of your organization manage billing (organization admins only).
+
+        Returns ``{"user_id": ..., "can_manage_billing": True}``. Idempotent. Grants no workspace access.
+        """
+        return self._request(
+            "PUT", f"/subscription/billing-managers/{quote(user_id, safe='')}"
+        )
+
+    def revoke_billing_manager(self, user_id: str) -> Dict[str, Any]:
+        """Take billing management back from a member (organization admins only).
+
+        Returns ``{"user_id": ..., "can_manage_billing": False}``. Idempotent.
+        """
+        return self._request(
+            "DELETE", f"/subscription/billing-managers/{quote(user_id, safe='')}"
+        )
 
     def cancel_subscription(self, immediately: bool = False) -> Dict[str, Any]:
         """Cancel subscription."""

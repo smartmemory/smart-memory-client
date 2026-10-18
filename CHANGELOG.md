@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- `grant_billing_manager(user_id)` and `revoke_billing_manager(user_id)`: SVC-BILLING-ROLE-1, `PUT` and `DELETE /subscription/billing-managers/{user_id}`. An organization admin lets a member of the same organization manage billing, or takes that back. Both return `{user_id, can_manage_billing}` and are idempotent. `get_subscription()` now documents the new `can_manage_billing` field of `GET /subscription/current`. Tests: `tests/test_client_full_coverage.py` subscription row.
 - `get_plugin_catalog()`: PLAT-PLUGIN-MARKETPLACE-1 H3, `GET /memory/plugins/catalog`. Returns the registered pipeline plugins as `{generated_at, tiles, refused}` (hub axis 3). HTTP failures raise the typed errors (401/403 `SmartMemoryPermissionError`, 503 `SmartMemoryServerError`).
 - CODE-INDEXER-HARDEN-1 U5: `code_context` and `code_dependencies` take optional `file_path` and `item_id` to choose one of several same-named entities. A name matching several entities now raises `SmartMemoryValidationError` (HTTP 409) whose `detail` JSON lists `detail.candidates`. `code_index` takes an optional `repo_identity`; the service refuses a repo name owned by a different checkout (HTTP 422). Responses carry `embeddings_generated`.
 - U5 post-review fix round: verify file_path and item_id independently through both code context and dependency methods, including an exact name shadowed by a longer dotted suffix. Existing SDK parameters already match the service contract.
