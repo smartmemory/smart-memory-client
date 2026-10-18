@@ -21,6 +21,8 @@ class SessionResponse(TypedDict, total=False):
     tenant_id: str
     tenant_role: Literal["owner", "admin", "member"]
     default_team_id: str
+    # Display name of the active tenant (``tenant_id``); ``None`` when unnamed, absent from older servers.
+    tenant_name: str | None
 
     access_token: str
     refresh_token: str
