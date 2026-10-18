@@ -1515,7 +1515,16 @@ class SmartMemoryClient:
             context: Additional context information
 
         Returns:
-            Ingestion result with item_id, user_id, tenant_id, queued status
+            Ingestion result with item_id, user_id, tenant_id, queued status and
+            ``status``: ``created``, ``unchanged``, ``replaced`` or ``held``.
+            Low-confidence extraction keeps the content (CORE-CONSOLIDATION-MIN-CONF-1):
+            low entities/relations are dropped and the rest stored; when every
+            extraction signal is low the result is ``created`` with an
+            ``extraction_held`` object (reason, confidence, threshold, counts).
+            ``held`` (``item_id`` is None, nothing stored) is returned only when no
+            extraction signal was measured and ``context["confidence"]`` was below
+            the threshold, or the server runs the ``veto`` rollback mode. Check
+            ``status`` before using ``item_id``.
 
         Example:
             ```python
