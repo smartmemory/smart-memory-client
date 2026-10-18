@@ -3265,6 +3265,8 @@ class SmartMemoryClient:
 
         The result includes ``can_manage_billing`` (bool): whether the caller may change the plan.
         It is false for every caller of an internal comp tenant, whose billing a superadmin manages.
+        ``billing_refusal`` says why it is false: ``""`` (the caller can manage billing), ``"api_key"``,
+        ``"not_admin"`` or ``"comp"``. The body is returned as the service sent it.
         """
         return self._request("GET", "/subscription/current")
 
@@ -3293,6 +3295,10 @@ class SmartMemoryClient:
 
         Returns ``{"user_ids": [...]}``, current members of your organization only. Any signed-in
         member may read it. Raises ``SmartMemoryPermissionError`` for an API key.
+
+        An organization admin also gets ``"members"``: one ``{"user_id", "email", "name", "is_admin",
+        "listed"}`` entry per current member, ``listed`` being the explicit list entry. Everyone else
+        gets no ``"members"`` key at all, so check for the key rather than assuming an empty list.
         """
         return self._request("GET", "/subscription/billing-managers")
 
