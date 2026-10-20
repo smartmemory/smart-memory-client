@@ -3520,6 +3520,66 @@ class SmartMemoryClient:
         )
 
     # ============================================================================
+    # Upgrade nudges (UPGRADE-NUDGES-9)
+    # ============================================================================
+
+    def get_next_upgrade_nudge(self, surface: str = "web") -> Dict[str, Any]:
+        """The upgrade banner to show now, or no banner.
+
+        ``GET /upgrade-nudges/next?surface=`` (contract ``smart-memory-docs``
+        ``docs/features/UPGRADE-NUDGES-1/upgrade-nudges-contract.json``, section ``endpoint``).
+        Writes nothing. The server decides the audience, the caps and the copy from the signed-in
+        caller. The body is returned as the service sent it.
+
+        Returns ``{"nudge": None}`` for every ineligible caller, the server's kill switch and every
+        server-side failure (a 200, never an error): render nothing then. Otherwise ``{"nudge": {...}}``
+        with ``nudge_key``, ``kind`` (``"banner"``), ``surface``, ``target_tier`` (``"team"`` or
+        ``"enterprise"``), ``audience`` (``"billing_manager"``), ``anchor`` (``cap-<capability_key>``, link
+        "Compare plans" to ``/pricing#<anchor>``), ``copy`` (render exactly as returned) and ``actions``
+        (``{"compare": ..., "dismiss": ...}`` button labels).
+
+        Args:
+            surface: Only ``"web"`` is accepted by the service.
+
+        Raises:
+            SmartMemoryValidationError: ``surface`` is not ``"web"`` (422 ``validation_error``).
+        """
+        return self._request("GET", "/upgrade-nudges/next", params={"surface": surface})
+
+    def _record_upgrade_nudge(self, nudge_key: str, event: str) -> Dict[str, Any]:
+        if not isinstance(nudge_key, str) or not nudge_key:
+            raise ValueError("nudge_key must be a non-empty string")
+        return self._request(
+            "POST", f"/upgrade-nudges/{quote(nudge_key, safe='')}/{event}"
+        )
+
+    def record_upgrade_nudge_shown(self, nudge_key: str) -> Dict[str, Any]:
+        """The banner was rendered (``POST /upgrade-nudges/{nudge_key}/shown``).
+
+        Returns ``{"recorded": bool}``: ``False`` for an ineligible caller or the kill switch off,
+        not an error.
+
+        Raises:
+            ValueError: ``nudge_key`` is empty or not a string (raised before any request).
+            SmartMemoryNotFoundError: the key is not a registry banner key (404 ``unknown_nudge_key``).
+        """
+        return self._record_upgrade_nudge(nudge_key, "shown")
+
+    def record_upgrade_nudge_clicked(self, nudge_key: str) -> Dict[str, Any]:
+        """The "Compare plans" button was clicked (``POST /upgrade-nudges/{nudge_key}/clicked``).
+
+        Returns ``{"recorded": bool}``. Errors as ``record_upgrade_nudge_shown``.
+        """
+        return self._record_upgrade_nudge(nudge_key, "clicked")
+
+    def record_upgrade_nudge_dismissed(self, nudge_key: str) -> Dict[str, Any]:
+        """The "Not now" button was clicked (``POST /upgrade-nudges/{nudge_key}/dismissed``).
+
+        Returns ``{"recorded": bool}``. Errors as ``record_upgrade_nudge_shown``.
+        """
+        return self._record_upgrade_nudge(nudge_key, "dismissed")
+
+    # ============================================================================
     # Workspaces
     # ============================================================================
 
