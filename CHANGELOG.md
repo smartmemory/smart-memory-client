@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- **WEB-VECTOR-SEARCH-TAB-1 (VEC-TAB-U4):** `vector_query(text, embedding, top_k, memory_type, origin_prefix, collection, include_embedding)`, `vector_stats()`, `vector_inspect(item_id, top_k, collection, include_embedding)` and `vector_missing(limit, cursor, collection)` for the read-only `/memory/vector/*` routes. Clamps (`top_k` 50 and 20, `limit` 200) and the opaque `cursor` are the server's, passed through unchanged. New typed errors `SmartMemoryUnsupportedError` (501) and `SmartMemorySubstrateError` (503), both subclasses of `SmartMemoryServerError`, raised by the `vector_*` methods only; 404, 400 and 403 use the existing types. Tests: `tests/test_client_vector.py` (every route, parameter and contract status).
+
 - **DEV-ONBOARD-FU-SCOPED-SEARCH-NEARMISS-1** (tests only, no client code change): parity check with the service's 422 and the JS SDK's throw on a misspelt filter name. `search()` has no `**kwargs`, so `filters`, `filter`, `metadata_filters`, `metadataFilter`, `metadataFilters`, `where` and `meta_filter` already raise `TypeError` before any request, and a non-dict `metadata_filter` raises `ValueError`. New `tests/test_search_filter_nearmiss.py` pins both (7 near-miss rows, 5 non-dict rows), so a later `**kwargs` that would swallow a typo turns it red.
 
 - **DEV-ONBOARD-FU-SCOPED-SEARCH-1:** `search(..., metadata_filter={...})` narrows ranked results to items whose stored properties match (e.g. one end customer). Empty or None sends nothing. A refused filter raises `SmartMemoryValidationError` (422); `last_search_coverage["metadata_filter_incomplete"]` reports a short pool.

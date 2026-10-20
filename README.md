@@ -294,6 +294,26 @@ results = client.code_search(
 results = client.code_search("authenticate")
 ```
 
+### Vector Visibility
+
+Read-only views of the vector index (WEB-VECTOR-SEARCH-TAB-1). Counts and hits are in the caller's scope. Embeddings are preview-only (first 16 floats), never the full vector. The server clamps `top_k` (50 for `vector_query`, 20 for `vector_inspect`) and `limit` (200), so the client sends what you pass.
+
+```python
+stats = client.vector_stats()                       # backend, embedder, collections, capabilities, warnings
+hits = client.vector_query(text="auth decisions", top_k=5, memory_type="semantic")
+hits = client.vector_query(embedding=[...], collection="memory", include_embedding=True)
+for hit in hits["hits"]:                            # score in [0, 1], best first
+    print(hit["item_id"], hit["score"], hit["snippet"])
+
+detail = client.vector_inspect("item-id", top_k=10)  # item, neighbours (item excluded), space
+
+page = client.vector_missing(limit=50)               # memories with no usable vector
+while page["next_cursor"]:                           # total is None when the backend cannot count cheaply
+    page = client.vector_missing(limit=50, cursor=page["next_cursor"])
+```
+
+Errors: 404 `SmartMemoryNotFoundError` (unknown collection, item not visible, or no vector row), 501 `SmartMemoryUnsupportedError` (the backend lacks the capability, for example `capabilities["missing_list"]` is false), 503 `SmartMemorySubstrateError` (backend substrate error, never an empty page). Both new classes subclass `SmartMemoryServerError`.
+
 ### Enrichment
 
 ```python

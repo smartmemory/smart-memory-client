@@ -40,6 +40,8 @@ from smartmemory_client.client import (
     SmartMemoryPermissionError,
     SmartMemoryValidationError,
     SmartMemoryServerError,
+    SmartMemorySubstrateError,
+    SmartMemoryUnsupportedError,
 )
 from smartmemory_client.models import (
     ConversationContextModel,
@@ -72,6 +74,8 @@ __all__ = [
     "SmartMemoryPermissionError",
     "SmartMemoryValidationError",
     "SmartMemoryServerError",
+    "SmartMemoryUnsupportedError",
+    "SmartMemorySubstrateError",
     "MemoryItem",
     "ConversationContextModel",
     "SessionResponse",

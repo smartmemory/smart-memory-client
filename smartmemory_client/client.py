@@ -74,6 +74,16 @@ class SmartMemoryServerError(SmartMemoryClientError):
     """Raised on HTTP 5xx — the server failed to process the request."""
 
 
+class SmartMemoryUnsupportedError(SmartMemoryServerError):
+    """Raised by the ``vector_*`` methods on HTTP 501: the active backend does not
+    implement the capability (WEB-VECTOR-SEARCH-TAB-1). Never an empty result."""
+
+
+class SmartMemorySubstrateError(SmartMemoryServerError):
+    """Raised by the ``vector_*`` methods on HTTP 503: the vector backend reported a
+    substrate error (``VectorSubstrateError``), surfaced instead of an empty page."""
+
+
 def _exception_for_status(status: int) -> type[SmartMemoryClientError]:
     """Map an HTTP status code to the most specific SDK exception class."""
     if status == 404:
@@ -1791,6 +1801,179 @@ class SmartMemoryClient:
         """
         params = {"limit": limit} if limit is not None else None
         return self._request("GET", "/memory/graph/full", params=params)
+
+    # ------------------------------------------------------------------
+    # Vector visibility (WEB-VECTOR-SEARCH-TAB-1, contract: vector-contract.json)
+    # ------------------------------------------------------------------
+
+    def _vector_request(
+        self,
+        method: str,
+        endpoint: str,
+        params: Optional[Dict[str, Any]] = None,
+        json_body: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        """``_request`` that types 501 and 503 for the vector routes.
+
+        Every other status keeps the shared mapping (404 not found, 400 validation,
+        401/403 permission, other 5xx server). 501 and 503 are re-raised as
+        subclasses of ``SmartMemoryServerError``, so ``except SmartMemoryServerError``
+        still catches them.
+        """
+        try:
+            return self._request(method, endpoint, params=params, json_body=json_body)
+        except SmartMemoryServerError as e:
+            typed = {
+                501: SmartMemoryUnsupportedError,
+                503: SmartMemorySubstrateError,
+            }.get(e.status_code or 0)
+            if typed is None or isinstance(e, typed):
+                raise
+            raise typed(str(e), status_code=e.status_code, detail=e.detail) from e
+
+    def vector_query(
+        self,
+        text: Optional[str] = None,
+        embedding: Optional[List[float]] = None,
+        top_k: int = 10,
+        memory_type: Optional[str] = None,
+        origin_prefix: Optional[str] = None,
+        collection: str = "memory",
+        include_embedding: bool = False,
+    ) -> Dict[str, Any]:
+        """Nearest-neighbour query over the vector index (read-only).
+
+        ``POST /memory/vector/query``. Pass exactly one of ``text`` (embedded
+        server-side) or ``embedding`` (a raw query vector whose length must match
+        the collection's dimension). ``top_k`` is sent as given: the server clamps
+        it to 50, it never rejects.
+
+        Args:
+            text: Query text.
+            embedding: Raw query vector.
+            top_k: Hits wanted (server max 50).
+            memory_type: Equality filter on ``hit.memory_type``.
+            origin_prefix: Prefix filter on ``hit.origin``.
+            collection: A name from ``vector_stats()["collections"]``.
+            include_embedding: Each hit carries ``embedding_preview`` (first 16
+                floats). The full vector is never returned.
+
+        Returns:
+            Dict with ``query`` (``mode``, ``dimension``, ``space``), ``hits``
+            (``item_id``, ``score`` in [0, 1] desc, ``memory_type``, ``origin``,
+            ``title``, ``snippet``, ``created_at``, ``space``, ``has_graph_node``),
+            ``truncated`` and ``timing_ms`` (``embed``, ``search``).
+
+        Raises:
+            SmartMemoryValidationError: neither or both of text/embedding, or an
+                embedding whose dimension differs from the index (400).
+            SmartMemoryPermissionError: scope error (403).
+            SmartMemoryNotFoundError: unknown collection (404).
+            SmartMemoryUnsupportedError: backend lacks the capability (501).
+            SmartMemorySubstrateError: backend substrate error (503).
+        """
+        body: Dict[str, Any] = {
+            "top_k": top_k,
+            "collection": collection,
+            "include_embedding": include_embedding,
+        }
+        if text is not None:
+            body["text"] = text
+        if embedding is not None:
+            body["embedding"] = embedding
+        if memory_type is not None:
+            body["memory_type"] = memory_type
+        if origin_prefix is not None:
+            body["origin_prefix"] = origin_prefix
+        return self._vector_request("POST", "/memory/vector/query", json_body=body)
+
+    def vector_stats(self) -> Dict[str, Any]:
+        """Backend, embedder, per-collection counts, capabilities and warnings.
+
+        ``GET /memory/vector/stats``. ``backend`` is an opaque string. Counts are
+        in the caller's scope; ``collections[].index_count`` is present only when
+        ``single_tenant`` is true.
+
+        Returns:
+            Dict with ``backend``, ``single_tenant``, ``capabilities``
+            (``scope_pushdown``, ``scoped_exact``, ``missing_list``), ``embedder``
+            (``model_id``, ``dimension``), ``collections``, ``scope`` and ``warnings``.
+
+        Raises:
+            SmartMemoryPermissionError: scope error (403).
+            SmartMemoryUnsupportedError: backend lacks the capability (501).
+            SmartMemorySubstrateError: backend substrate error (503).
+        """
+        return self._vector_request("GET", "/memory/vector/stats")
+
+    def vector_inspect(
+        self,
+        item_id: str,
+        top_k: int = 10,
+        collection: str = "memory",
+        include_embedding: bool = False,
+    ) -> Dict[str, Any]:
+        """One item's vector facts plus its nearest neighbours.
+
+        ``GET /memory/vector/items/{item_id}``. ``top_k`` is sent as given: the
+        server clamps it to 20.
+
+        Args:
+            item_id: Memory item id.
+            top_k: Neighbours wanted (server max 20).
+            collection: A name from ``vector_stats()["collections"]``.
+            include_embedding: ``item.vector`` and neighbours carry
+                ``embedding_preview`` (first 16 floats), never the full vector.
+
+        Returns:
+            Dict with ``item``, ``neighbours`` (the item itself excluded, score
+            desc) and ``space``.
+
+        Raises:
+            SmartMemoryNotFoundError: item not visible, unknown collection, or no
+                vector row (``detail`` contains ``no_vector`` when the memory exists
+                but has no embedding) (404).
+            SmartMemoryPermissionError: scope error (403).
+            SmartMemoryUnsupportedError: backend lacks the capability (501).
+            SmartMemorySubstrateError: backend substrate error (503).
+        """
+        return self._vector_request(
+            "GET",
+            f"/memory/vector/items/{quote(item_id, safe='')}",
+            params={
+                "top_k": top_k,
+                "collection": collection,
+                "include_embedding": include_embedding,
+            },
+        )
+
+    def vector_missing(
+        self,
+        limit: int = 50,
+        cursor: Optional[str] = None,
+        collection: str = "memory",
+    ) -> Dict[str, Any]:
+        """One page of in-scope memories that have no usable vector.
+
+        ``GET /memory/vector/missing``. ``limit`` is sent as given (server max 200)
+        and ``cursor`` is the opaque ``next_cursor`` of the previous page.
+
+        Returns:
+            Dict with ``items`` (``item_id``, ``memory_type``, ``origin``,
+            ``created_at``, ``reason``), ``next_cursor`` (None on the last page) and
+            ``total`` (None when the backend cannot count cheaply).
+
+        Raises:
+            SmartMemoryNotFoundError: unknown collection (404).
+            SmartMemoryPermissionError: scope error (403).
+            SmartMemoryUnsupportedError: the backend has no missing list, see
+                ``vector_stats()["capabilities"]["missing_list"]`` (501).
+            SmartMemorySubstrateError: backend substrate error (503).
+        """
+        params: Dict[str, Any] = {"limit": limit, "collection": collection}
+        if cursor is not None:
+            params["cursor"] = cursor
+        return self._vector_request("GET", "/memory/vector/missing", params=params)
 
     def get_lineage(self, item_id: str) -> Dict[str, Any]:
         """Get the supersession lineage chain for a memory item."""
