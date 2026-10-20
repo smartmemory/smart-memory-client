@@ -783,6 +783,7 @@ class SmartMemoryClient:
         until: Optional[Union[str, datetime]] = None,
         hop_strategy: Optional[str] = None,
         reranker: Optional[str] = None,
+        metadata_filter: Optional[Dict[str, Any]] = None,
     ):
         """
         Search for memory items using semantic matching.
@@ -794,6 +795,13 @@ class SmartMemoryClient:
                 None preserves the core default (consensus unless semantic hops are enabled).
             since: Inclusive created_at lower bound; ISO-8601 or datetime (naive means UTC).
             until: Exclusive created_at upper bound, independent of as_of_date.
+            metadata_filter: Narrow the ranked results to items whose stored properties
+                match, e.g. ``{"customer_id": "cus_8812"}`` or ``{"priority": {"gte": 2}}``
+                (operators: gte, gt, lte, lt). It can only narrow your workspace's
+                results: keys naming tenant, workspace or user scope are refused (422).
+                The filter runs on a wider candidate pool than ``top_k``; when that pool
+                still missed matches, ``last_search_coverage`` carries
+                ``metadata_filter_incomplete: True``. Not supported with ``expertise``.
             top_k: Maximum number of results
             memory_type: Type of memory to search (optional)
             use_ssg: Use Similarity Graph Traversal for better multi-hop reasoning (optional)
@@ -855,6 +863,9 @@ class SmartMemoryClient:
 
             # Search specific memory type
             results = client.search("conversation", memory_type="episodic")
+
+            # Only one end customer's memories, still ranked by relevance
+            results = client.search("billing plan", metadata_filter={"customer_id": "cus_8812"})
 
             for item in results:
                 print(f"{item.item_id}: {item.content}")
@@ -941,6 +952,14 @@ class SmartMemoryClient:
             body_dict["include_archived"] = True  # CORE-ARCHIVED-RECALL-1
         if exclude_speculative:
             body_dict["exclude_speculative"] = True  # PLAT-MCP-HOSTED-1 / CORE-ORIGIN-1
+        if metadata_filter is not None:
+            # DEV-ONBOARD-FU-SCOPED-SEARCH-1: the service validates the grammar and refuses scope keys.
+            if not isinstance(metadata_filter, dict):
+                raise ValueError(
+                    f"metadata_filter must be a dict, got {type(metadata_filter).__name__}"
+                )
+            if metadata_filter:
+                body_dict["metadata_filter"] = metadata_filter
 
         # SELF-IMPROVE-6: use _request_raw to capture X-Search-Session-Id header
         url = f"{self.base_url}/memory/search"

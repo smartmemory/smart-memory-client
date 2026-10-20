@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- **DEV-ONBOARD-FU-SCOPED-SEARCH-1:** `search(..., metadata_filter={...})` narrows ranked results to items whose stored properties match (e.g. one end customer). Empty or None sends nothing. A refused filter raises `SmartMemoryValidationError` (422); `last_search_coverage["metadata_filter_incomplete"]` reports a short pool.
+
 - `export_okf()` docstring: WS-MGMT-20. `GET /memory/okf/export` needs workspace admin or tenant admin, any other caller gets a 403.
 - `ingest()` docstring: CORE-CONSOLIDATION-MIN-CONF-1 documents the receipt `status` values (`created`, `unchanged`, `replaced`, `held`) and the low-confidence outcomes. Low extraction is pruned or returned as `created` with `extraction_held`; `held` now comes only from a low caller confidence with no measured extraction, or the server's `veto` rollback mode. Docs only, no behavior change.
 - `get_me()` / `SessionResponse.tenant_name`: SVC-AUTH-ME-TENANT-NAME-1. `GET /auth/me` returns the display name of the active tenant (`tenant_id`) as `tenant_name`, `null` when the tenant is unnamed. Optional in the typed dict and passed through unchanged by `normalize_session_response`; a server that predates the field leaves the key absent.
