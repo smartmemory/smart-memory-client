@@ -25,7 +25,10 @@ def _ok(coverage=None):
         (None, None),
         ({}, None),
         ({"customer_id": "cus_8812"}, {"customer_id": "cus_8812"}),
-        ({"priority": {"gte": 2}, "customer_id": "c"}, {"priority": {"gte": 2}, "customer_id": "c"}),
+        (
+            {"priority": {"gte": 2}, "customer_id": "c"},
+            {"priority": {"gte": 2}, "customer_id": "c"},
+        ),
     ],
     ids=["absent", "empty", "equality", "operator"],
 )
@@ -40,14 +43,19 @@ def test_metadata_filter_body(flt, sent):
 
 def test_non_dict_filter_is_refused_before_any_request():
     client = _client()
-    with patch("httpx.Client.request") as request, pytest.raises(ValueError, match="must be a dict"):
+    with (
+        patch("httpx.Client.request") as request,
+        pytest.raises(ValueError, match="must be a dict"),
+    ):
         client.search("x", metadata_filter=[("customer_id", "c")])
     assert not request.called
 
 
 def test_incomplete_coverage_is_exposed():
     client = _client()
-    with patch("httpx.Client.request", return_value=_ok({"metadata_filter_incomplete": True})):
+    with patch(
+        "httpx.Client.request", return_value=_ok({"metadata_filter_incomplete": True})
+    ):
         client.search("x", metadata_filter={"customer_id": "c"})
     assert client.last_search_coverage == {"metadata_filter_incomplete": True}
 
@@ -58,7 +66,12 @@ def test_scope_key_refusal_surfaces_as_typed_error():
     response = httpx.Response(
         422,
         request=request,
-        json={"detail": {"error": "invalid_metadata_filter", "message": "names a scope boundary"}},
+        json={
+            "detail": {
+                "error": "invalid_metadata_filter",
+                "message": "names a scope boundary",
+            }
+        },
     )
     with patch("httpx.Client.request", return_value=response):
         with pytest.raises(SmartMemoryValidationError) as info:
