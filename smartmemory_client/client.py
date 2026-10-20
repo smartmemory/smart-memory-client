@@ -5252,7 +5252,10 @@ class SmartMemoryClient:
         return result.get("value") if isinstance(result, dict) else None
 
     def export_okf(self) -> bytes:
-        """Export this workspace as a gzipped OKF bundle."""
+        """Export this workspace as a gzipped OKF bundle.
+
+        Needs workspace admin or tenant admin: any other caller gets a 403.
+        """
         response = self._request("GET", "/memory/okf/export", return_response=True)
         return response.content
 
