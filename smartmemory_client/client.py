@@ -20,7 +20,7 @@ import warnings
 from dataclasses import dataclass
 from datetime import datetime
 from time import perf_counter
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 from urllib.parse import quote
 
 import httpx
@@ -1992,6 +1992,8 @@ class SmartMemoryClient:
         metadata_value: Optional[str] = None,
         memory_type: Optional[str] = None,
         include_grounding: Optional[bool] = None,
+        exclude_node_category: Optional[Union[str, Sequence[str]]] = None,
+        q: Optional[str] = None,
     ) -> Dict[str, Any]:
         """List memory items, optionally filtered by an exact metadata match.
 
@@ -2008,6 +2010,13 @@ class SmartMemoryClient:
             memory_type: Exact type filter, applied before pagination and counting.
             include_grounding: Include grounding nodes. None inherits the workspace
                 default, then env (OFF unless configured); False is sent explicitly.
+            exclude_node_category: SVC-LIST-EXCLUDE-ENTITY-1. Stored ``node_category``
+                values to leave out (for example ``["entity"]``), sent as a repeated
+                ``exclude_node_category`` param. A bare string is one value, an empty
+                list sends nothing. Applied before pagination, so ``total`` counts the
+                filtered set.
+            q: Case-insensitive substring match over content, applied before
+                pagination.
 
         Returns:
             ``{"items": [...], "total": int, "limit": int, "offset": int}``, where
@@ -2017,7 +2026,10 @@ class SmartMemoryClient:
 
         Raises:
             APIError: 422 if only one half of the metadata pair is supplied, if the
-                key is not a valid identifier, or if the value is empty.
+                key is not a valid identifier, if the value is empty, if more than
+                20 ``exclude_node_category`` values are sent, or if ``q`` is longer
+                than 200 characters. Over-limit input is passed through untouched so
+                the service rejects it, never truncated here.
         """
         params: Dict[str, Any] = {
             "limit": limit,
@@ -2034,6 +2046,17 @@ class SmartMemoryClient:
             params["memory_type"] = memory_type
         if include_grounding is not None:
             params["include_grounding"] = include_grounding
+        if exclude_node_category is not None:
+            categories = (
+                [exclude_node_category]
+                if isinstance(exclude_node_category, str)
+                else list(exclude_node_category)
+            )
+            # httpx encodes a list value as a repeated query param.
+            if categories:
+                params["exclude_node_category"] = categories
+        if q is not None:
+            params["q"] = q
         return self._request("GET", "/memory/list", params=params)
 
     def search_by_metadata(
