@@ -64,6 +64,26 @@ INSPECT_BODY = {
     "neighbours": [HIT],
     "space": SPACE,
 }
+PROJECTION_BODY = {
+    "method": "pca",
+    "dims": 3,
+    "space": SPACE,
+    "points": [
+        {
+            "item_id": "a",
+            "coords": [0.1, -0.2, 0.3],
+            "memory_type": "semantic",
+            "title": None,
+            "has_graph_node": True,
+        }
+    ],
+    "total": 1,
+    "sampled": False,
+    "limit": 2000,
+    "explained_variance": [0.6, 0.3, 0.1],
+    "warnings": [],
+    "cached": False,
+}
 MISSING_BODY = {
     "items": [{"item_id": "z", "reason": "no_row"}],
     "next_cursor": "opaque-2",
@@ -218,6 +238,26 @@ REQUEST_ROWS = [
         None,
         MISSING_BODY,
     ),
+    (
+        "projection_defaults_no_limit_key",
+        lambda c: c.vector_projection(),
+        "GET",
+        "/memory/vector/projection",
+        {"dims": 3, "method": "pca", "collection": "memory"},
+        None,
+        PROJECTION_BODY,
+    ),
+    (
+        "projection_all_params_and_limit_clamp_not_reimplemented",
+        lambda c: c.vector_projection(
+            dims=2, method="umap", limit=5000, collection="structure"
+        ),
+        "GET",
+        "/memory/vector/projection",
+        {"dims": 2, "method": "umap", "limit": 5000, "collection": "structure"},
+        None,
+        PROJECTION_BODY,
+    ),
 ]
 
 
@@ -260,6 +300,7 @@ _QUERY = lambda c: c.vector_query(text="x")  # noqa: E731
 _STATS = lambda c: c.vector_stats()  # noqa: E731
 _INSPECT = lambda c: c.vector_inspect("a")  # noqa: E731
 _MISSING = lambda c: c.vector_missing()  # noqa: E731
+_PROJECTION = lambda c: c.vector_projection()  # noqa: E731
 
 ERROR_ROWS = [
     ("query_400", _QUERY, 400, SmartMemoryValidationError),
@@ -284,6 +325,12 @@ ERROR_ROWS = [
     ("missing_501", _MISSING, 501, SmartMemoryUnsupportedError),
     ("missing_503", _MISSING, 503, SmartMemorySubstrateError),
     ("missing_500", _MISSING, 500, SmartMemoryServerError),
+    ("projection_400", _PROJECTION, 400, SmartMemoryValidationError),
+    ("projection_403", _PROJECTION, 403, SmartMemoryPermissionError),
+    ("projection_404", _PROJECTION, 404, SmartMemoryNotFoundError),
+    ("projection_501", _PROJECTION, 501, SmartMemoryUnsupportedError),
+    ("projection_503", _PROJECTION, 503, SmartMemorySubstrateError),
+    ("projection_500", _PROJECTION, 500, SmartMemoryServerError),
 ]
 
 

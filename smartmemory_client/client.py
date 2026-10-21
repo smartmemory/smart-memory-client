@@ -1975,6 +1975,47 @@ class SmartMemoryClient:
             params["cursor"] = cursor
         return self._vector_request("GET", "/memory/vector/missing", params=params)
 
+    def vector_projection(
+        self,
+        dims: int = 3,
+        method: str = "pca",
+        limit: Optional[int] = None,
+        collection: str = "memory",
+    ) -> Dict[str, Any]:
+        """The caller's in-scope vectors projected to 2D/3D coordinates (map view).
+
+        ``GET /memory/vector/projection``. ``limit`` is sent as given: the server
+        clamps it to 2000 and samples larger scopes deterministically.
+
+        Args:
+            dims: 2 or 3.
+            method: ``"pca"`` (default, deterministic) or ``"umap"`` where the
+                server enables it.
+            limit: Points wanted (server default and max 2000).
+            collection: A name from ``vector_stats()["collections"]``.
+
+        Returns:
+            Dict with ``points`` (``item_id``, ``coords``, ``memory_type``,
+            ``title``, ``has_graph_node``; ordered by ``item_id``), ``total``,
+            ``sampled``, ``limit``, ``explained_variance``, ``space``,
+            ``warnings`` and ``cached``. Never an embedding.
+
+        Raises:
+            SmartMemoryValidationError: dims not 2/3, unknown method, bad limit (400).
+            SmartMemoryNotFoundError: unknown collection (404).
+            SmartMemoryUnsupportedError: umap not enabled, or the backend cannot
+                sample vectors (501).
+            SmartMemorySubstrateError: backend substrate error (503).
+        """
+        params: Dict[str, Any] = {
+            "dims": dims,
+            "method": method,
+            "collection": collection,
+        }
+        if limit is not None:
+            params["limit"] = limit
+        return self._vector_request("GET", "/memory/vector/projection", params=params)
+
     def get_lineage(self, item_id: str) -> Dict[str, Any]:
         """Get the supersession lineage chain for a memory item."""
         return self._request("GET", f"/memory/{item_id}/lineage")

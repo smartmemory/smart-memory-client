@@ -310,6 +310,7 @@ detail = client.vector_inspect("item-id", top_k=10)  # item, neighbours (item ex
 page = client.vector_missing(limit=50)               # memories with no usable vector
 while page["next_cursor"]:                           # total is None when the backend cannot count cheaply
     page = client.vector_missing(limit=50, cursor=page["next_cursor"])
+map3d = client.vector_projection(dims=3)            # 2D/3D coordinates + ids, never embeddings
 ```
 
 Errors: 404 `SmartMemoryNotFoundError` (unknown collection, item not visible, or no vector row), 501 `SmartMemoryUnsupportedError` (the backend lacks the capability, for example `capabilities["missing_list"]` is false), 503 `SmartMemorySubstrateError` (backend substrate error, never an empty page). Both new classes subclass `SmartMemoryServerError`.
