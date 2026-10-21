@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- **CLIENT-CONN-REUSE-1:** the pooled `httpx.Client` now keeps idle connections for 30 s (httpx default 5 s), so a caller that pauses more than 5 s between calls no longer re-pays TCP + TLS (3 round trips, about 0.6 s at 260 ms RTT) on every call. Measured against `api.smartmemory.ai/health`: calls 6 s apart went from 4 connects to 1, 12 s apart from 3 to 1. New optional extra `smartmemory-client[http2]` (installs `h2`): when present the client speaks HTTP/2, so 8 concurrent calls share 1 connection instead of opening 8. No new hard dependency. Tests: `tests/test_client_conn_reuse.py` (real loopback keep-alive server counting connections, one row per request-path class, plus an AST guard that only `__init__` builds an `httpx.Client`).
+
 - **VEC-CONTRACT-NULLABLE-SAMPLED-1:** `vector_projection()` documents that `["sampled"]` is `None` when `["total"]` is withheld (docstring only; the dict passes through untouched). One new null round-trip row in `tests/test_client_vector.py`.
 
 - **VEC-CONTRACT-NULLABLE-COUNTS-1:** the vector methods document that `vector_query()["truncated"]`, `vector_stats()["collections"][i]["count"]` and `["missing_count"]`, `vector_missing()["total"]` and `vector_projection()["total"]` can be `None` (core withholds a figure when the store's scope filters do not pin the caller; contract `vector-contract.json`). Results are plain dicts handed back untouched, so there is no model or parser to change. Tests: one null round-trip row per figure in `tests/test_client_vector.py`.

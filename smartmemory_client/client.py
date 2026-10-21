@@ -109,6 +109,27 @@ LATENCY_HEADER = "X-SM-Latency-Ms"
 #: silently ignored one process away.
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 
+# CLIENT-CONN-REUSE-1: how long an idle pooled connection stays open. httpx's own
+# default is 5 s, so a caller that pauses longer between calls (an agent loop
+# waiting on a model) re-pays TCP + TLS (3 round trips, about 0.6 s at 260 ms RTT)
+# on every call. Pool sizes below are httpx's defaults, restated because passing
+# ``limits=`` replaces the whole object (``Limits()`` alone means "unlimited").
+_KEEPALIVE_EXPIRY_S = 30.0
+_POOL_LIMITS = dict(max_connections=100, max_keepalive_connections=20)
+
+
+def _http2_available() -> bool:
+    """True when the optional ``h2`` package is installed (``pip install smartmemory-client[http2]``).
+
+    With HTTP/2, concurrent calls from threads share one connection instead of
+    opening one each. The server negotiates it by ALPN and falls back to HTTP/1.1.
+    """
+    try:
+        import h2  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
 
 @dataclass(frozen=True)
 class RemoteCallTiming:
@@ -255,6 +276,8 @@ class SmartMemoryClient:
         self._client = httpx.Client(
             verify=verify_ssl,
             timeout=timeout,
+            limits=httpx.Limits(keepalive_expiry=_KEEPALIVE_EXPIRY_S, **_POOL_LIMITS),
+            http2=_http2_available(),
             # Hooks rather than a wrapper around _request(): a few calls (health,
             # search-session) go through self._client directly, and a hook cannot
             # be bypassed by adding another one of those later.
