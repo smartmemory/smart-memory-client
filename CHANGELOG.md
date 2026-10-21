@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- **VEC-CONTRACT-NULLABLE-SAMPLED-1:** `vector_projection()` documents that `["sampled"]` is `None` when `["total"]` is withheld (docstring only; the dict passes through untouched). One new null round-trip row in `tests/test_client_vector.py`.
+
 - **VEC-CONTRACT-NULLABLE-COUNTS-1:** the vector methods document that `vector_query()["truncated"]`, `vector_stats()["collections"][i]["count"]` and `["missing_count"]`, `vector_missing()["total"]` and `vector_projection()["total"]` can be `None` (core withholds a figure when the store's scope filters do not pin the caller; contract `vector-contract.json`). Results are plain dicts handed back untouched, so there is no model or parser to change. Tests: one null round-trip row per figure in `tests/test_client_vector.py`.
 
 - **WEB-VECTOR-SEARCH-TAB-1 (VEC-TAB-U6):** `vector_projection(dims=3, method="pca", limit=None, collection="memory")` for `GET /memory/vector/projection` (the Vectors tab map view): the caller's in-scope vectors as 2D/3D coordinates and ids, never an embedding. `limit` is sent as given (server clamps to 2000) and omitted when None. Errors map like the other vector methods: 400 validation, 404 unknown collection, 501 `SmartMemoryUnsupportedError` (umap not enabled, or the backend cannot sample), 503 `SmartMemorySubstrateError`. Tests: request-shape and typed-error rows in `tests/test_client_vector.py`.

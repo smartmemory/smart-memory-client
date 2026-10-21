@@ -2002,7 +2002,7 @@ class SmartMemoryClient:
         Returns:
             Dict with ``points`` (``item_id``, ``coords``, ``memory_type``,
             ``title``, ``has_graph_node``; ordered by ``item_id``), ``total``
-            (None when withheld), ``sampled``, ``limit``, ``explained_variance``, ``space``,
+            (None when withheld), ``sampled`` (None when ``total`` is withheld), ``limit``, ``explained_variance``, ``space``,
             ``warnings`` and ``cached``. Never an embedding.
 
         Raises:

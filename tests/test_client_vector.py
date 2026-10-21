@@ -331,6 +331,12 @@ NULL_FIGURE_ROWS = [
         dict(PROJECTION_BODY, total=None),
         ("total",),
     ),
+    (
+        "projection_sampled",
+        lambda c: c.vector_projection(),
+        dict(PROJECTION_BODY, total=None, sampled=None),
+        ("sampled",),
+    ),
 ]
 
 
