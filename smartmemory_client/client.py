@@ -1862,7 +1862,9 @@ class SmartMemoryClient:
             Dict with ``query`` (``mode``, ``dimension``, ``space``), ``hits``
             (``item_id``, ``score`` in [0, 1] desc, ``memory_type``, ``origin``,
             ``title``, ``snippet``, ``created_at``, ``space``, ``has_graph_node``),
-            ``truncated`` and ``timing_ms`` (``embed``, ``search``).
+            ``truncated`` (None when the store's scope filters do not pin the
+            caller, so the figure is withheld) and ``timing_ms`` (``embed``,
+            ``search``).
 
         Raises:
             SmartMemoryValidationError: neither or both of text/embedding, or an
@@ -1892,7 +1894,9 @@ class SmartMemoryClient:
 
         ``GET /memory/vector/stats``. ``backend`` is an opaque string. Counts are
         in the caller's scope; ``collections[].index_count`` is present only when
-        ``single_tenant`` is true.
+        ``single_tenant`` is true. ``collections[].count`` and ``missing_count``
+        are None when the backend cannot count or the store's scope filters do
+        not pin the caller.
 
         Returns:
             Dict with ``backend``, ``single_tenant``, ``capabilities``
@@ -1961,7 +1965,8 @@ class SmartMemoryClient:
         Returns:
             Dict with ``items`` (``item_id``, ``memory_type``, ``origin``,
             ``created_at``, ``reason``), ``next_cursor`` (None on the last page) and
-            ``total`` (None when the backend cannot count cheaply).
+            ``total`` (None when the backend cannot count cheaply or the store's
+            scope filters do not pin the caller).
 
         Raises:
             SmartMemoryNotFoundError: unknown collection (404).
@@ -1996,8 +2001,8 @@ class SmartMemoryClient:
 
         Returns:
             Dict with ``points`` (``item_id``, ``coords``, ``memory_type``,
-            ``title``, ``has_graph_node``; ordered by ``item_id``), ``total``,
-            ``sampled``, ``limit``, ``explained_variance``, ``space``,
+            ``title``, ``has_graph_node``; ordered by ``item_id``), ``total``
+            (None when withheld), ``sampled``, ``limit``, ``explained_variance``, ``space``,
             ``warnings`` and ``cached``. Never an embedding.
 
         Raises:

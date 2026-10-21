@@ -294,6 +294,63 @@ def test_vector_responses_keep_preview_only_nulls_and_cursor(client):
     assert page["total"] is None and page["next_cursor"] == "opaque-2"
 
 
+# Core returns null for these figures when the store's scope filters do not pin the
+# caller (VEC-CONTRACT-NULLABLE-COUNTS-1). One row per figure: the body must come back
+# with the null in place, not coerced to 0/False and not rejected.
+NULL_FIGURE_ROWS = [
+    (
+        "query_truncated",
+        lambda c: c.vector_query(text="x"),
+        dict(QUERY_BODY, truncated=None),
+        ("truncated",),
+    ),
+    (
+        "stats_count",
+        lambda c: c.vector_stats(),
+        dict(STATS_BODY, collections=[dict(STATS_BODY["collections"][0], count=None)]),
+        ("collections", 0, "count"),
+    ),
+    (
+        "stats_missing_count",
+        lambda c: c.vector_stats(),
+        dict(
+            STATS_BODY,
+            collections=[dict(STATS_BODY["collections"][0], missing_count=None)],
+        ),
+        ("collections", 0, "missing_count"),
+    ),
+    (
+        "missing_total",
+        lambda c: c.vector_missing(),
+        dict(MISSING_BODY, total=None),
+        ("total",),
+    ),
+    (
+        "projection_total",
+        lambda c: c.vector_projection(),
+        dict(PROJECTION_BODY, total=None),
+        ("total",),
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("call", "response", "path"),
+    [row[1:] for row in NULL_FIGURE_ROWS],
+    ids=[row[0] for row in NULL_FIGURE_ROWS],
+)
+@patch("httpx.Client.request")
+def test_null_figures_round_trip_untouched(mock_request, client, call, response, path):
+    mock_request.return_value = _ok(response)
+
+    value = call(client)
+    for key in path:
+        value = value[key]
+
+    assert value is None
+    assert call(client) == response
+
+
 # One row per (method, status) the contract lists, plus 500 (generic server error,
 # which must NOT be typed as unsupported/substrate) for every method.
 _QUERY = lambda c: c.vector_query(text="x")  # noqa: E731
