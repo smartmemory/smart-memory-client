@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- DEPS-LATEST-2.0-1-py (2026-10-22): no exact pins and no lock or Dockerfile in this repo (floors only: httpx, pydantic, python-dateutil), so nothing was bumped. `tests/` (not integration) on the latest resolved set (httpx 0.28.1, pydantic 2.14.1, python-dateutil 2.9.0.post0): 637 passed, 4 xfailed.
+
+## Unreleased
+
 - `get_plugin_catalog()`: PLAT-PLUGIN-MARKETPLACE-1 H3, `GET /memory/plugins/catalog`. Returns the registered pipeline plugins as `{generated_at, tiles, refused}` (hub axis 3). HTTP failures raise the typed errors (401/403 `SmartMemoryPermissionError`, 503 `SmartMemoryServerError`).
 - U49.A2 (tests only, no SDK API change): `tests/public_wait.py` prepares explicit public waits for save-then-read suites (`await_public` with `observe_get` and `observe_search` over `SmartMemoryClient.get` and `search`): a queued save that is still unreadable at the deadline is a visible `client_timed_out`, an SDK failure is a typed `PublicWaitRefused` with one WARNING and no retry. The SDK drops `read_status`, so a readable row is the typed `PublicWaitStatusUnobservable` refusal (never `stored`), owned by C49-SDK-STATUS-1 (strict xfail rows pin the failed-through-SDK cases). `scripts/save_then_read_census.py` and `tests/data/save_then_read_census.json` census every test that saves, with one disposition per unit; the real-service save-then-read integration tests are deferred to the ring-3 SDK harness with their prepared wait. The census refuses a deferral owner unless the whole string is a graph step id or a filed unit id (a prefix such as `NOT` in `NOT AN OWNER` no longer passes).
 - CODE-INDEXER-HARDEN-1 U5: `code_context` and `code_dependencies` take optional `file_path` and `item_id` to choose one of several same-named entities. A name matching several entities now raises `SmartMemoryValidationError` (HTTP 409) whose `detail` JSON lists `detail.candidates`. `code_index` takes an optional `repo_identity`; the service refuses a repo name owned by a different checkout (HTTP 422). Responses carry `embeddings_generated`.
