@@ -38,6 +38,7 @@ from smartmemory_client.client import (
     SmartMemoryClientError,
     SmartMemoryNotFoundError,
     SmartMemoryPermissionError,
+    SmartMemoryRoutingConflictError,
     SmartMemoryValidationError,
     SmartMemoryServerError,
     SmartMemorySubstrateError,
@@ -46,7 +47,11 @@ from smartmemory_client.client import (
 from smartmemory_client.models import (
     ConversationContextModel,
     MemoryItem,
+    RoutingEcho,
+    RoutingExplain,
+    RoutingPrefs,
     SessionResponse,
+    routing_echo,
 )
 
 try:
@@ -73,11 +78,16 @@ __all__ = [
     "SmartMemoryNotFoundError",
     "SmartMemoryPermissionError",
     "SmartMemoryValidationError",
+    "SmartMemoryRoutingConflictError",
     "SmartMemoryServerError",
     "SmartMemoryUnsupportedError",
     "SmartMemorySubstrateError",
     "MemoryItem",
     "ConversationContextModel",
     "SessionResponse",
+    "RoutingEcho",
+    "RoutingExplain",
+    "RoutingPrefs",
+    "routing_echo",
     "__version__",
 ]
