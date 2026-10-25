@@ -3393,9 +3393,51 @@ class SmartMemoryClient:
     # Workspaces
     # ============================================================================
 
-    def list_workspaces(self) -> Dict[str, Any]:
-        """List Workspaces visible in the active tenant."""
+    def list_workspaces(self, include_hidden: bool = False) -> Dict[str, Any]:
+        """List Workspaces visible in the active tenant.
+
+        ``include_hidden=True`` adds the hidden Workspaces still inside their restore
+        window that the caller may restore (``?include=hidden``). The response carries
+        ``capabilities`` (``"lifecycle.v1"`` when the API serves the lifecycle routes).
+        """
+        if include_hidden:
+            return self._request(
+                "GET", "/memory/workspaces", params={"include": "hidden"}
+            )
         return self._request("GET", "/memory/workspaces")
+
+    def get_workspace(self, workspace_id: str) -> Dict[str, Any]:
+        """Read one Workspace (WorkspaceDetail: state, locked, restore_until, my_level, ...)."""
+        return self._request("GET", f"/memory/workspaces/{workspace_id}")
+
+    def update_workspace(
+        self,
+        workspace_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Rename a Workspace and/or change its description (sends only the fields passed).
+
+        Raises ``ValueError`` before any request when neither field is passed.
+        """
+        body: Dict[str, Any] = {}
+        if name is not None:
+            body["name"] = name
+        if description is not None:
+            body["description"] = description
+        if not body:
+            raise ValueError("update_workspace needs name and/or description")
+        return self._request(
+            "PATCH", f"/memory/workspaces/{workspace_id}", json_body=body
+        )
+
+    def delete_workspace(self, workspace_id: str) -> Dict[str, Any]:
+        """Hide a Workspace (202 ``{workspace_id, state: "hidden", restore_until}``)."""
+        return self._request("DELETE", f"/memory/workspaces/{workspace_id}")
+
+    def restore_workspace(self, workspace_id: str) -> Dict[str, Any]:
+        """Restore a hidden Workspace inside its restore window (returns WorkspaceDetail)."""
+        return self._request("POST", f"/memory/workspaces/{workspace_id}/restore")
 
     def create_workspace(
         self,
