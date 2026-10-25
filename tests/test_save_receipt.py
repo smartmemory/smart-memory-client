@@ -568,6 +568,71 @@ def test_a_retry_after_that_cannot_fit_returns_pending_with_no_further_request(
     assert (r.client_timed_out, len(fake.calls)) == (True, 1)
 
 
+# One row per await-loop path that leaves the read branch: (label, script of held/error reads, timeout,
+# expected request count, expected sleeps, client_timed_out). A held read advances the clock by its wait_ms
+# (FakeClock has no read time), so the rows below fix the hold at the 10 s long-poll cap.
+def _held(**changes):
+    return variant(PENDING, **changes)
+
+
+HELD_ROWS = [
+    # the reviewer's M1: delay 99 s cannot fit the 20 s left after the first 10 s hold -> no further request
+    ("held delay cannot fit", [_held(retry_after_ms=99000)], 30.0, 1, [], True),
+    # a delay that fits is slept exactly (a minimum, no extra backoff), then the next read runs
+    (
+        "held delay fits",
+        [_held(retry_after_ms=2000), EXTRACTED],
+        30.0,
+        2,
+        [2.0],
+        False,
+    ),
+    # no delay: the server already waited, so the next read goes at once with no sleep
+    ("held no delay", [_held(), EXTRACTED], 30.0, 2, [], False),
+    # reached target on a held read returns at once even with a delay on the wire
+    (
+        "held read reaches terminal",
+        [variant(EXTRACTED, retry_after_ms=99000)],
+        30.0,
+        1,
+        [],
+        False,
+    ),
+    # sibling path: an error read with Retry-After that fits sleeps at least that long
+    ("error delay fits", [http(503, retry_after=2.0), EXTRACTED], 30.0, 2, None, False),
+]
+
+
+@pytest.mark.parametrize(
+    "label,script,timeout,requests,sleeps,timed_out",
+    HELD_ROWS,
+    ids=[r[0] for r in HELD_ROWS],
+)
+def test_held_and_failed_reads_honour_the_server_delay_and_the_deadline(
+    client, monkeypatch, clock, label, script, timeout, requests, sleeps, timed_out
+):
+    inner = FakeTransport(*script)
+
+    def fake(method, endpoint, params=None, json_body=None, **kw):
+        out = inner(method, endpoint, params, json_body, **kw)
+        if params and params.get("wait_ms") and not isinstance(out, BaseException):
+            clock.now += (
+                params["wait_ms"] / 1000
+            )  # the server held the read for the full wait
+        return out
+
+    monkeypatch.setattr(client, "_request", fake)
+    start = clock.now
+    r = client.await_receipt(parse_receipt(PENDING), timeout=timeout)
+    assert (len(inner.calls), r.client_timed_out) == (requests, timed_out), label
+    if sleeps is not None:
+        assert clock.sleeps == pytest.approx(sleeps), label
+    else:
+        assert clock.sleeps[0] >= 2.0, label
+    assert clock.now - start <= timeout + 1e-6, label  # the deadline is never exceeded
+    assert r.run_id == "run_1"
+
+
 def test_a_missing_or_unreadable_status_raises_instead_of_looking_pending(
     client, monkeypatch, clock
 ):
