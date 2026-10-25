@@ -64,23 +64,35 @@ def mint_key() -> str:
 def validate_key(key: str) -> str:
     if not isinstance(key, str) or not KEY_RE.match(key):
         raise SmartMemoryValidationError(
-            "idempotency_key must be 1-128 characters from A-Z a-z 0-9 . _ : -", status_code=None
+            "idempotency_key must be 1-128 characters from A-Z a-z 0-9 . _ : -",
+            status_code=None,
         )
     return key
 
 
 def is_transport_loss(exc: BaseException) -> bool:
     """True when the request never got an HTTP answer (the only non-status retry class)."""
-    kinds = (SmartMemoryTransportError, httpx.TransportError, ConnectionError, TimeoutError)
+    kinds = (
+        SmartMemoryTransportError,
+        httpx.TransportError,
+        ConnectionError,
+        TimeoutError,
+    )
     if isinstance(exc, kinds):
         return True
-    return isinstance(exc, SmartMemoryClientError) and exc.status_code is None and isinstance(exc.__cause__, kinds)
+    return (
+        isinstance(exc, SmartMemoryClientError)
+        and exc.status_code is None
+        and isinstance(exc.__cause__, kinds)
+    )
 
 
 def is_retryable(exc: BaseException) -> bool:
     if is_transport_loss(exc):
         return True
-    return isinstance(exc, SmartMemoryClientError) and exc.status_code in RETRYABLE_STATUS
+    return (
+        isinstance(exc, SmartMemoryClientError) and exc.status_code in RETRYABLE_STATUS
+    )
 
 
 def _annotate(exc: BaseException, key: Optional[str], attempts: int) -> BaseException:
@@ -109,7 +121,11 @@ def submit_with_retry(
     ``Retry-After`` cannot fit in ``deadline_s``, the last error is raised carrying ``idempotency_key`` and
     ``attempts`` so a later explicit retry can reuse the key.
     """
-    monotonic, sleep, rng = monotonic or time.monotonic, sleep or time.sleep, rng or random.uniform
+    monotonic, sleep, rng = (
+        monotonic or time.monotonic,
+        sleep or time.sleep,
+        rng or random.uniform,
+    )
     started = monotonic()
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
@@ -122,7 +138,11 @@ def submit_with_retry(
                 raise annotated from exc
             delay = rng(0.0, JITTER_WINDOWS_S[attempt - 1])
             status = getattr(exc, "status_code", None)
-            retry_after = getattr(exc, "retry_after_s", None) if status in RETRY_AFTER_STATUS else None
+            retry_after = (
+                getattr(exc, "retry_after_s", None)
+                if status in RETRY_AFTER_STATUS
+                else None
+            )
             if retry_after is not None:
                 if retry_after > deadline_s - (monotonic() - started):
                     logger.warning(
@@ -136,9 +156,17 @@ def submit_with_retry(
                         raise
                     raise annotated from exc
                 delay = max(delay, retry_after)
-            logger.info("save attempt %d/%d failed (%s); retrying with key %s", attempt, MAX_ATTEMPTS, _why(exc), key)
+            logger.info(
+                "save attempt %d/%d failed (%s); retrying with key %s",
+                attempt,
+                MAX_ATTEMPTS,
+                _why(exc),
+                key,
+            )
             sleep(delay)
-    raise AssertionError("unreachable")  # pragma: no cover - the loop always returns or raises
+    raise AssertionError(
+        "unreachable"
+    )  # pragma: no cover - the loop always returns or raises
 
 
 def _why(exc: BaseException) -> str:
@@ -169,7 +197,10 @@ def conflict_from(exc: SmartMemoryClientError) -> Optional[SaveConflictError]:
         "retry_key_expired": RetryKeyExpiredError,
     }.get(code, SaveConflictError)
     if cls is SaveConflictError:
-        logger.warning("409 body carried no known admission_error.code (got %r); the scoped conflict code is lost", code)
+        logger.warning(
+            "409 body carried no known admission_error.code (got %r); the scoped conflict code is lost",
+            code,
+        )
         code = None
     message = admission.get("message") or str(exc)
     return cls(
@@ -221,7 +252,10 @@ def chain_run_id(predecessor: Any, seen_receipt_runs: Any) -> str:
     """
     if isinstance(predecessor, str):
         if predecessor in seen_receipt_runs:
-            logger.warning("refused a stage chain from receipt run_id %s: pass result.pipeline_state_run_id", predecessor)
+            logger.warning(
+                "refused a stage chain from receipt run_id %s: pass result.pipeline_state_run_id",
+                predecessor,
+            )
             raise StageChainError(
                 "receipt.run_id is the execution handle, not a pipeline state id: chain from "
                 "receipt.result.pipeline_state_run_id",
@@ -236,7 +270,11 @@ def chain_run_id(predecessor: Any, seen_receipt_runs: Any) -> str:
         )
     handle = predecessor.run_id
     if predecessor.subject.get("kind") != "stage_job":
-        raise StageChainError("the predecessor receipt is not a stage_job", code="stage_chain_invalid", run_id=handle)
+        raise StageChainError(
+            "the predecessor receipt is not a stage_job",
+            code="stage_chain_invalid",
+            run_id=handle,
+        )
     if not predecessor.terminal:
         raise StageChainError(
             "the predecessor stage has not finished: await_receipt it first",
@@ -246,10 +284,18 @@ def chain_run_id(predecessor: Any, seen_receipt_runs: Any) -> str:
         )
     if predecessor.result_availability == "expired":
         raise StageChainError(
-            "the predecessor stage result expired: run the stage again", code="stage_result_expired", run_id=handle
+            "the predecessor stage result expired: run the stage again",
+            code="stage_result_expired",
+            run_id=handle,
         )
-    pipeline_run = predecessor.result.get("pipeline_state_run_id") if predecessor.result else None
-    if predecessor.result_availability != "available" or not isinstance(pipeline_run, str) or not pipeline_run:
+    pipeline_run = (
+        predecessor.result.get("pipeline_state_run_id") if predecessor.result else None
+    )
+    if (
+        predecessor.result_availability != "available"
+        or not isinstance(pipeline_run, str)
+        or not pipeline_run
+    ):
         raise StageChainError(
             f"the predecessor stage ended {predecessor.outcome or predecessor.execution_state} with no usable result",
             code="stage_result_unavailable",
@@ -296,8 +342,14 @@ def await_receipt(
     ``read(path, params)`` performs one scoped GET and returns the decoded JSON.
     """
     if target not in ("stored", "extracted", "terminal"):
-        raise SmartMemoryValidationError(f"await target must be stored, extracted or terminal, got {target!r}")
-    monotonic, sleep, rng = monotonic or time.monotonic, sleep or time.sleep, rng or random.uniform
+        raise SmartMemoryValidationError(
+            f"await target must be stored, extracted or terminal, got {target!r}"
+        )
+    monotonic, sleep, rng = (
+        monotonic or time.monotonic,
+        sleep or time.sleep,
+        rng or random.uniform,
+    )
     deadline = monotonic() + timeout
     current = receipt
     streak = 0
@@ -332,7 +384,10 @@ def await_receipt(
                 raise
             streak += 1
             retry_after = getattr(exc, "retry_after_s", None)
-            if getattr(exc, "status_code", None) in RETRY_AFTER_STATUS and retry_after is not None:
+            if (
+                getattr(exc, "status_code", None) in RETRY_AFTER_STATUS
+                and retry_after is not None
+            ):
                 minimum = retry_after
         finally:
             REQUEST_TIMEOUT_S.reset(token)
@@ -342,6 +397,10 @@ def await_receipt(
         if minimum > remaining:
             return timed_out(current)
         base = min(AWAIT_BACKOFF_MAX_S, AWAIT_BACKOFF_MIN_S * 2 ** max(streak - 1, 0))
-        delay = min(AWAIT_BACKOFF_MAX_S, max(AWAIT_BACKOFF_MIN_S, base * rng(0.8, 1.2)), max(remaining, 0.0))
+        delay = min(
+            AWAIT_BACKOFF_MAX_S,
+            max(AWAIT_BACKOFF_MIN_S, base * rng(0.8, 1.2)),
+            max(remaining, 0.0),
+        )
         sleep(max(delay, minimum))
     return current

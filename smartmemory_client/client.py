@@ -56,7 +56,11 @@ logger = logging.getLogger(__name__)
 
 def _retry_after_s(response: Any) -> Optional[float]:
     """``Retry-After`` as seconds (delta-seconds or HTTP-date), or None when absent or unreadable."""
-    value = response.headers.get("Retry-After") if response is not None and hasattr(response, "headers") else None
+    value = (
+        response.headers.get("Retry-After")
+        if response is not None and hasattr(response, "headers")
+        else None
+    )
     if not value or not isinstance(value, (str, bytes, int, float)):
         return None
     try:
@@ -66,7 +70,12 @@ def _retry_after_s(response: Any) -> Optional[float]:
     try:
         from email.utils import parsedate_to_datetime
 
-        return max(0.0, (parsedate_to_datetime(str(value)) - datetime.now().astimezone()).total_seconds())
+        return max(
+            0.0,
+            (
+                parsedate_to_datetime(str(value)) - datetime.now().astimezone()
+            ).total_seconds(),
+        )
     except (TypeError, ValueError):
         return None
 
@@ -709,7 +718,11 @@ class SmartMemoryClient:
         One key (the caller's, or a freshly minted ``sm2_`` UUID v4) rides in the body of every attempt, and the
         body is built once, so a retry is byte-identical. A 409 becomes the typed ``SaveConflictError``.
         """
-        key = _transport.validate_key(idempotency_key) if idempotency_key is not None else _transport.mint_key()
+        key = (
+            _transport.validate_key(idempotency_key)
+            if idempotency_key is not None
+            else _transport.mint_key()
+        )
         sent = {**body, "idempotency_key": key}
         try:
             wire = _transport.submit_with_retry(
@@ -724,7 +737,9 @@ class SmartMemoryClient:
             conflict.idempotency_key, conflict.attempts = key, exc.attempts
             raise conflict from exc
         if not wire:
-            raise SmartMemoryClientError(f"Failed to save: {endpoint} returned an empty body (key {key})")
+            raise SmartMemoryClientError(
+                f"Failed to save: {endpoint} returned an empty body (key {key})"
+            )
         return parse_receipt(wire)
 
     def await_receipt(
@@ -1622,7 +1637,9 @@ class SmartMemoryClient:
             user_id is automatically determined from the JWT token.
         """
         if wait is not None and wait not in ("stored", "extracted"):
-            raise SmartMemoryValidationError(f"wait must be 'stored' or 'extracted', got {wait!r}")
+            raise SmartMemoryValidationError(
+                f"wait must be 'stored' or 'extracted', got {wait!r}"
+            )
         body_dict: Dict[str, Any] = {
             "content": content,
             "extractor_name": extractor_name,
@@ -3245,7 +3262,9 @@ class SmartMemoryClient:
         except ReceiptError as exc:
             if exc.code == "unsupported_version":
                 raise StageChainError(
-                    str(exc), code="unsupported_receipt_version", run_id=getattr(exc, "run_id", None)
+                    str(exc),
+                    code="unsupported_receipt_version",
+                    run_id=getattr(exc, "run_id", None),
                 ) from exc
             raise
         self._stage_receipt_runs.add(receipt.run_id)
@@ -3270,14 +3289,18 @@ class SmartMemoryClient:
         stage_chain_invalid``) when the predecessor cannot be chained. Returns the ``stage_job`` receipt.
         """
         run_id = _transport.chain_run_id(predecessor, self._stage_receipt_runs)
-        return self._stage("storage", {"run_id": run_id, "storage_strategy": storage_strategy})
+        return self._stage(
+            "storage", {"run_id": run_id, "storage_strategy": storage_strategy}
+        )
 
     def run_linking_stage(
         self, predecessor: Union[Receipt, str], linking_algorithm: str = "exact"
     ) -> Receipt:
         """Run the linking stage from the awaited storage receipt. See :meth:`run_storage_stage`."""
         run_id = _transport.chain_run_id(predecessor, self._stage_receipt_runs)
-        return self._stage("linking", {"run_id": run_id, "linking_algorithm": linking_algorithm})
+        return self._stage(
+            "linking", {"run_id": run_id, "linking_algorithm": linking_algorithm}
+        )
 
     def run_enrichment_stage(
         self,
@@ -3286,7 +3309,10 @@ class SmartMemoryClient:
     ) -> Receipt:
         """Run the enrichment stage from the awaited linking receipt. See :meth:`run_storage_stage`."""
         run_id = _transport.chain_run_id(predecessor, self._stage_receipt_runs)
-        body = {"run_id": run_id, "enrichment_types": enrichment_types or ["sentiment", "topics"]}
+        body = {
+            "run_id": run_id,
+            "enrichment_types": enrichment_types or ["sentiment", "topics"],
+        }
         return self._stage("enrichment", body)
 
     def run_grounding_stage(
@@ -3296,7 +3322,10 @@ class SmartMemoryClient:
     ) -> Receipt:
         """Run the grounding stage from the awaited enrichment receipt. See :meth:`run_storage_stage`."""
         run_id = _transport.chain_run_id(predecessor, self._stage_receipt_runs)
-        body = {"run_id": run_id, "grounding_sources": grounding_sources or ["wikipedia"]}
+        body = {
+            "run_id": run_id,
+            "grounding_sources": grounding_sources or ["wikipedia"],
+        }
         return self._stage("grounding", body)
 
     def get_pipeline_state(

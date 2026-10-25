@@ -251,7 +251,9 @@ def test_public_api_method_urls(
     expected_path: str,
 ) -> None:
     # add/ingest answer a 2.0 save receipt (G52); every other row keeps the generic body.
-    mock_request.return_value = _ok(SAVE_RECEIPT if method_name in ("add", "ingest") else None)
+    mock_request.return_value = _ok(
+        SAVE_RECEIPT if method_name in ("add", "ingest") else None
+    )
 
     getattr(client, method_name)(*args)
 

@@ -221,12 +221,16 @@ class TestPromoteProcedureCandidate:
         assert body["description"] is None
         assert body["procedure_type"] == "extraction"
         assert body["preferred_profile"] == "quick_extract"
-        assert "remove_working_items" not in body  # G129: the source-delete option is gone
+        assert (
+            "remove_working_items" not in body
+        )  # G129: the source-delete option is gone
 
     def test_remove_working_items_is_not_accepted(self, client):
         # G129 (2.0.0): no shim, so a caller still passing it fails loudly instead of deleting sources.
         with pytest.raises(TypeError):
-            client.promote_procedure_candidate(cluster_id="cluster-3", remove_working_items=True)
+            client.promote_procedure_candidate(
+                cluster_id="cluster-3", remove_working_items=True
+            )
 
     @patch("httpx.Client.request")
     def test_404_cluster_not_found(self, mock_request, client):

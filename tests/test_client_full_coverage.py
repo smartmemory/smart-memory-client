@@ -16,7 +16,11 @@ def mock_request(client):
 
 STAGE_RECEIPT = {
     "schema_version": "1.1",
-    "subject": {"kind": "stage_job", "occurrence_id": "occ_1", "stage_id": "extraction"},
+    "subject": {
+        "kind": "stage_job",
+        "occurrence_id": "occ_1",
+        "stage_id": "extraction",
+    },
     "run_id": "run_stage_x",
     "status_url": "/memory/status/run_stage_x",
     "processing_stage": None,
@@ -343,7 +347,10 @@ class TestClientFullCoverage:
         mock_request.assert_called_with(
             "POST",
             "/memory/pipeline/enrichment",
-            json_body={"run_id": "pipeline_1", "enrichment_types": ["sentiment", "topics"]},
+            json_body={
+                "run_id": "pipeline_1",
+                "enrichment_types": ["sentiment", "topics"],
+            },
         )
         client.run_grounding_stage("pipeline_1")
         mock_request.assert_called_with(

@@ -25,10 +25,14 @@ logger = logging.getLogger(__name__)
 SUPPORTED_MAJOR = 1
 
 PROCESSING_STAGES = frozenset({"received", "stored", "extracted"})
-EXECUTION_STATES = frozenset({"queued", "waiting", "running", "paused", "completed", "failed", "dead"})
+EXECUTION_STATES = frozenset(
+    {"queued", "waiting", "running", "paused", "completed", "failed", "dead"}
+)
 OUTCOMES = frozenset({"completed", "skipped", "no_op", "partial", "failed", "dead"})
 RESULT_AVAILABILITY = frozenset({"pending", "available", "expired", "none"})
-REASONS = frozenset({"allowance", "authority", "key_needed", "dependency", "retry_backoff"})
+REASONS = frozenset(
+    {"allowance", "authority", "key_needed", "dependency", "retry_backoff"}
+)
 
 #: subject kind -> the id field its ``item_id`` view reads (None: the subject has no item identity).
 _ITEM_ID_FIELD = {
@@ -119,15 +123,26 @@ def _handle(wire: Mapping[str, Any]) -> Dict[str, Optional[str]]:
     }
 
 
-def _refuse(code: str, message: str, wire: Mapping[str, Any], **opaque: Any) -> ReceiptError:
-    logger.warning("receipt refused (%s): %s; keeping handle run_id=%s", code, message, wire.get("run_id"))
-    return ReceiptError(message, code=code, raw=dict(wire), opaque=opaque, **_handle(wire))
+def _refuse(
+    code: str, message: str, wire: Mapping[str, Any], **opaque: Any
+) -> ReceiptError:
+    logger.warning(
+        "receipt refused (%s): %s; keeping handle run_id=%s",
+        code,
+        message,
+        wire.get("run_id"),
+    )
+    return ReceiptError(
+        message, code=code, raw=dict(wire), opaque=opaque, **_handle(wire)
+    )
 
 
 def parse_receipt(wire: Any) -> Receipt:
     """Decode one receipt body following ``x-reader-decoder``; raise ``ReceiptError`` for anything else."""
     if not isinstance(wire, Mapping):
-        raise _refuse("not_a_receipt", f"expected a receipt object, got {type(wire).__name__}", {})
+        raise _refuse(
+            "not_a_receipt", f"expected a receipt object, got {type(wire).__name__}", {}
+        )
     if "projection_kind" in wire:
         raise _refuse(
             "not_a_receipt",
@@ -136,11 +151,17 @@ def parse_receipt(wire: Any) -> Receipt:
         )
     version = wire.get("schema_version")
     if not isinstance(version, str):
-        raise _refuse("not_a_receipt", "body has no schema_version: this is not a 2.0 save receipt", wire)
+        raise _refuse(
+            "not_a_receipt",
+            "body has no schema_version: this is not a 2.0 save receipt",
+            wire,
+        )
     try:
         major = int(version.split(".", 1)[0])
     except ValueError:
-        raise _refuse("malformed_receipt", f"unreadable schema_version {version!r}", wire) from None
+        raise _refuse(
+            "malformed_receipt", f"unreadable schema_version {version!r}", wire
+        ) from None
     if major != SUPPORTED_MAJOR:
         raise _refuse(
             "unsupported_version",
@@ -153,7 +174,10 @@ def parse_receipt(wire: Any) -> Receipt:
         raise _refuse("malformed_receipt", "receipt has no subject.kind", wire)
     if subject["kind"] not in SUBJECT_KINDS:
         raise _refuse(
-            "unsupported_subject", f"unknown subject kind {subject['kind']!r}", wire, subject_kind=subject["kind"]
+            "unsupported_subject",
+            f"unknown subject kind {subject['kind']!r}",
+            wire,
+            subject_kind=subject["kind"],
         )
     for name in ("run_id", "status_url"):
         if not isinstance(wire.get(name), str) or not wire[name]:
@@ -170,9 +194,18 @@ def parse_receipt(wire: Any) -> Receipt:
         if wire.get(name) is not None and wire[name] not in allowed
     }
     if unknown:
-        raise _refuse("unsupported_state", f"unknown receipt state value(s) {unknown!r}", wire, **unknown)
+        raise _refuse(
+            "unsupported_state",
+            f"unknown receipt state value(s) {unknown!r}",
+            wire,
+            **unknown,
+        )
     if not isinstance(wire.get("terminal"), bool) or "result_availability" not in wire:
-        raise _refuse("malformed_receipt", "receipt has no terminal flag or result_availability", wire)
+        raise _refuse(
+            "malformed_receipt",
+            "receipt has no terminal flag or result_availability",
+            wire,
+        )
     raw = _wrap(dict(wire))
     return Receipt(
         schema_version=version,
