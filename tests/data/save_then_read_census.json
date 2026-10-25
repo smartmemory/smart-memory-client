@@ -310,7 +310,7 @@
    "call": "add",
    "file": "tests/test_client_errors.py",
    "function": "TestAddProfileNameSymmetry.test_add_with_profile_name_includes_it_in_body",
-   "line": 406,
+   "line": 420,
    "memory_like": true,
    "receiver": "client"
   },
@@ -318,7 +318,7 @@
    "call": "add",
    "file": "tests/test_client_errors.py",
    "function": "TestAddProfileNameSymmetry.test_add_without_profile_name_omits_it",
-   "line": 413,
+   "line": 427,
    "memory_like": true,
    "receiver": "client"
   },
@@ -326,7 +326,7 @@
    "call": "add",
    "file": "tests/test_embed_control_and_supersede_link.py",
    "function": "TestEmbedControl._add_body",
-   "line": 66,
+   "line": 80,
    "memory_like": true,
    "receiver": "_client()"
   },
@@ -342,7 +342,7 @@
    "call": "ingest",
    "file": "tests/test_origin_propagation.py",
    "function": "test_ingest_and_conversation_context",
-   "line": 12,
+   "line": 26,
    "memory_like": true,
    "receiver": "client"
   },
@@ -350,7 +350,7 @@
    "call": "ingest_conversation",
    "file": "tests/test_origin_propagation.py",
    "function": "test_ingest_and_conversation_context",
-   "line": 14,
+   "line": 28,
    "memory_like": true,
    "receiver": "client"
   },
@@ -1140,17 +1140,17 @@
    "file": "tests/test_client_errors.py",
    "function": "TestAddProfileNameSymmetry.test_add_with_profile_name_includes_it_in_body",
    "key": "tests/test_client_errors.py::TestAddProfileNameSymmetry.test_add_with_profile_name_includes_it_in_body",
-   "line": 404,
+   "line": 418,
    "reads": [
     [
-     408,
+     422,
      "get"
     ]
    ],
    "reads_after_save": true,
    "saves": [
     [
-     406,
+     420,
      "add"
     ]
    ],
@@ -1166,12 +1166,12 @@
    "file": "tests/test_client_errors.py",
    "function": "TestAddProfileNameSymmetry.test_add_without_profile_name_omits_it",
    "key": "tests/test_client_errors.py::TestAddProfileNameSymmetry.test_add_without_profile_name_omits_it",
-   "line": 411,
+   "line": 425,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     413,
+     427,
      "add"
     ]
    ],
@@ -1187,12 +1187,12 @@
    "file": "tests/test_embed_control_and_supersede_link.py",
    "function": "TestEmbedControl._add_body",
    "key": "tests/test_embed_control_and_supersede_link.py::TestEmbedControl._add_body",
-   "line": 58,
+   "line": 72,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     66,
+     80,
      "add"
     ]
    ],
@@ -1208,7 +1208,7 @@
    "file": "tests/test_embed_control_and_supersede_link.py",
    "function": "TestEmbedControl.test_embed_false_forwarded",
    "key": "tests/test_embed_control_and_supersede_link.py::TestEmbedControl.test_embed_false_forwarded",
-   "line": 73,
+   "line": 87,
    "reads": [],
    "reads_after_save": false,
    "saves": [],
@@ -1224,7 +1224,7 @@
    "file": "tests/test_embed_control_and_supersede_link.py",
    "function": "TestEmbedControl.test_embed_true_forwarded",
    "key": "tests/test_embed_control_and_supersede_link.py::TestEmbedControl.test_embed_true_forwarded",
-   "line": 76,
+   "line": 90,
    "reads": [],
    "reads_after_save": false,
    "saves": [],
@@ -1240,7 +1240,7 @@
    "file": "tests/test_embed_control_and_supersede_link.py",
    "function": "TestEmbedControl.test_omitted_embed_is_absent_from_the_wire",
    "key": "tests/test_embed_control_and_supersede_link.py::TestEmbedControl.test_omitted_embed_is_absent_from_the_wire",
-   "line": 69,
+   "line": 83,
    "reads": [],
    "reads_after_save": false,
    "saves": [],
@@ -1256,10 +1256,10 @@
    "file": "tests/test_embed_control_and_supersede_link.py",
    "function": "TestEmbedControl.test_wire_field_name_matches_contract",
    "key": "tests/test_embed_control_and_supersede_link.py::TestEmbedControl.test_wire_field_name_matches_contract",
-   "line": 79,
+   "line": 93,
    "reads": [
     [
-     80,
+     94,
      "read_text"
     ]
    ],
@@ -1298,16 +1298,16 @@
    "file": "tests/test_origin_propagation.py",
    "function": "test_ingest_and_conversation_context",
    "key": "tests/test_origin_propagation.py::test_ingest_and_conversation_context",
-   "line": 8,
+   "line": 22,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     12,
+     26,
      "ingest"
     ],
     [
-     14,
+     28,
      "ingest_conversation"
     ]
    ],
