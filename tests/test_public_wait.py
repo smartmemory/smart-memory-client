@@ -20,9 +20,11 @@ import smartmemory_client
 from smartmemory_client import (
     MemoryItem,
     SmartMemoryClient,
+    SmartMemoryClientError,
     SmartMemoryNotFoundError,
     SmartMemoryServerError,
 )
+from smartmemory_client.errors import SmartMemoryTransportError
 from tests.public_wait import (
     OUTCOMES,
     Observation,
@@ -552,7 +554,7 @@ GET_REFUSAL_ROWS = [
         [httpx.ConnectError("refused"), FOUND],
         "stored",
         1,
-        "get('m-1') failed (SmartMemoryClientError: Request failed: refused)",
+        "get('m-1') failed (SmartMemoryTransportError: Request failed: refused)",
     ),
     (
         "a readable item is unobservable: the SDK dropped its status",
@@ -599,6 +601,12 @@ def test_get_family_refusals_are_typed_logged_once_and_never_retried(row, caplog
     with patch("httpx.Client.request", new=transport), pytest.raises(PublicWaitRefused):
         drive(observe_get(client, "m-1"), wait=wait, deadline_s=1.0)
     assert transport.calls == calls and warnings(caplog) == [WARN_PREFIX + message]
+
+
+def test_the_transport_refusal_names_a_subclass_of_the_base_client_error():
+    """Row 'a transport failure is refused' logs the subclass name; callers catching the base class still catch it."""
+    assert issubclass(SmartMemoryTransportError, SmartMemoryClientError)
+    assert SmartMemoryTransportError is not SmartMemoryClientError
 
 
 # id, replies, wait, deadline_s, outcome, attempts, calls, detail
@@ -801,11 +809,20 @@ def test_the_legacy_direct_read_is_unchanged_and_no_sdk_api_was_added():
             client.get("m-1")
         assert client.get("m-1").item_id == "m-1"
     assert transport.calls == 2
-    added = [
-        n for n in dir(SmartMemoryClient) if n.startswith(("wait", "await", "poll"))
-    ]
+    assert wait_api_names(SmartMemoryClient) == ["await_receipt"]  # G53: by name only
     exported = [n for n in smartmemory_client.__all__ if "wait" in n.lower()]
-    assert added == [] and exported == []
+    assert exported == []
+
+
+def wait_api_names(cls):
+    return sorted(n for n in dir(cls) if n.startswith(("wait", "await", "poll")))
+
+
+def test_the_wait_api_guard_refuses_any_extra_wait_name(monkeypatch):
+    monkeypatch.setattr(
+        SmartMemoryClient, "poll_receipt", lambda self: None, raising=False
+    )
+    assert wait_api_names(SmartMemoryClient) != ["await_receipt"]
 
 
 def test_a_5xx_on_the_legacy_direct_read_still_raises_the_typed_error():
