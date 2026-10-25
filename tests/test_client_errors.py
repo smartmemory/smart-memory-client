@@ -397,19 +397,33 @@ class TestCrudRaisesInsteadOfSwallow:
             client.delete("item")
 
 
+SAVE_RECEIPT = {
+    "schema_version": "1.1",
+    "subject": {"kind": "item_save", "item_id": "m-1"},
+    "run_id": "run_1",
+    "status_url": "/memory/status/run_1",
+    "processing_stage": "received",
+    "execution_state": "queued",
+    "outcome": None,
+    "terminal": False,
+    "result_availability": "pending",
+    "client_timed_out": False,
+}
+
+
 class TestAddProfileNameSymmetry:
     """SDK-CONSISTENCY-1 B2: Python add() exposes profile_name (was JS-only)."""
 
     @patch("httpx.Client.request")
     def test_add_with_profile_name_includes_it_in_body(self, mock_request, client):
-        mock_request.return_value = _build_response(200, json_data={"id": "x"})
+        mock_request.return_value = _build_response(200, json_data=SAVE_RECEIPT)
         client.add("hello", profile_name="lite")
         body = mock_request.call_args.kwargs["json"]
         assert body.get("profile_name") == "lite"
 
     @patch("httpx.Client.request")
     def test_add_without_profile_name_omits_it(self, mock_request, client):
-        mock_request.return_value = _build_response(200, json_data={"id": "x"})
+        mock_request.return_value = _build_response(200, json_data=SAVE_RECEIPT)
         client.add("hello")
         body = mock_request.call_args.kwargs["json"]
         assert "profile_name" not in body

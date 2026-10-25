@@ -54,13 +54,27 @@ def _client():
     )
 
 
+SAVE_RECEIPT = {
+    "schema_version": "1.1",
+    "subject": {"kind": "item_save", "item_id": "m-1"},
+    "run_id": "run_1",
+    "status_url": "/memory/status/run_1",
+    "processing_stage": "received",
+    "execution_state": "queued",
+    "outcome": None,
+    "terminal": False,
+    "result_availability": "pending",
+    "client_timed_out": False,
+}
+
+
 class TestEmbedControl:
     def _add_body(self, **kwargs):
         captured = {}
 
         def fake_request(method, url, json=None, headers=None, timeout=None, **kw):
             captured["body"] = json
-            return _mock_response({"item_id": "m-1"})
+            return _mock_response(SAVE_RECEIPT)
 
         with patch("httpx.Client.request", side_effect=fake_request):
             _client().add("content", use_pipeline=False, **kwargs)

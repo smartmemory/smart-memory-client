@@ -1,0 +1,176 @@
+{
+ "_source": "smart-memory-docs origin/main ca54c9a7f2e7 docs/features/SM2-SAVE-1/save-receipt-contract.json: examples[0,1,2,3,6,7] and x-reader-fixtures, copied verbatim",
+ "expired_key": {
+  "admission_error": {
+   "code": "retry_key_expired",
+   "message": "Retry key expired \u2014 cannot match. Keep the draft and confirm a new save."
+  },
+  "schema_version": "1.1"
+ },
+ "extracted_save": {
+  "client_timed_out": false,
+  "execution_epoch": 1,
+  "execution_state": "completed",
+  "outcome": "completed",
+  "placement": "service",
+  "processing_stage": "extracted",
+  "result": {
+   "constraint_violations": [],
+   "drift_detected": false,
+   "entities": [],
+   "item_id": "mem_123",
+   "link_results": [],
+   "ontology_registry_id": "",
+   "ontology_version": "",
+   "procedure_match": null,
+   "relations": [],
+   "revision": 1,
+   "unresolved_entities": []
+  },
+  "result_availability": "available",
+  "revision": 1,
+  "run_id": "run_1",
+  "schema_version": "1.1",
+  "status_url": "/memory/status/run_1",
+  "status_version": 3,
+  "subject": {
+   "item_id": "mem_123",
+   "kind": "item_save"
+  },
+  "terminal": true
+ },
+ "idempotency_conflict": {
+  "admission_error": {
+   "code": "idempotency_conflict",
+   "message": "This retry key is bound to a different request."
+  },
+  "schema_version": "1.1"
+ },
+ "pending_save": {
+  "client_timed_out": false,
+  "execution_epoch": 1,
+  "execution_state": "queued",
+  "idempotency_key": "save_req_1",
+  "intake_id": "in_1",
+  "outcome": null,
+  "placement": "service",
+  "processing_stage": "received",
+  "result_availability": "pending",
+  "revision": 1,
+  "run_id": "run_1",
+  "schema_version": "1.1",
+  "status_url": "/memory/status/run_1",
+  "status_version": 1,
+  "subject": {
+   "item_id": "mem_123",
+   "kind": "item_save"
+  },
+  "terminal": false
+ },
+ "reader_fixtures": [
+  {
+   "description": "Additive nested field and minor version: reader preserves opaque field and handle, returning known received status. Intentionally invalid under exact 1.1 writer schema.",
+   "reader_result": "known_pending_with_opaque_fields",
+   "wire": {
+    "client_timed_out": false,
+    "context": {
+     "future_field": "opaque"
+    },
+    "execution_state": "queued",
+    "outcome": null,
+    "processing_stage": "received",
+    "result_availability": "pending",
+    "revision": 1,
+    "run_id": "run_future_1",
+    "schema_version": "1.2",
+    "status_url": "/memory/status/run_future_1",
+    "subject": {
+     "item_id": "mem_future",
+     "kind": "item_save"
+    },
+    "terminal": false
+   }
+  },
+  {
+   "description": "New subject kind: preserve run/status handle, return unsupported_subject, never success. Intentionally invalid under exact 1.1 writer schema.",
+   "reader_result": "unsupported_subject_with_handle",
+   "wire": {
+    "client_timed_out": false,
+    "execution_state": "completed",
+    "outcome": "completed",
+    "processing_stage": null,
+    "result_availability": "available",
+    "run_id": "run_future_2",
+    "schema_version": "1.2",
+    "status_url": "/memory/status/run_future_2",
+    "subject": {
+     "kind": "future_job",
+     "occurrence_id": "occ_future_1"
+    },
+    "terminal": true
+   }
+  },
+  {
+   "description": "Unknown stage/reason/result availability: preserve handle and return unsupported_state.",
+   "reader_result": "unsupported_state_with_handle",
+   "wire": {
+    "client_timed_out": false,
+    "execution_state": "future_execution",
+    "outcome": "future_outcome",
+    "processing_stage": "future_stage",
+    "reason": "future_reason",
+    "result_availability": "future_availability",
+    "revision": 1,
+    "run_id": "run_future_3",
+    "schema_version": "1.2",
+    "status_url": "/memory/status/run_future_3",
+    "subject": {
+     "item_id": "mem_future",
+     "kind": "item_save"
+    },
+    "terminal": false
+   }
+  }
+ ],
+ "revision_conflict": {
+  "admission_error": {
+   "code": "revision_conflict",
+   "message": "This item changed since it was opened; review the current version before retrying."
+  },
+  "current_revision": 4,
+  "expected_revision": 3,
+  "schema_version": "1.1",
+  "subject": {
+   "item_id": "mem_123",
+   "kind": "edit"
+  }
+ },
+ "stage_job_completed": {
+  "client_timed_out": false,
+  "execution_epoch": 1,
+  "execution_state": "completed",
+  "outcome": "completed",
+  "placement": "service",
+  "processing_stage": null,
+  "result": {
+   "link_results": [],
+   "output": {
+    "entities": [],
+    "relations": []
+   },
+   "pipeline_state_run_id": "pipeline_1",
+   "stage_id": "extraction"
+  },
+  "result_availability": "available",
+  "run_id": "run_stage_1",
+  "schema_version": "1.1",
+  "status_url": "/memory/status/run_stage_1",
+  "status_version": 3,
+  "subject": {
+   "kind": "stage_job",
+   "occurrence_id": "occ_stage_1",
+   "stage_id": "extraction"
+  },
+  "terminal": true
+ }
+}

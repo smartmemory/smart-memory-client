@@ -33,45 +33,42 @@ from smartmemory_client.models.session import (
     normalize_session_response,
 )
 
+from smartmemory_client import _save_transport as _transport
+from smartmemory_client.receipt import Receipt, parse_receipt
+from smartmemory_client.errors import (  # noqa: F401  (re-exported: the classes lived here before 2.0)
+    STAGE_CHAIN_CODES,
+    IdempotencyConflictError,
+    ReceiptError,
+    RetryKeyExpiredError,
+    RevisionConflictError,
+    SaveConflictError,
+    SmartMemoryClientError,
+    SmartMemoryNotFoundError,
+    SmartMemoryPermissionError,
+    SmartMemoryServerError,
+    SmartMemoryTransportError,
+    SmartMemoryValidationError,
+    StageChainError,
+)
+
 logger = logging.getLogger(__name__)
 
 
-class SmartMemoryClientError(Exception):
-    """Base exception for SmartMemory client errors.
+def _retry_after_s(response: Any) -> Optional[float]:
+    """``Retry-After`` as seconds (delta-seconds or HTTP-date), or None when absent or unreadable."""
+    value = response.headers.get("Retry-After") if response is not None and hasattr(response, "headers") else None
+    if not value or not isinstance(value, (str, bytes, int, float)):
+        return None
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        pass
+    try:
+        from email.utils import parsedate_to_datetime
 
-    Subclasses (raised by the SDK on HTTP-status errors) expose:
-        status_code (int | None): the HTTP status the server returned, if any.
-        detail (str): the response body (best-effort).
-
-    Catching ``SmartMemoryClientError`` continues to handle every typed
-    subclass for backwards compatibility.
-    """
-
-    def __init__(
-        self,
-        message: str,
-        status_code: int | None = None,
-        detail: str | None = None,
-    ) -> None:
-        super().__init__(message)
-        self.status_code = status_code
-        self.detail = detail or ""
-
-
-class SmartMemoryNotFoundError(SmartMemoryClientError):
-    """Raised on HTTP 404 — the requested resource does not exist."""
-
-
-class SmartMemoryPermissionError(SmartMemoryClientError):
-    """Raised on HTTP 401/403 — auth missing, expired, or insufficient."""
-
-
-class SmartMemoryValidationError(SmartMemoryClientError):
-    """Raised on HTTP 400/409/422 — request shape or state was rejected."""
-
-
-class SmartMemoryServerError(SmartMemoryClientError):
-    """Raised on HTTP 5xx — the server failed to process the request."""
+        return max(0.0, (parsedate_to_datetime(str(value)) - datetime.now().astimezone()).total_seconds())
+    except (TypeError, ValueError):
+        return None
 
 
 def _exception_for_status(status: int) -> type[SmartMemoryClientError]:
@@ -234,6 +231,8 @@ class SmartMemoryClient:
 
         self.base_url = base_url
         self.timeout = timeout
+        #: Execution run ids of stage receipts returned by this client: never valid as a chain id (ST33).
+        self._stage_receipt_runs: set = set()
         self.verify_ssl = verify_ssl
 
         # Persistent HTTP client for connection reuse (keep-alive pooling) across
@@ -565,7 +564,8 @@ class SmartMemoryClient:
             Union[ConversationContextModel, Dict[str, Any]]
         ] = None,
         embed: Optional[bool] = None,
-    ) -> str:
+        idempotency_key: Optional[str] = None,
+    ) -> Receipt:
         """
         Add a memory item to the system.
 
@@ -584,6 +584,10 @@ class SmartMemoryClient:
                 the service answers 400 for the combination rather than silently
                 ignoring it, because the ingestion pipeline has no per-item
                 override.
+            idempotency_key: The retry identity of this logical save. Omit it and the SDK mints one
+                (``sm2_`` plus a UUID v4). Pass the key of an earlier failed call (with the same content) to
+                retry it explicitly; the SDK itself retries transport loss and HTTP 408/429/500/502/503/504 at
+                most four attempts in total with that one key, and never retries 400/401/403/404/409/422.
 
         Note:
             Provenance like `retrieved_context_ids` travels in `metadata` — the
@@ -592,21 +596,27 @@ class SmartMemoryClient:
             added then removed 2026-08-02).
 
         Returns:
-            Memory item ID
+            A :class:`Receipt` (2.0.0: this is no longer the bare item ID). ``receipt.item_id`` is the item
+            handle; ``client.await_receipt(receipt)`` polls it to a stored, extracted or terminal state.
+
+        Raises:
+            RevisionConflictError, IdempotencyConflictError, RetryKeyExpiredError: HTTP 409 (all are
+                ``SaveConflictError``); keep the draft, the SDK never mints a new key for you.
+            ReceiptError: the server answered with a body that is not a readable 2.0 receipt.
 
         Example:
             ```python
             # Simple add
-            item_id = client.add("Remember this")
+            item_id = client.add("Remember this").item_id
 
             # With pipeline disabled (faster)
-            item_id = client.add("Quick note", use_pipeline=False)
+            item_id = client.add("Quick note", use_pipeline=False).item_id
 
             # With a specific pipeline profile
-            item_id = client.add("Tell me later", profile_name="lite")
+            item_id = client.add("Tell me later", profile_name="lite").item_id
 
             # With metadata
-            item_id = client.add(
+            receipt = client.add(
                 "Important fact",
                 metadata={"source": "user", "priority": "high"},
                 use_pipeline=True
@@ -676,7 +686,7 @@ class SmartMemoryClient:
             body_dict["embed"] = embed
 
         try:
-            result = self._request("POST", "/memory/add", json_body=body_dict)
+            return self._save("/memory/add", body_dict, idempotency_key=idempotency_key)
         except SmartMemoryClientError as e:
             if "401" in str(e):
                 logger.warning(
@@ -684,15 +694,59 @@ class SmartMemoryClient:
                 )
             raise
 
-        if not result:
-            raise SmartMemoryClientError("Failed to add memory")
+    #: ST14/G173: a ``Retry-After`` that cannot fit in this many seconds ends the automatic retries.
+    save_retry_deadline_s: float = _transport.AWAIT_TIMEOUT_S
 
-        if isinstance(result, dict):
-            return result.get("id")
-        elif hasattr(result, "id"):
-            return result.id
-        else:
-            raise SmartMemoryClientError(f"Unexpected response format: {result}")
+    def _save(
+        self,
+        endpoint: str,
+        body: Dict[str, Any],
+        *,
+        idempotency_key: Optional[str] = None,
+    ) -> Receipt:
+        """POST one logical save under the ST14 retry policy and return its receipt.
+
+        One key (the caller's, or a freshly minted ``sm2_`` UUID v4) rides in the body of every attempt, and the
+        body is built once, so a retry is byte-identical. A 409 becomes the typed ``SaveConflictError``.
+        """
+        key = _transport.validate_key(idempotency_key) if idempotency_key is not None else _transport.mint_key()
+        sent = {**body, "idempotency_key": key}
+        try:
+            wire = _transport.submit_with_retry(
+                lambda: self._request("POST", endpoint, json_body=sent),
+                key=key,
+                deadline_s=self.save_retry_deadline_s,
+            )
+        except SmartMemoryClientError as exc:
+            conflict = _transport.conflict_from(exc)
+            if conflict is None:
+                raise
+            conflict.idempotency_key, conflict.attempts = key, exc.attempts
+            raise conflict from exc
+        if not wire:
+            raise SmartMemoryClientError(f"Failed to save: {endpoint} returned an empty body (key {key})")
+        return parse_receipt(wire)
+
+    def await_receipt(
+        self,
+        receipt: Receipt,
+        timeout: float = _transport.AWAIT_TIMEOUT_S,
+        *,
+        target: str = "terminal",
+    ) -> Receipt:
+        """Poll a receipt's scoped status until ``target`` (stored | extracted | terminal) or ``timeout`` seconds (G53).
+
+        Returns at once when the receipt already satisfies the target. On timeout it returns the latest
+        pending receipt with ``client_timed_out=True``; it does not raise and does not drop the handle, and a
+        timeout says nothing about the server run. Status reads that fail with transport loss, 408, 429 or 5xx
+        back off 250 ms to 5 s and try again inside the same deadline; 404 and unreadable receipts raise.
+        """
+        return _transport.await_receipt(
+            lambda path, params: self._request("GET", path, params=params),
+            receipt,
+            timeout=timeout,
+            target=target,
+        )
 
     def explain(self, memory_id: str) -> Dict[str, Any]:
         """
@@ -1380,7 +1434,8 @@ class SmartMemoryClient:
         metadata: Optional[Dict[str, Any]] = None,
         properties: Optional[Dict[str, Any]] = None,
         write_mode: Optional[str] = None,
-    ) -> None:
+        expected_revision: Optional[Union[int, str]] = None,
+    ) -> Optional[Receipt]:
         """
         Update a memory item (CORE-CRUD-UPDATE-1 contract).
 
@@ -1391,8 +1446,17 @@ class SmartMemoryClient:
             properties: Advanced — direct node-property dict. Takes precedence
                 over content/metadata when provided.
             write_mode: "merge" (default) or "replace"
+            expected_revision: The item revision this edit was made against (G131). The service answers
+                409 when the item moved on; nothing is retried and no new key is minted, keep your draft.
+
+        Returns:
+            The edit :class:`Receipt` when the service admitted the edit as a run, else ``None``. A call that
+            sent ``expected_revision`` and got no receipt back logs one WARNING: the precondition may not have
+            been enforced.
 
         Raises:
+            RevisionConflictError: 409 with ``expected_revision`` and ``current_revision`` (a
+                ``SaveConflictError``, so also ``SmartMemoryValidationError``).
             SmartMemoryNotFoundError: 404 — no item with that ID.
             SmartMemoryPermissionError: 401/403 — caller cannot modify it.
             SmartMemoryValidationError: 400/422 — body rejected.
@@ -1419,8 +1483,26 @@ class SmartMemoryClient:
             body["properties"] = properties
         if write_mode is not None:
             body["write_mode"] = write_mode
+        if expected_revision is not None:
+            body["expected_revision"] = expected_revision
 
-        self._request("PATCH", f"/memory/{item_id}", json_body=body)
+        try:
+            result = self._request("PATCH", f"/memory/{item_id}", json_body=body)
+        except SmartMemoryClientError as exc:
+            conflict = _transport.conflict_from(exc)
+            if conflict is None:
+                raise
+            raise conflict from exc
+        if isinstance(result, dict) and "schema_version" in result:
+            return parse_receipt(result)
+        if expected_revision is not None:
+            logger.warning(
+                "update(%s) sent expected_revision=%r but the service returned no edit receipt; "
+                "the revision precondition may not have been enforced",
+                item_id,
+                expected_revision,
+            )
+        return None
 
     def supersede(
         self,
@@ -1505,7 +1587,9 @@ class SmartMemoryClient:
         content: str,
         extractor_name: str = "llm",
         context: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        wait: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> Receipt:
         """
         Ingest content with full extraction and enrichment pipeline.
 
@@ -1513,35 +1597,41 @@ class SmartMemoryClient:
             content: Content to ingest
             extractor_name: Name of the extractor to use (default: "llm")
             context: Additional context information
+            wait: ``"stored"`` or ``"extracted"`` asks the service to hold the answer until that milestone
+                (a completed wait is HTTP 200 with the same receipt and its ``result``). This replaces the
+                removed ``ingest_full()``: ``ingest(content, wait="extracted")`` returns the receipt whose
+                ``result`` carries the entities and relations. Omit it for the quick-return 202.
+            idempotency_key: See :meth:`add`.
 
         Returns:
-            Ingestion result with item_id, user_id, tenant_id, queued status
+            A :class:`Receipt` (2.0.0: no longer a result dict). ``receipt.item_id`` is the saved item.
 
         Example:
             ```python
             # Ingest conversation
-            result = client.ingest(
+            receipt = client.ingest(
                 content="User: Hello\nAssistant: Hi there!",
                 extractor_name="llm",
                 context={"conversation_id": "123", "timestamp": "2025-11-07"}
             )
 
-            print(f"Ingested: {result['item_id']}")
+            print(f"Ingested: {receipt.item_id}")
             ```
 
         Note:
             user_id is automatically determined from the JWT token.
         """
-        body_dict = {
+        if wait is not None and wait not in ("stored", "extracted"):
+            raise SmartMemoryValidationError(f"wait must be 'stored' or 'extracted', got {wait!r}")
+        body_dict: Dict[str, Any] = {
             "content": content,
             "extractor_name": extractor_name,
             "context": context or {},
         }
+        if wait is not None:
+            body_dict["wait"] = wait
 
-        try:
-            return self._request("POST", "/memory/ingest", json_body=body_dict)
-        except Exception as e:
-            raise SmartMemoryClientError(f"Failed to ingest content: {str(e)}")
+        return self._save("/memory/ingest", body_dict, idempotency_key=idempotency_key)
 
     def ingest_conversation(
         self,
@@ -2114,30 +2204,6 @@ class SmartMemoryClient:
             Prompt template and metadata
         """
         return self._request("GET", f"/memory/{item_id}/prompt/analyze")
-
-    def ingest_full(
-        self,
-        content: str,
-        extractor_name: str = "llm",
-        context: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """
-        Ingest content with full synchronous entity/relation extraction pipeline.
-
-        Args:
-            content: Content to ingest
-            extractor_name: Name of the extractor to use (default: "llm")
-            context: Additional context information
-
-        Returns:
-            Full ingestion result with entities and relations
-        """
-        body = {
-            "content": content,
-            "extractor_name": extractor_name,
-            "context": context or {},
-        }
-        return self._request("POST", "/memory/ingest/full", json_body=body)
 
     # ============================================================================
     # Admin & Monitoring
@@ -3161,53 +3227,77 @@ class SmartMemoryClient:
     # Pipeline
     # ============================================================================
 
+    def _stage(self, stage: str, body: Dict[str, Any]) -> Receipt:
+        """POST one public stage call and return its ``stage_job`` receipt (ST33, G169).
+
+        An ST33 refusal code in the body becomes ``StageChainError``; a receipt of an unknown major becomes
+        ``StageChainError(unsupported_receipt_version)`` that still carries the run id.
+        """
+        try:
+            wire = self._request("POST", f"/memory/pipeline/{stage}", json_body=body)
+        except SmartMemoryClientError as exc:
+            chain = _transport.stage_chain_from(exc)
+            if chain is None:
+                raise
+            raise chain from exc
+        try:
+            receipt = parse_receipt(wire)
+        except ReceiptError as exc:
+            if exc.code == "unsupported_version":
+                raise StageChainError(
+                    str(exc), code="unsupported_receipt_version", run_id=getattr(exc, "run_id", None)
+                ) from exc
+            raise
+        self._stage_receipt_runs.add(receipt.run_id)
+        return receipt
+
     def run_extraction_stage(
         self, content: str, extractor_name: str = "llm"
-    ) -> Dict[str, Any]:
-        """Run extraction pipeline stage."""
+    ) -> Receipt:
+        """Run the extraction stage. Returns the ``stage_job`` receipt (2.0.0: no longer the stage result).
+
+        ``client.await_receipt(receipt)`` it, then chain with ``receipt.result.pipeline_state_run_id``.
+        """
         body = {"content": content, "extractor_name": extractor_name}
-        return self._request("POST", "/memory/pipeline/extraction", json_body=body)
+        return self._stage("extraction", body)
 
     def run_storage_stage(
-        self, extracted_data: Dict[str, Any], storage_strategy: str = "standard"
-    ) -> Dict[str, Any]:
-        """Run storage pipeline stage."""
-        body = {"extracted_data": extracted_data, "storage_strategy": storage_strategy}
-        return self._request("POST", "/memory/pipeline/storage", json_body=body)
+        self, predecessor: Union[Receipt, str], storage_strategy: str = "standard"
+    ) -> Receipt:
+        """Run the storage stage from the awaited extraction receipt (or its ``pipeline_state_run_id``).
+
+        Raises ``StageChainError`` (``stage_result_pending|stage_result_expired|stage_result_unavailable|
+        stage_chain_invalid``) when the predecessor cannot be chained. Returns the ``stage_job`` receipt.
+        """
+        run_id = _transport.chain_run_id(predecessor, self._stage_receipt_runs)
+        return self._stage("storage", {"run_id": run_id, "storage_strategy": storage_strategy})
 
     def run_linking_stage(
-        self, stored_entities: List[Dict[str, Any]], linking_algorithm: str = "exact"
-    ) -> Dict[str, Any]:
-        """Run linking pipeline stage."""
-        body = {
-            "stored_entities": stored_entities,
-            "linking_algorithm": linking_algorithm,
-        }
-        return self._request("POST", "/memory/pipeline/linking", json_body=body)
+        self, predecessor: Union[Receipt, str], linking_algorithm: str = "exact"
+    ) -> Receipt:
+        """Run the linking stage from the awaited storage receipt. See :meth:`run_storage_stage`."""
+        run_id = _transport.chain_run_id(predecessor, self._stage_receipt_runs)
+        return self._stage("linking", {"run_id": run_id, "linking_algorithm": linking_algorithm})
 
     def run_enrichment_stage(
         self,
-        linked_entities: List[Dict[str, Any]],
+        predecessor: Union[Receipt, str],
         enrichment_types: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
-        """Run enrichment pipeline stage."""
-        body = {
-            "linked_entities": linked_entities,
-            "enrichment_types": enrichment_types or ["sentiment", "topics"],
-        }
-        return self._request("POST", "/memory/pipeline/enrichment", json_body=body)
+    ) -> Receipt:
+        """Run the enrichment stage from the awaited linking receipt. See :meth:`run_storage_stage`."""
+        run_id = _transport.chain_run_id(predecessor, self._stage_receipt_runs)
+        body = {"run_id": run_id, "enrichment_types": enrichment_types or ["sentiment", "topics"]}
+        return self._stage("enrichment", body)
 
     def run_grounding_stage(
         self,
-        enriched_entities: List[Dict[str, Any]],
+        predecessor: Union[Receipt, str],
         grounding_sources: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
-        """Run grounding pipeline stage."""
-        body = {
-            "enriched_entities": enriched_entities,
-            "grounding_sources": grounding_sources or ["wikipedia"],
-        }
-        return self._request("POST", "/memory/pipeline/grounding", json_body=body)
+    ) -> Receipt:
+        """Run the grounding stage from the awaited enrichment receipt. See :meth:`run_storage_stage`."""
+        run_id = _transport.chain_run_id(predecessor, self._stage_receipt_runs)
+        body = {"run_id": run_id, "grounding_sources": grounding_sources or ["wikipedia"]}
+        return self._stage("grounding", body)
 
     def get_pipeline_state(
         self, pipeline_id: str, run_id: Optional[str] = None
@@ -4793,7 +4883,6 @@ class SmartMemoryClient:
         description: Optional[str] = None,
         procedure_type: str = "extraction",
         preferred_profile: str = "quick_extract",
-        remove_working_items: bool = False,
     ) -> Dict[str, Any]:
         """
         Promote a candidate cluster to a stored procedure.
@@ -4807,10 +4896,11 @@ class SmartMemoryClient:
             description: Optional description for the procedure
             procedure_type: Type of procedure (default: "extraction")
             preferred_profile: Preferred pipeline profile (default: "quick_extract")
-            remove_working_items: Remove working items after promotion (default: False)
+
+        Source items are always retained (G129: the source-delete option was removed in 2.0.0).
 
         Returns:
-            Dict with status, procedure_id, name, items_promoted, and items_removed
+            Dict with status, procedure_id, name and items_promoted
 
         Example:
             ```python
@@ -4827,7 +4917,6 @@ class SmartMemoryClient:
             "description": description,
             "procedure_type": procedure_type,
             "preferred_profile": preferred_profile,
-            "remove_working_items": remove_working_items,
         }
         return self._request(
             "POST",
@@ -5377,7 +5466,7 @@ class SmartMemoryClient:
                 "json": json_body,
                 "data": data,
                 "headers": req_headers,
-                "timeout": self.timeout,
+                "timeout": self._effective_timeout(),
             }
             if files is not None:
                 request_kwargs["files"] = files
@@ -5400,9 +5489,18 @@ class SmartMemoryClient:
                 f"Request failed: {e} - Detail: {error_detail}",
                 status_code=status,
                 detail=error_detail,
+                retry_after_s=_retry_after_s(getattr(e, "response", None)),
             ) from e
+        except httpx.TransportError as e:
+            # No HTTP answer at all: the one non-status class the save retry policy (ST14) retries.
+            raise SmartMemoryTransportError(f"Request failed: {str(e)}") from e
         except Exception as e:
             raise SmartMemoryClientError(f"Request failed: {str(e)}") from e
+
+    def _effective_timeout(self) -> float:
+        """The httpx timeout for one request: ``self.timeout``, capped by an active ``await_receipt`` deadline."""
+        cap = _transport.REQUEST_TIMEOUT_S.get()
+        return self.timeout if cap is None else min(self.timeout, cap)
 
     def feedback(
         self,

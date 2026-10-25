@@ -39,6 +39,20 @@ def _ok(json_data: dict | None = None) -> MagicMock:
     return resp
 
 
+SAVE_RECEIPT = {
+    "schema_version": "1.1",
+    "subject": {"kind": "item_save", "item_id": "item_123"},
+    "run_id": "run_1",
+    "status_url": "/memory/status/run_1",
+    "processing_stage": "received",
+    "execution_state": "queued",
+    "outcome": None,
+    "terminal": False,
+    "result_availability": "pending",
+    "client_timed_out": False,
+}
+
+
 def _called_method(mock_request: MagicMock) -> str:
     return mock_request.call_args.args[0]
 
@@ -75,7 +89,6 @@ def _called_path(mock_request: MagicMock) -> str:
         ("get_lineage", ("item_123",), "GET", "/memory/item_123/lineage"),
         # Ingest/enrichment surfaces.
         ("ingest", ("content to ingest",), "POST", "/memory/ingest"),
-        ("ingest_full", ("content to ingest",), "POST", "/memory/ingest/full"),
         (
             "ingest_conversation",
             ([{"role": "user", "content": "hello"}],),
@@ -237,7 +250,8 @@ def test_public_api_method_urls(
     expected_verb: str,
     expected_path: str,
 ) -> None:
-    mock_request.return_value = _ok()
+    # add/ingest answer a 2.0 save receipt (G52); every other row keeps the generic body.
+    mock_request.return_value = _ok(SAVE_RECEIPT if method_name in ("add", "ingest") else None)
 
     getattr(client, method_name)(*args)
 
