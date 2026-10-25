@@ -14,6 +14,20 @@ def mock_request(client):
         yield mock
 
 
+STAGE_RECEIPT = {
+    "schema_version": "1.1",
+    "subject": {"kind": "stage_job", "occurrence_id": "occ_1", "stage_id": "extraction"},
+    "run_id": "run_stage_x",
+    "status_url": "/memory/status/run_stage_x",
+    "processing_stage": None,
+    "execution_state": "queued",
+    "outcome": None,
+    "terminal": False,
+    "result_availability": "pending",
+    "client_timed_out": False,
+}
+
+
 class TestClientFullCoverage:
     # ============================================================================
     # Admin
@@ -303,6 +317,9 @@ class TestClientFullCoverage:
     # Pipeline
     # ============================================================================
     def test_pipeline_methods(self, client, mock_request):
+        # 2.0.0 (G169/ST33): each stage call returns a stage_job receipt, and a dependent stage submits the
+        # awaited predecessor's pipeline_state_run_id as run_id. Body/receipt rows live in tests/test_save_receipt.py.
+        mock_request.return_value = STAGE_RECEIPT
         client.run_extraction_stage("content")
         mock_request.assert_called_with(
             "POST",
@@ -310,44 +327,29 @@ class TestClientFullCoverage:
             json_body={"content": "content", "extractor_name": "llm"},
         )
 
-        client.run_storage_stage({"data": "extracted"})
+        client.run_storage_stage("pipeline_1")
         mock_request.assert_called_with(
             "POST",
             "/memory/pipeline/storage",
-            json_body={
-                "extracted_data": {"data": "extracted"},
-                "storage_strategy": "standard",
-            },
+            json_body={"run_id": "pipeline_1", "storage_strategy": "standard"},
         )
-
-        client.run_linking_stage([{"entity": "e1"}])
+        client.run_linking_stage("pipeline_1")
         mock_request.assert_called_with(
             "POST",
             "/memory/pipeline/linking",
-            json_body={
-                "stored_entities": [{"entity": "e1"}],
-                "linking_algorithm": "exact",
-            },
+            json_body={"run_id": "pipeline_1", "linking_algorithm": "exact"},
         )
-
-        client.run_enrichment_stage([{"entity": "e1"}])
+        client.run_enrichment_stage("pipeline_1")
         mock_request.assert_called_with(
             "POST",
             "/memory/pipeline/enrichment",
-            json_body={
-                "linked_entities": [{"entity": "e1"}],
-                "enrichment_types": ["sentiment", "topics"],
-            },
+            json_body={"run_id": "pipeline_1", "enrichment_types": ["sentiment", "topics"]},
         )
-
-        client.run_grounding_stage([{"entity": "e1"}])
+        client.run_grounding_stage("pipeline_1")
         mock_request.assert_called_with(
             "POST",
             "/memory/pipeline/grounding",
-            json_body={
-                "enriched_entities": [{"entity": "e1"}],
-                "grounding_sources": ["wikipedia"],
-            },
+            json_body={"run_id": "pipeline_1", "grounding_sources": ["wikipedia"]},
         )
 
         client.get_pipeline_state("pipe-1")

@@ -28,6 +28,7 @@ from smartmemory_client.errors import (
     SmartMemoryNotFoundError,
     SmartMemoryTransportError,
     SmartMemoryValidationError,
+    StageChainError,
 )
 from smartmemory_client.receipt import Receipt, parse_receipt
 
@@ -414,3 +415,91 @@ def test_an_unknown_await_target_is_refused_before_any_request(client, monkeypat
 
 def test_promote_no_longer_accepts_the_source_delete_option():
     assert "remove_working_items" not in inspect.signature(SmartMemoryClient.promote_procedure_candidate).parameters
+
+
+# ---- G169 / ST33 stage calls -----------------------------------------------------------------------------------
+
+STAGE_PENDING = variant(
+    STAGE_DONE, execution_state="queued", outcome=None, terminal=False, result_availability="pending", result=...
+)
+STAGE_EXPIRED = variant(STAGE_DONE, result_availability="expired", result=...)
+STAGE_FAILED = variant(
+    STAGE_DONE, execution_state="failed", outcome="failed", result_availability="none", result=...
+)
+
+
+def test_a_stage_call_returns_the_stage_job_receipt_not_a_result(client, monkeypatch):
+    fake = wired(client, monkeypatch, STAGE_PENDING)
+    receipt = client.run_extraction_stage("x")
+    assert (receipt.run_id, receipt.processing_stage, receipt.terminal) == ("run_stage_1", None, False)
+    assert fake.calls[0][:2] == ("POST", "/memory/pipeline/extraction")
+
+
+# one row per predecessor the chain can meet: (predecessor, code or None for accepted)
+CHAIN_ROWS = [
+    ("awaited receipt", STAGE_DONE, None),
+    ("pending receipt", STAGE_PENDING, "stage_result_pending"),
+    ("expired detail", STAGE_EXPIRED, "stage_result_expired"),
+    ("failed, no result", STAGE_FAILED, "stage_result_unavailable"),
+    ("an item save, not a stage", EXTRACTED, "stage_chain_invalid"),
+]
+
+
+@pytest.mark.parametrize("name,wire,code", CHAIN_ROWS, ids=[r[0] for r in CHAIN_ROWS])
+def test_chaining_storage_from_a_receipt(client, monkeypatch, name, wire, code):
+    fake = wired(client, monkeypatch, STAGE_PENDING)
+    if code is None:
+        client.run_storage_stage(parse_receipt(wire))
+        assert fake.calls[0][3]["run_id"] == "pipeline_1"
+        return
+    with pytest.raises(StageChainError) as exc:
+        client.run_storage_stage(parse_receipt(wire))
+    assert (exc.value.code, exc.value.run_id, fake.calls) == (code, wire["run_id"], [])
+
+
+def test_the_execution_run_id_is_never_a_chain_id_but_the_pipeline_state_id_is(client, monkeypatch, caplog):
+    fake = wired(client, monkeypatch, STAGE_PENDING)
+    receipt = client.run_extraction_stage("x")
+    with caplog.at_level(logging.WARNING), pytest.raises(StageChainError) as exc:
+        client.run_storage_stage(receipt.run_id)
+    assert exc.value.code == "stage_chain_invalid" and "pipeline_state_run_id" in caplog.text
+    client.run_storage_stage("pipeline_1")
+    assert [c[1] for c in fake.calls] == ["/memory/pipeline/extraction", "/memory/pipeline/storage"]
+
+
+def test_a_non_receipt_predecessor_is_refused(client, monkeypatch):
+    wired(client, monkeypatch, STAGE_PENDING)
+    with pytest.raises(StageChainError) as exc:
+        client.run_storage_stage({"entities": []})
+    assert exc.value.code == "stage_chain_invalid"
+
+
+REFUSALS = [
+    (409, {"code": "stage_result_pending"}, "stage_result_pending", True),
+    (410, {"error": {"code": "stage_result_expired"}}, "stage_result_expired", False),
+    (409, {"code": "stage_result_unavailable"}, "stage_result_unavailable", False),
+    (409, {"code": "stage_chain_invalid"}, "stage_chain_invalid", False),
+    (403, {"code": "stage_scope_denied"}, "stage_scope_denied", False),
+]
+
+
+@pytest.mark.parametrize("status,body,code,retryable", REFUSALS, ids=[r[2] for r in REFUSALS])
+def test_a_service_refusal_with_a_stage_code_is_a_typed_chain_error(client, monkeypatch, status, body, code, retryable):
+    fake = wired(client, monkeypatch, http(status, body))
+    with pytest.raises(StageChainError) as exc:
+        client.run_storage_stage("pipeline_1")
+    assert (exc.value.code, exc.value.retryable, len(fake.calls)) == (code, retryable, 1)
+
+
+def test_a_refusal_without_a_stage_code_stays_the_plain_http_error(client, monkeypatch):
+    wired(client, monkeypatch, http(409, {"detail": "nope"}))
+    with pytest.raises(SmartMemoryValidationError) as exc:
+        client.run_storage_stage("pipeline_1")
+    assert not isinstance(exc.value, StageChainError)
+
+
+def test_a_future_major_stage_receipt_is_unsupported_receipt_version_with_its_handle(client, monkeypatch):
+    wired(client, monkeypatch, variant(STAGE_DONE, schema_version="2.0"))
+    with pytest.raises(StageChainError) as exc:
+        client.run_extraction_stage("x")
+    assert (exc.value.code, exc.value.run_id) == ("unsupported_receipt_version", "run_stage_1")

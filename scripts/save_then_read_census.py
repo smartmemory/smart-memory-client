@@ -490,7 +490,9 @@ NOT_SAVE = {
 }
 NON_MEMORY = ["tests/conftest.py:142"]
 DYNAMIC = {}
-WAIT_USERS = {}
+WAIT_USERS = {
+    "tests/test_save_receipt.py": "tests the SDK await helper itself against a fake transport and a fake clock; it waits on no live save",
+}
 OWNED_BY_U4_42 = None
 SDK_OWNER = "C-01.activate.save.hosted-adapters"
 
@@ -510,17 +512,28 @@ def derive_vocab(repo):
             for m in cls.body
             if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))
         ):
+            if fn.name == "_save":
+                continue  # the retry/receipt helper: its callers below are the save methods
             for call in (n for n in ast.walk(fn) if isinstance(n, ast.Call)):
-                if len(call.args) < 2 or not (
+                # 2.0: add()/ingest() reach the service through self._save("<path>", ...), one POST per call
+                if (
+                    isinstance(call.func, ast.Attribute)
+                    and call.func.attr == "_save"
+                    and call.args
+                    and isinstance(call.args[0], ast.Constant)
+                ):
+                    path = call.args[0].value
+                elif len(call.args) < 2 or not (
                     isinstance(call.args[0], ast.Constant)
                     and call.args[0].value == "POST"
                 ):
                     continue
-                path = (
-                    call.args[1].value
-                    if isinstance(call.args[1], ast.Constant)
-                    else ast.unparse(call.args[1])
-                )
+                else:
+                    path = (
+                        call.args[1].value
+                        if isinstance(call.args[1], ast.Constant)
+                        else ast.unparse(call.args[1])
+                    )
                 if SAVE_PATH.match(path):
                     methods.add(fn.name)
                 elif MAYBE_SAVE.search(fn.name + path) and fn.name not in NOT_SAVE:
@@ -674,6 +687,19 @@ for _key in (
     "test_url_contracts.py::test_code_index_sends_exact_service_body",
     "test_url_contracts.py::test_code_index_sends_repo_identity_only_when_given",
     "test_url_contracts.py::test_public_api_method_urls",
+    "test_save_receipt.py::test_a_409_on_a_save_is_the_typed_scoped_conflict_with_one_request",
+    "test_save_receipt.py::test_a_caller_key_is_kept_and_a_malformed_key_is_refused_before_any_request",
+    "test_save_receipt.py::test_a_fake_that_always_fails_gets_exactly_four_attempts_then_the_typed_error_with_the_key",
+    "test_save_receipt.py::test_a_future_major_through_add_raises_the_typed_error_with_the_handle",
+    "test_save_receipt.py::test_a_raw_connection_error_is_transport_loss_and_comes_back_typed",
+    "test_save_receipt.py::test_a_retry_after_is_a_minimum_delay_and_one_that_cannot_fit_stops_the_retries",
+    "test_save_receipt.py::test_a_status_less_error_with_no_transport_cause_is_not_retried",
+    "test_save_receipt.py::test_add_returns_the_receipt_and_sends_one_minted_key",
+    "test_save_receipt.py::test_an_empty_save_answer_is_a_typed_error_not_a_receipt",
+    "test_save_receipt.py::test_ingest_omits_wait_when_unset_and_refuses_an_unknown_wait_before_sending",
+    "test_save_receipt.py::test_ingest_with_wait_extracted_replaces_ingest_full",
+    "test_save_receipt.py::test_statuses_outside_the_retry_list_are_one_request_and_never_a_new_key",
+    "test_save_receipt.py::test_three_transport_losses_then_success_is_four_identical_requests",
 ):
     DISPOSITIONS["tests/" + _key] = D("mocked_seam", MOCK)
 

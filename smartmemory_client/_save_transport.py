@@ -19,6 +19,7 @@ from urllib.parse import quote
 import httpx
 
 from smartmemory_client.errors import (
+    STAGE_CHAIN_CODES,
     IdempotencyConflictError,
     RetryKeyExpiredError,
     RevisionConflictError,
@@ -26,6 +27,7 @@ from smartmemory_client.errors import (
     SmartMemoryClientError,
     SmartMemoryTransportError,
     SmartMemoryValidationError,
+    StageChainError,
 )
 from smartmemory_client.receipt import Receipt, parse_receipt, timed_out
 
@@ -178,6 +180,82 @@ def conflict_from(exc: SmartMemoryClientError) -> Optional[SaveConflictError]:
         current_revision=body.get("current_revision"),
         body=body,
     )
+
+
+def stage_chain_from(exc: SmartMemoryClientError) -> Optional[StageChainError]:
+    """Turn a stage-submission refusal whose body names an ST33 code into ``StageChainError``, else ``None``.
+
+    The code is read from ``code``, ``error.code`` or ``admission_error.code`` of the JSON body. A body with no
+    known code is left as the original typed HTTP error (the caller re-raises it).
+    """
+    try:
+        parsed = json.loads(exc.detail) if exc.detail else {}
+    except ValueError:
+        return None
+    body = parsed if isinstance(parsed, dict) else {}
+    code = body.get("code")
+    for key in ("error", "admission_error", "detail"):
+        nested = body.get(key)
+        if code is None and isinstance(nested, dict):
+            code = nested.get("code")
+    if code not in STAGE_CHAIN_CODES:
+        return None
+    run_id = body.get("run_id")
+    return StageChainError(
+        str(body.get("message") or exc),
+        code=code,
+        run_id=run_id if isinstance(run_id, str) else None,
+        retryable=code == "stage_result_pending",
+        status_code=exc.status_code,
+        detail=exc.detail,
+    )
+
+
+def chain_run_id(predecessor: Any, seen_receipt_runs: Any) -> str:
+    """The ``pipeline_state_run_id`` a dependent stage submits, from a stage receipt or a bare id (ST33).
+
+    A receipt must be a terminal ``available`` stage result; pending, expired, unavailable and
+    wrong-version receipts raise the matching ``StageChainError`` instead of producing a false run id. A bare
+    string is taken as an already-authorized ``pipeline_state_run_id`` unless it is the execution ``run_id`` of
+    a receipt this client returned, which is never a valid chain id (``stage_chain_invalid``).
+    """
+    if isinstance(predecessor, str):
+        if predecessor in seen_receipt_runs:
+            logger.warning("refused a stage chain from receipt run_id %s: pass result.pipeline_state_run_id", predecessor)
+            raise StageChainError(
+                "receipt.run_id is the execution handle, not a pipeline state id: chain from "
+                "receipt.result.pipeline_state_run_id",
+                code="stage_chain_invalid",
+                run_id=predecessor,
+            )
+        return predecessor
+    if not isinstance(predecessor, Receipt):
+        raise StageChainError(
+            f"a stage chains from a stage Receipt or a pipeline_state_run_id string, not {type(predecessor).__name__}",
+            code="stage_chain_invalid",
+        )
+    handle = predecessor.run_id
+    if predecessor.subject.get("kind") != "stage_job":
+        raise StageChainError("the predecessor receipt is not a stage_job", code="stage_chain_invalid", run_id=handle)
+    if not predecessor.terminal:
+        raise StageChainError(
+            "the predecessor stage has not finished: await_receipt it first",
+            code="stage_result_pending",
+            run_id=handle,
+            retryable=True,
+        )
+    if predecessor.result_availability == "expired":
+        raise StageChainError(
+            "the predecessor stage result expired: run the stage again", code="stage_result_expired", run_id=handle
+        )
+    pipeline_run = predecessor.result.get("pipeline_state_run_id") if predecessor.result else None
+    if predecessor.result_availability != "available" or not isinstance(pipeline_run, str) or not pipeline_run:
+        raise StageChainError(
+            f"the predecessor stage ended {predecessor.outcome or predecessor.execution_state} with no usable result",
+            code="stage_result_unavailable",
+            run_id=handle,
+        )
+    return pipeline_run
 
 
 def status_path(receipt: Receipt) -> str:

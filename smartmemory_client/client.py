@@ -231,6 +231,8 @@ class SmartMemoryClient:
 
         self.base_url = base_url
         self.timeout = timeout
+        #: Execution run ids of stage receipts returned by this client: never valid as a chain id (ST33).
+        self._stage_receipt_runs: set = set()
         self.verify_ssl = verify_ssl
 
         # Persistent HTTP client for connection reuse (keep-alive pooling) across
@@ -3225,53 +3227,77 @@ class SmartMemoryClient:
     # Pipeline
     # ============================================================================
 
+    def _stage(self, stage: str, body: Dict[str, Any]) -> Receipt:
+        """POST one public stage call and return its ``stage_job`` receipt (ST33, G169).
+
+        An ST33 refusal code in the body becomes ``StageChainError``; a receipt of an unknown major becomes
+        ``StageChainError(unsupported_receipt_version)`` that still carries the run id.
+        """
+        try:
+            wire = self._request("POST", f"/memory/pipeline/{stage}", json_body=body)
+        except SmartMemoryClientError as exc:
+            chain = _transport.stage_chain_from(exc)
+            if chain is None:
+                raise
+            raise chain from exc
+        try:
+            receipt = parse_receipt(wire)
+        except ReceiptError as exc:
+            if exc.code == "unsupported_version":
+                raise StageChainError(
+                    str(exc), code="unsupported_receipt_version", run_id=getattr(exc, "run_id", None)
+                ) from exc
+            raise
+        self._stage_receipt_runs.add(receipt.run_id)
+        return receipt
+
     def run_extraction_stage(
         self, content: str, extractor_name: str = "llm"
-    ) -> Dict[str, Any]:
-        """Run extraction pipeline stage."""
+    ) -> Receipt:
+        """Run the extraction stage. Returns the ``stage_job`` receipt (2.0.0: no longer the stage result).
+
+        ``client.await_receipt(receipt)`` it, then chain with ``receipt.result.pipeline_state_run_id``.
+        """
         body = {"content": content, "extractor_name": extractor_name}
-        return self._request("POST", "/memory/pipeline/extraction", json_body=body)
+        return self._stage("extraction", body)
 
     def run_storage_stage(
-        self, extracted_data: Dict[str, Any], storage_strategy: str = "standard"
-    ) -> Dict[str, Any]:
-        """Run storage pipeline stage."""
-        body = {"extracted_data": extracted_data, "storage_strategy": storage_strategy}
-        return self._request("POST", "/memory/pipeline/storage", json_body=body)
+        self, predecessor: Union[Receipt, str], storage_strategy: str = "standard"
+    ) -> Receipt:
+        """Run the storage stage from the awaited extraction receipt (or its ``pipeline_state_run_id``).
+
+        Raises ``StageChainError`` (``stage_result_pending|stage_result_expired|stage_result_unavailable|
+        stage_chain_invalid``) when the predecessor cannot be chained. Returns the ``stage_job`` receipt.
+        """
+        run_id = _transport.chain_run_id(predecessor, self._stage_receipt_runs)
+        return self._stage("storage", {"run_id": run_id, "storage_strategy": storage_strategy})
 
     def run_linking_stage(
-        self, stored_entities: List[Dict[str, Any]], linking_algorithm: str = "exact"
-    ) -> Dict[str, Any]:
-        """Run linking pipeline stage."""
-        body = {
-            "stored_entities": stored_entities,
-            "linking_algorithm": linking_algorithm,
-        }
-        return self._request("POST", "/memory/pipeline/linking", json_body=body)
+        self, predecessor: Union[Receipt, str], linking_algorithm: str = "exact"
+    ) -> Receipt:
+        """Run the linking stage from the awaited storage receipt. See :meth:`run_storage_stage`."""
+        run_id = _transport.chain_run_id(predecessor, self._stage_receipt_runs)
+        return self._stage("linking", {"run_id": run_id, "linking_algorithm": linking_algorithm})
 
     def run_enrichment_stage(
         self,
-        linked_entities: List[Dict[str, Any]],
+        predecessor: Union[Receipt, str],
         enrichment_types: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
-        """Run enrichment pipeline stage."""
-        body = {
-            "linked_entities": linked_entities,
-            "enrichment_types": enrichment_types or ["sentiment", "topics"],
-        }
-        return self._request("POST", "/memory/pipeline/enrichment", json_body=body)
+    ) -> Receipt:
+        """Run the enrichment stage from the awaited linking receipt. See :meth:`run_storage_stage`."""
+        run_id = _transport.chain_run_id(predecessor, self._stage_receipt_runs)
+        body = {"run_id": run_id, "enrichment_types": enrichment_types or ["sentiment", "topics"]}
+        return self._stage("enrichment", body)
 
     def run_grounding_stage(
         self,
-        enriched_entities: List[Dict[str, Any]],
+        predecessor: Union[Receipt, str],
         grounding_sources: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
-        """Run grounding pipeline stage."""
-        body = {
-            "enriched_entities": enriched_entities,
-            "grounding_sources": grounding_sources or ["wikipedia"],
-        }
-        return self._request("POST", "/memory/pipeline/grounding", json_body=body)
+    ) -> Receipt:
+        """Run the grounding stage from the awaited enrichment receipt. See :meth:`run_storage_stage`."""
+        run_id = _transport.chain_run_id(predecessor, self._stage_receipt_runs)
+        body = {"run_id": run_id, "grounding_sources": grounding_sources or ["wikipedia"]}
+        return self._stage("grounding", body)
 
     def get_pipeline_state(
         self, pipeline_id: str, run_id: Optional[str] = None
