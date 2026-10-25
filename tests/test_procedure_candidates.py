@@ -208,7 +208,6 @@ class TestPromoteProcedureCandidate:
             "procedure_id": "proc-456",
             "name": "Auto-generated Name",
             "items_promoted": 3,
-            "items_removed": 0,
         }
         mock_request.return_value = _ok_response(expected)
 
@@ -222,25 +221,12 @@ class TestPromoteProcedureCandidate:
         assert body["description"] is None
         assert body["procedure_type"] == "extraction"
         assert body["preferred_profile"] == "quick_extract"
-        assert body["remove_working_items"] is False
+        assert "remove_working_items" not in body  # G129: the source-delete option is gone
 
-    @patch("httpx.Client.request")
-    def test_with_remove_working_items(self, mock_request, client):
-        expected = {
-            "status": "success",
-            "procedure_id": "proc-789",
-            "name": "Test Proc",
-            "items_promoted": 5,
-            "items_removed": 5,
-        }
-        mock_request.return_value = _ok_response(expected)
-
-        result = client.promote_procedure_candidate(
-            cluster_id="cluster-3",
-            remove_working_items=True,
-        )
-
-        assert result["items_removed"] == 5
+    def test_remove_working_items_is_not_accepted(self, client):
+        # G129 (2.0.0): no shim, so a caller still passing it fails loudly instead of deleting sources.
+        with pytest.raises(TypeError):
+            client.promote_procedure_candidate(cluster_id="cluster-3", remove_working_items=True)
 
     @patch("httpx.Client.request")
     def test_404_cluster_not_found(self, mock_request, client):

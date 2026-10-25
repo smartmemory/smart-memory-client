@@ -75,7 +75,6 @@ def _called_path(mock_request: MagicMock) -> str:
         ("get_lineage", ("item_123",), "GET", "/memory/item_123/lineage"),
         # Ingest/enrichment surfaces.
         ("ingest", ("content to ingest",), "POST", "/memory/ingest"),
-        ("ingest_full", ("content to ingest",), "POST", "/memory/ingest/full"),
         (
             "ingest_conversation",
             ([{"role": "user", "content": "hello"}],),

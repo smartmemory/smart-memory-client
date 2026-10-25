@@ -494,7 +494,6 @@ SAVE_PATH_METHODS = {
     "import_okf",
     "ingest",
     "ingest_conversation",
-    "ingest_full",
 }
 
 
