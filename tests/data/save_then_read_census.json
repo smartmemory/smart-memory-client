@@ -16,10 +16,11 @@
    "tests/test_save_receipt.py:549",
    "tests/test_save_receipt.py:559",
    "tests/test_save_receipt.py:567",
-   "tests/test_save_receipt.py:576",
-   "tests/test_save_receipt.py:579",
-   "tests/test_save_receipt.py:587",
-   "tests/test_save_receipt.py:596"
+   "tests/test_save_receipt.py:626",
+   "tests/test_save_receipt.py:641",
+   "tests/test_save_receipt.py:644",
+   "tests/test_save_receipt.py:652",
+   "tests/test_save_receipt.py:661"
   ]
  },
  "core_wait_imports": [],

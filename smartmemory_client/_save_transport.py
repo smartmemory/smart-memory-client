@@ -365,6 +365,7 @@ def await_receipt(
         if current.status_version is not None:
             params["since_version"] = current.status_version
         minimum = 0.0
+        held = False
         began = monotonic()
         token = REQUEST_TIMEOUT_S.set(max(remaining, 0.001))
         before = current
@@ -377,8 +378,8 @@ def await_receipt(
                 streak += 1
             if current.retry_after_ms:
                 minimum = current.retry_after_ms / 1000
-            if held:
-                continue
+            if held and not minimum:
+                continue  # the server already waited; with no explicit delay another read can go at once
         except Exception as exc:  # noqa: BLE001 - only retryable failures are absorbed, the rest re-raise
             if not is_retryable(exc):
                 raise
@@ -396,6 +397,11 @@ def await_receipt(
         remaining = deadline - monotonic()
         if minimum > remaining:
             return timed_out(current)
+        if held:
+            sleep(
+                minimum
+            )  # a held read needs no backoff, only the server's explicit minimum
+            continue
         base = min(AWAIT_BACKOFF_MAX_S, AWAIT_BACKOFF_MIN_S * 2 ** max(streak - 1, 0))
         delay = min(
             AWAIT_BACKOFF_MAX_S,
