@@ -3723,6 +3723,40 @@ class SmartMemoryClient:
         """
         return self._request("GET", f"/memory/workspaces/{workspace_id}/access")
 
+    def set_session_workspace(
+        self,
+        workspace_id: str,
+        client_key: str,
+        context_key: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Select ``workspace_id`` for one client (and context): ``PUT /memory/routing/session`` (WS-ROUTING-4).
+
+        A write that names no workspace and carries ``X-SM-Client: <client_key>`` (and ``X-SM-Context`` when
+        ``context_key`` is set) then lands there until the pick goes idle (service ``ROUTING_SESSION_IDLE_TTL_S``,
+        default 24 h). ``client_key`` follows the contract grammar (``mcp:<name>``, ``app:<name>``, ...).
+        Returns the record: ``workspace_id``, ``client_key_digest``, ``context_key_digest``, ``set_at``,
+        ``set_via``, ``expires_at``, ``client_key``, ``context_key``, ``workspace_name``.
+        Raises ``SmartMemoryPermissionError`` (403) for a workspace the caller cannot use (same answer whether or
+        not it exists) and ``SmartMemoryValidationError`` for a workspace-bound API key (409) or a key outside the
+        grammar (422).
+        """
+        body: Dict[str, Any] = {"workspace_id": workspace_id, "client_key": client_key}
+        if context_key is not None:
+            body["context_key"] = context_key
+        return self._request("PUT", "/memory/routing/session", json_body=body)
+
+    def clear_session_workspace(
+        self, client_key: str, context_key: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Clear the caller's own pick for one client (and context): ``DELETE /memory/routing/session``.
+
+        Returns ``{deleted, client_key, context_key}``; clearing nothing is not an error (``deleted`` False).
+        """
+        params: Dict[str, Any] = {"client_key": client_key}
+        if context_key is not None:
+            params["context_key"] = context_key
+        return self._request("DELETE", "/memory/routing/session", params=params)
+
     # ============================================================================
     # Teams
     # ============================================================================
