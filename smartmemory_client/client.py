@@ -28,6 +28,12 @@ import httpx
 # Use local model instead of core dependency
 from smartmemory_client.models.memory_item import MemoryItem
 from smartmemory_client.models.conversation import ConversationContextModel
+from smartmemory_client.models.routing import (
+    RoutingEcho,
+    RoutingExplain,
+    RoutingPrefs,
+    routing_echo,
+)
 from smartmemory_client.models.session import (
     SessionResponse,
     normalize_session_response,
@@ -57,6 +63,11 @@ class SmartMemoryClientError(Exception):
         self.status_code = status_code
         self.detail = detail or ""
 
+    #: Server ``error`` code of the response (``routing_prefs_human_only``,
+    #: ``insufficient_team_permissions``, ...), set by the routing methods
+    #: (WS-ROUTING-2b); ``None`` when the body carried none.
+    error_code: str | None = None
+
 
 class SmartMemoryNotFoundError(SmartMemoryClientError):
     """Raised on HTTP 404 — the requested resource does not exist."""
@@ -68,6 +79,14 @@ class SmartMemoryPermissionError(SmartMemoryClientError):
 
 class SmartMemoryValidationError(SmartMemoryClientError):
     """Raised on HTTP 400/409/422 — request shape or state was rejected."""
+
+
+class SmartMemoryRoutingConflictError(SmartMemoryValidationError):
+    """Raised by ``set_routing_prefs`` on ``409 routing_prefs_version_conflict``: the
+    prefs changed since they were read (WS-ROUTING-2b). Catch it, re-read with
+    ``get_routing_prefs()`` and retry with the fresh ``version``."""
+
+    error_code = "routing_prefs_version_conflict"
 
 
 class SmartMemoryServerError(SmartMemoryClientError):
@@ -82,6 +101,22 @@ class SmartMemoryUnsupportedError(SmartMemoryServerError):
 class SmartMemorySubstrateError(SmartMemoryServerError):
     """Raised by the ``vector_*`` methods on HTTP 503: the vector backend reported a
     substrate error (``VectorSubstrateError``), surfaced instead of an empty page."""
+
+
+def _body_error_code(detail: str) -> str | None:
+    """Read the ``error`` code out of an error body: ``{"detail": {"error": code}}``,
+    ``{"detail": "code"}`` or ``{"error": code}``. ``None`` when there is none (a 422
+    list, plain text)."""
+    try:
+        body = json.loads(detail)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(body, dict):
+        return None
+    inner = body.get("detail", body)
+    if isinstance(inner, dict):
+        inner = inner.get("error")
+    return inner if isinstance(inner, str) and inner else None
 
 
 def _exception_for_status(status: int) -> type[SmartMemoryClientError]:
@@ -646,6 +681,65 @@ class SmartMemoryClient:
             )
             ```
         """
+        result = self._add_response(
+            item,
+            memory_type,
+            metadata,
+            use_pipeline,
+            profile_name,
+            conversation_context,
+            embed,
+        )
+
+        if isinstance(result, dict):
+            return result.get("id")
+        elif hasattr(result, "id"):
+            return result.id
+        else:
+            raise SmartMemoryClientError(f"Unexpected response format: {result}")
+
+    def add_detailed(
+        self,
+        item: Union[str, MemoryItem, Dict[str, Any]],
+        memory_type: str = "semantic",
+        metadata: Optional[Dict[str, Any]] = None,
+        use_pipeline: bool = True,
+        profile_name: Optional[str] = None,
+        conversation_context: Optional[
+            Union[ConversationContextModel, Dict[str, Any]]
+        ] = None,
+        embed: Optional[bool] = None,
+    ) -> Dict[str, Any]:
+        """Like ``add()`` but returns the whole response dict instead of only the id.
+
+        Takes the same arguments as ``add()``. Use it to read the WS-ROUTING-2 write
+        echo: ``workspace_id``, ``workspace_name``, ``routed_by`` and ``notices``
+        (``routing_echo(result)`` reads them as typed fields; an older server omits
+        them, which reads as ``None``). ``id`` is the memory item id.
+        """
+        return self._add_response(
+            item,
+            memory_type,
+            metadata,
+            use_pipeline,
+            profile_name,
+            conversation_context,
+            embed,
+        )
+
+    def _add_response(
+        self,
+        item: Union[str, MemoryItem, Dict[str, Any]],
+        memory_type: str = "semantic",
+        metadata: Optional[Dict[str, Any]] = None,
+        use_pipeline: bool = True,
+        profile_name: Optional[str] = None,
+        conversation_context: Optional[
+            Union[ConversationContextModel, Dict[str, Any]]
+        ] = None,
+        embed: Optional[bool] = None,
+    ) -> Any:
+        """Shared ``POST /memory/add`` for ``add`` and ``add_detailed``: returns the response dict."""
         # Handle different input types
         if isinstance(item, str):
             content = item
@@ -719,13 +813,7 @@ class SmartMemoryClient:
 
         if not result:
             raise SmartMemoryClientError("Failed to add memory")
-
-        if isinstance(result, dict):
-            return result.get("id")
-        elif hasattr(result, "id"):
-            return result.id
-        else:
-            raise SmartMemoryClientError(f"Unexpected response format: {result}")
+        return result
 
     def explain(self, memory_id: str) -> Dict[str, Any]:
         """
@@ -1577,6 +1665,8 @@ class SmartMemoryClient:
             extraction signal was measured and ``context["confidence"]`` was below
             the threshold, or the server runs the ``veto`` rollback mode. Check
             ``status`` before using ``item_id``.
+            WS-ROUTING-2 servers also return ``workspace_id``, ``workspace_name``,
+            ``routed_by`` and ``notices`` (``SmartMemoryClient.routing_echo(result)``).
 
         Example:
             ```python
@@ -5904,6 +5994,102 @@ class SmartMemoryClient:
             SmartMemoryServerError: the service could not read its plugin registry (503).
         """
         return self._request("GET", "/memory/plugins/catalog")
+
+    # ------------------------------------------------------------------
+    # Workspace routing (WS-ROUTING-2b)
+    # ------------------------------------------------------------------
+
+    def _routing_request(self, method: str, endpoint: str, **kwargs: Any) -> Any:
+        """``_request`` that stamps the server ``error`` code on a raised error and turns
+        ``409 routing_prefs_version_conflict`` into ``SmartMemoryRoutingConflictError``."""
+        try:
+            return self._request(method, endpoint, **kwargs)
+        except SmartMemoryClientError as e:
+            e.error_code = _body_error_code(e.detail)
+            if (
+                e.status_code == 409
+                and e.error_code == SmartMemoryRoutingConflictError.error_code
+            ):
+                raise SmartMemoryRoutingConflictError(
+                    str(e), status_code=e.status_code, detail=e.detail
+                ) from e
+            raise
+
+    def get_routing_prefs(self) -> RoutingPrefs:
+        """Read the caller's account-default routing prefs (``GET /memory/routing/prefs``).
+
+        User-scoped, no workspace header needed. No stored row reads as
+        ``{"account_default_workspace_id": None, "version": 0, "updated_at": None}``.
+        Pass the returned ``version`` to ``set_routing_prefs``.
+        """
+        return self._routing_request("GET", "/memory/routing/prefs")
+
+    def set_routing_prefs(
+        self, account_default_workspace_id: Optional[str], version: int
+    ) -> RoutingPrefs:
+        """Set (or clear, with ``None``) the account default workspace (``PUT /memory/routing/prefs``).
+
+        Compare-and-set: ``version`` is the value last read from ``get_routing_prefs()``
+        (0 when there was no row). Returns the new prefs.
+
+        Raises:
+            SmartMemoryRoutingConflictError: 409 ``routing_prefs_version_conflict``, a
+                lost CAS. Re-read with ``get_routing_prefs()`` and retry.
+            SmartMemoryPermissionError: 403, ``error_code`` is ``routing_prefs_human_only``
+                (agent principal) or ``insufficient_team_permissions`` (workspace not usable).
+            SmartMemoryValidationError: 409 ``client_bound_to_workspace`` (workspace-bound
+                API key) or 422; ``error_code`` carries the server code when there is one.
+        """
+        if isinstance(version, bool) or not isinstance(version, int) or version < 0:
+            raise ValueError("version must be an int >= 0 (the value last read)")
+        return self._routing_request(
+            "PUT",
+            "/memory/routing/prefs",
+            json_body={
+                "account_default_workspace_id": account_default_workspace_id,
+                "version": version,
+            },
+        )
+
+    def explain_routing(
+        self,
+        client_key: Optional[str] = None,
+        context_key: Optional[str] = None,
+        file_workspace_id: Optional[str] = None,
+    ) -> RoutingExplain:
+        """Explain where a write would land, and why (``GET /memory/routing/explain``). Writes nothing.
+
+        Args:
+            client_key: stands in for the ``X-SM-Client`` header (max 200 chars).
+            context_key: the project/context binding key (max 200 chars).
+            file_workspace_id: what an accepted ``.smartmemory`` file would pick. A usable
+                id reads ``status: file_hint_not_applied`` on the ``context`` candidate;
+                an unusable one reads ``inaccessible`` with no id or name.
+
+        Returns:
+            Dict with ``workspace_id``, ``workspace_name``, ``routed_by``, ``notices``,
+            ``refusal`` (``missing_team_context`` or ``insufficient_team_permissions``),
+            ``candidates`` (one per lever, in order) and ``flags``.
+        """
+        params = {
+            k: v
+            for k, v in (
+                ("client_key", client_key),
+                ("context_key", context_key),
+                ("file_workspace_id", file_workspace_id),
+            )
+            if v is not None
+        }
+        return self._routing_request(
+            "GET", "/memory/routing/explain", params=params or None
+        )
+
+    @staticmethod
+    def routing_echo(result: Any) -> RoutingEcho:
+        """Typed write echo (``workspace_id``, ``workspace_name``, ``routed_by``,
+        ``notices``) from an ``add_detailed``/``ingest``/``ingest_full``/
+        ``ingest_conversation`` result. Absent on an older server reads as ``None``/``[]``."""
+        return routing_echo(result)
 
     def __repr__(self) -> str:
         auth_status = "authenticated" if self.api_key else "unauthenticated"
