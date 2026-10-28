@@ -2181,7 +2181,12 @@ class SmartMemoryClient:
             ``{"items": [...], "total": int, "limit": int, "offset": int}``, where
             ``total`` counts the filtered set and so can drive pagination directly.
             Also retains ``policy: {include_grounding: bool, source: str}``, the
-            resolved choice and its request/workspace/env source.
+            resolved choice and its request/workspace/env source, and
+            ``skipped_rows: int`` (SVC-LIST-SKIPPED-ROWS-EXPOSE-1): rows in scope the
+            server could not read, left out of ``items`` and ``total``. A destructive
+            caller must not treat the listing as complete while it is above 0. The
+            envelope is returned as sent: an older server omits the key, so read it
+            with ``.get("skipped_rows")`` and treat ``None`` as "unknown", not 0.
 
         Raises:
             APIError: 422 if only one half of the metadata pair is supplied, if the

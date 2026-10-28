@@ -437,6 +437,30 @@ def test_list_grounding_override_and_policy_envelope(mock_request, client, value
         assert params["include_grounding"] is value
 
 
+# SVC-LIST-SKIPPED-ROWS-EXPOSE-1: the list envelope is returned as the server sent it. ``skipped_rows`` surfaces when
+# present, and an old server's envelope (key missing) is not given a fabricated 0, so a caller can tell the two apart.
+LIST_SKIPPED_ROWS = [
+    ("two unreadable rows", {"skipped_rows": 2}, 2),
+    ("clean page", {"skipped_rows": 0}, 0),
+    ("old server, key missing", {}, None),
+]
+
+
+@pytest.mark.parametrize(
+    "label,extra,expected", LIST_SKIPPED_ROWS, ids=[r[0] for r in LIST_SKIPPED_ROWS]
+)
+@patch("httpx.Client.request")
+def test_list_memories_surfaces_skipped_rows(
+    mock_request, client, label, extra, expected
+):
+    envelope = {"items": [], "total": 0, "limit": 50, "offset": 0, **extra}
+    mock_request.return_value = _ok(envelope)
+    result = client.list_memories()
+    assert result == envelope
+    assert result.get("skipped_rows") == expected
+    assert ("skipped_rows" in result) == (expected is not None)
+
+
 # --------------------------------------------------------------------------- CODE-INDEXER-HARDEN-1 U5
 
 
