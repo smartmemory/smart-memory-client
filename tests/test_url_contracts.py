@@ -453,6 +453,33 @@ def test_list_grounding_override_and_policy_envelope(mock_request, client, value
         assert params["include_grounding"] is value
 
 
+# SVC-2.0-LIST-SKIPPED-ROWS-EXPOSE-TWIN-1: the list envelope is returned as the server sent it. Both skip counts surface
+# when present, and an old server's envelope (keys missing) is not given a fabricated 0, so a caller can tell them apart.
+LIST_SKIPPED_ROWS = [
+    ("own unreadable rows", {"skipped_rows": 2, "unattributable_skipped_rows": 0}),
+    (
+        "rows with no readable owner",
+        {"skipped_rows": 0, "unattributable_skipped_rows": 1},
+    ),
+    ("clean page", {"skipped_rows": 0, "unattributable_skipped_rows": 0}),
+    ("old server, keys missing", {}),
+]
+
+
+@pytest.mark.parametrize(
+    "label,extra", LIST_SKIPPED_ROWS, ids=[r[0] for r in LIST_SKIPPED_ROWS]
+)
+@patch("httpx.Client.request")
+def test_list_memories_surfaces_skip_counts(mock_request, client, label, extra):
+    envelope = {"items": [], "total": 0, "limit": 50, "offset": 0, **extra}
+    mock_request.return_value = _ok(envelope)
+    result = client.list_memories()
+    assert result == envelope
+    for key in ("skipped_rows", "unattributable_skipped_rows"):
+        assert result.get(key) == extra.get(key)
+        assert (key in result) == (key in extra)
+
+
 # --------------------------------------------------------------------------- CODE-INDEXER-HARDEN-1 U5
 
 
