@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- docs(client): SVC-2.0-LIST-SKIPPED-ROWS-EXPOSE-TWIN-1 (2026-10-29; 2.0 twin of main SVC-LIST-SKIPPED-ROWS-EXPOSE-1 `49b9aafcedcf`): `list_memories` documents `skipped_rows` and `unattributable_skipped_rows`. No code change: it already returns the raw response dict. `tests/test_url_contracts.py` `test_list_memories_surfaces_skip_counts` (4 rows: both counts pass through, a missing key stays missing, no fabricated 0).
 - WS-MGMT-12: workspace lifecycle methods `get_workspace`, `update_workspace(workspace_id, name=None, description=None)` (PATCH, only the fields passed; neither raises `ValueError` before any request), `delete_workspace` (hide, returns the 202 body) and `restore_workspace`; `list_workspaces(include_hidden=False)` adds `?include=hidden` when true. Errors use the existing mapping (403 `SmartMemoryPermissionError`, 404 `SmartMemoryNotFoundError`, 409 `SmartMemoryValidationError`, 503 `SmartMemoryServerError`).
 
 - REL-CALLERS-PYSDK-AWAIT-RETRY-AFTER-FU-1: `await_receipt` honours `retry_after_ms` after a successful held status read: the delay is slept as a minimum, and one that cannot fit the remaining deadline returns the pending receipt with `client_timed_out=True` without another request. A held read with no delay still re-reads at once. The only other early-`continue` in the await/poll helpers was that held branch (`_save_transport.py`); the save retry loop already checks the deadline before its sleep.
