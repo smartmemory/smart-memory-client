@@ -78,8 +78,8 @@ class Receipt:
 
     schema_version: str
     subject: AttrDict
-    run_id: str
-    status_url: str
+    run_id: Optional[str]
+    status_url: Optional[str]
     processing_stage: Optional[str]
     execution_state: Optional[str]
     outcome: Optional[str]
@@ -100,6 +100,10 @@ class Receipt:
     placement: Optional[str] = None
     context: Optional[AttrDict] = None
     raw: AttrDict = field(default_factory=AttrDict, compare=False, repr=False)
+    #: True for a pre-receipt add/ingest 2xx body read by the bridge: stored, no run to poll.
+    #: TODO(SVC-INGEST-WAIT-STATUS-1): remove with the bridge.
+    legacy: bool = False
+    legacy_status: Optional[str] = None
 
     @property
     def item_id(self) -> Optional[str]:
@@ -137,8 +141,83 @@ def _refuse(
     )
 
 
-def parse_receipt(wire: Any) -> Receipt:
-    """Decode one receipt body following ``x-reader-decoder``; raise ``ReceiptError`` for anything else."""
+#: ``status`` values of the legacy add/ingest 2xx bodies that mean the item is stored. ``held``, ``error``,
+#: ``failed``, ``success``, ``queued`` and anything else are never a stored save.
+#: TODO(SVC-INGEST-WAIT-STATUS-1): delete this bridge when the hosted receipt producer lands.
+_LEGACY_STORED_STATUS = frozenset({"created", "unchanged", "replaced"})
+_legacy_warned = False
+
+
+def _legacy_item_id(wire: Mapping[str, Any]) -> Optional[str]:
+    """The item id of a legacy add/ingest save body, recognised by its exact keys, else ``None``.
+
+    A non-empty string ``id`` (add) or ``item_id`` (ingest), none of the receipt's own
+    ``schema_version``/``subject``/``status_url``, and a ``run_id`` that is absent, null or a string (a legacy
+    ingest ``run_id`` is never followed). ``status`` must be ``created|unchanged|replaced``; it may be absent
+    only for the ingest content-hash duplicate (``item_id`` with ``run_id: null`` and no ``status``).
+    TODO(SVC-INGEST-WAIT-STATUS-1): delete this bridge when the hosted receipt producer lands.
+    """
+    if "schema_version" in wire or "subject" in wire or "status_url" in wire:
+        return None
+    run_id = wire.get("run_id")
+    if run_id is not None and not isinstance(run_id, str):
+        return None
+    id_ = wire.get("id")
+    item_id = id_ if isinstance(id_, str) and id_ else wire.get("item_id")
+    if not isinstance(item_id, str) or not item_id:
+        return None
+    if "status" not in wire:
+        return (
+            item_id
+            if "run_id" in wire and run_id is None and item_id == wire.get("item_id")
+            else None
+        )
+    return item_id if wire["status"] in _LEGACY_STORED_STATUS else None
+
+
+def _legacy_receipt(wire: Mapping[str, Any], item_id: str) -> Receipt:
+    global _legacy_warned
+    if not _legacy_warned:
+        _legacy_warned = True
+        logger.warning(
+            "legacy save shape read (no schema_version); treated as stored, with no run_id/status_url to await"
+        )
+    raw = _wrap(dict(wire))
+    return Receipt(
+        schema_version="legacy",
+        subject=AttrDict({"kind": "item_save", "item_id": item_id}),
+        run_id=None,
+        status_url=None,
+        processing_stage="stored",
+        execution_state="running",  # stored, enrichment unknown: never "completed" beside terminal=False
+        outcome=None,
+        terminal=False,
+        result_availability="none",
+        raw=raw,
+        legacy=True,
+        legacy_status=wire.get("status")
+        if isinstance(wire.get("status"), str)
+        else None,
+    )
+
+
+def legacy_no_status() -> ReceiptError:
+    """Typed refusal for an await/poll on a ``legacy`` receipt: there is no handle to follow.
+
+    TODO(SVC-INGEST-WAIT-STATUS-1): remove with the bridge.
+    """
+    return ReceiptError(
+        "legacy save receipt has no run_id/status_url to await or poll",
+        code="legacy_receipt_no_status",
+    )
+
+
+def parse_receipt(wire: Any, *, legacy_bridge: bool = False) -> Receipt:
+    """Decode one receipt body following ``x-reader-decoder``; raise ``ReceiptError`` for anything else.
+
+    ``legacy_bridge`` (add and ingest saves only, TODO(SVC-INGEST-WAIT-STATUS-1)) also reads the pre-receipt
+    add/ingest body as a stored ``legacy=True`` receipt. Off for edits, stages and status reads.
+    """
     if not isinstance(wire, Mapping):
         raise _refuse(
             "not_a_receipt", f"expected a receipt object, got {type(wire).__name__}", {}
@@ -150,6 +229,10 @@ def parse_receipt(wire: Any) -> Receipt:
             wire,
         )
     version = wire.get("schema_version")
+    if legacy_bridge and version is None:
+        legacy_id = _legacy_item_id(wire)
+        if legacy_id is not None:
+            return _legacy_receipt(wire, legacy_id)
     if not isinstance(version, str):
         raise _refuse(
             "not_a_receipt",

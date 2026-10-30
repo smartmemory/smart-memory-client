@@ -29,7 +29,12 @@ from smartmemory_client.errors import (
     SmartMemoryValidationError,
     StageChainError,
 )
-from smartmemory_client.receipt import Receipt, parse_receipt, timed_out
+from smartmemory_client.receipt import (
+    Receipt,
+    legacy_no_status,
+    parse_receipt,
+    timed_out,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -306,6 +311,8 @@ def chain_run_id(predecessor: Any, seen_receipt_runs: Any) -> str:
 
 def status_path(receipt: Receipt) -> str:
     """The scoped status route: the receipt's own URL when it is a service path, else the standard route."""
+    if receipt.legacy or receipt.run_id is None or receipt.status_url is None:
+        raise legacy_no_status()  # TODO(SVC-INGEST-WAIT-STATUS-1): remove with the bridge
     if receipt.status_url.startswith("/"):
         return receipt.status_url
     return f"/memory/status/{quote(receipt.run_id, safe='')}"
@@ -350,10 +357,12 @@ def await_receipt(
         sleep or time.sleep,
         rng or random.uniform,
     )
+    path = status_path(
+        receipt
+    )  # a legacy receipt has no handle: refuse before any wait
     deadline = monotonic() + timeout
     current = receipt
     streak = 0
-    path = status_path(receipt)
     while not _reached(current, target):
         remaining = deadline - monotonic()
         if remaining <= 0:

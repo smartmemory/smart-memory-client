@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- PYCLIENT-2.0-RECEIPT-LEGACY-BRIDGE-1 (Python twin of SDKJS-2.0-RECEIPT-LEGACY-BRIDGE-1): `add()` and `ingest()` read the legacy hosted save 2xx body (`id` or `item_id`, `status` in created/unchanged/replaced) as a stored `Receipt` with `legacy=True`, no `run_id`/`status_url`, one WARNING per process, until the hosted receipt producer lands. `await_receipt` on it raises `ReceiptError(code="legacy_receipt_no_status")`. Every other non-receipt body is still `not_a_receipt`; edits, stages and status reads stay strict. TODO(SVC-INGEST-WAIT-STATUS-1): remove the bridge with that unit.
+
 - docs(client): SVC-2.0-LIST-SKIPPED-ROWS-EXPOSE-TWIN-1 (2026-10-29; 2.0 twin of main SVC-LIST-SKIPPED-ROWS-EXPOSE-1 `49b9aafcedcf`): `list_memories` documents `skipped_rows` and `unattributable_skipped_rows`. No code change: it already returns the raw response dict. `tests/test_url_contracts.py` `test_list_memories_surfaces_skip_counts` (4 rows: both counts pass through, a missing key stays missing, no fabricated 0).
 - WS-MGMT-12: workspace lifecycle methods `get_workspace`, `update_workspace(workspace_id, name=None, description=None)` (PATCH, only the fields passed; neither raises `ValueError` before any request), `delete_workspace` (hide, returns the 202 body) and `restore_workspace`; `list_workspaces(include_hidden=False)` adds `?include=hidden` when true. Errors use the existing mapping (403 `SmartMemoryPermissionError`, 404 `SmartMemoryNotFoundError`, 409 `SmartMemoryValidationError`, 503 `SmartMemoryServerError`).
 
