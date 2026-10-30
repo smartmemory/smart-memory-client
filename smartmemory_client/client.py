@@ -740,7 +740,7 @@ class SmartMemoryClient:
             raise SmartMemoryClientError(
                 f"Failed to save: {endpoint} returned an empty body (key {key})"
             )
-        return parse_receipt(wire)
+        return parse_receipt(wire, legacy_bridge=True)
 
     def await_receipt(
         self,
