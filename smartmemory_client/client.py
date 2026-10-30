@@ -712,6 +712,7 @@ class SmartMemoryClient:
         body: Dict[str, Any],
         *,
         idempotency_key: Optional[str] = None,
+        legacy_bridge: bool = True,
     ) -> Receipt:
         """POST one logical save under the ST14 retry policy and return its receipt.
 
@@ -740,7 +741,7 @@ class SmartMemoryClient:
             raise SmartMemoryClientError(
                 f"Failed to save: {endpoint} returned an empty body (key {key})"
             )
-        return parse_receipt(wire, legacy_bridge=True)
+        return parse_receipt(wire, legacy_bridge=legacy_bridge)
 
     def await_receipt(
         self,
@@ -1649,6 +1650,70 @@ class SmartMemoryClient:
             body_dict["wait"] = wait
 
         return self._save("/memory/ingest", body_dict, idempotency_key=idempotency_key)
+
+    def ingest_document(
+        self,
+        source: str,
+        source_type: Optional[str] = None,
+        chunk_size: Optional[int] = None,
+        chunk_strategy: Optional[str] = None,
+        reference: Optional[bool] = None,
+        context: Optional[Dict[str, Any]] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> Receipt:
+        """
+        Ingest a document from a public HTTP(S) URL (``POST /memory/ingest/document``).
+
+        The service fetches the URL; it does not accept document text or a title on this route.
+
+        Args:
+            source: Public ``http://`` or ``https://`` document URL.
+            source_type: ``html`` | ``pdf`` | ``docx`` | ``txt`` | ``markdown`` | ``auto``.
+            chunk_size: Maximum characters per chunk (100-50000).
+            chunk_strategy: ``paragraph`` | ``sentence`` | ``markdown`` | ``recursive``.
+            reference: Mark nodes as reference material.
+            context: Ingestion context.
+            idempotency_key: See :meth:`add`.
+
+        Returns:
+            A :class:`Receipt` with ``subject.kind`` ``document_save``; ``receipt.item_id`` is the document id.
+            Decoded strictly: a body without ``schema_version`` (a 1.x body) raises ``ReceiptError``, there
+            is no legacy bridge on this method.
+
+        Raises:
+            ValueError: ``source`` is not an ``http://`` or ``https://`` URL (nothing is sent).
+            SmartMemoryValidationError: 4xx from the route (for example 422 for a non-public address).
+
+        Example:
+            ```python
+            receipt = client.ingest_document("https://example.com/paper.pdf", source_type="pdf")
+            receipt = client.await_receipt(receipt)
+            print(receipt.item_id)
+            ```
+        """
+        if not isinstance(source, str) or not source.lower().startswith(
+            ("http://", "https://")
+        ):
+            raise ValueError(
+                "ingest_document source must be an http:// or https:// URL string"
+            )
+        body_dict: Dict[str, Any] = {"source": source}
+        if source_type is not None:
+            body_dict["source_type"] = source_type
+        if chunk_size is not None:
+            body_dict["chunk_size"] = chunk_size
+        if chunk_strategy is not None:
+            body_dict["chunk_strategy"] = chunk_strategy
+        if reference is not None:
+            body_dict["reference"] = reference
+        if context is not None:
+            body_dict["context"] = context
+        return self._save(
+            "/memory/ingest/document",
+            body_dict,
+            idempotency_key=idempotency_key,
+            legacy_bridge=False,
+        )
 
     def ingest_conversation(
         self,
