@@ -1,10 +1,13 @@
 name: Tests
 
 on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit SHA to run against (empty = the dispatched ref)
+        required: false
+        type: string
+        default: ''
 
 # Read-only GITHUB_TOKEN: nothing in this CI job writes to the repo or publishes (ACTIONS-LOCKDOWN-1).
 permissions:
@@ -25,6 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.sha }}
           persist-credentials: false
       
       - name: Set up Python ${{ matrix.python-version }}

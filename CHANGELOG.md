@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- ci, CI-2.0-MANUAL-ONLY-SWEEP-1 (2.0 port of main GH-ACTIONS-MANUAL-1, owner policy 2026-10-29): the Actions workflow triggers on this line are `workflow_dispatch` only (no push or pull_request triggers). Workflow trigger blocks only, no job body change.
+
 - CLIENT-2.0-DOCUMENT-INGEST-1: `ingest_document(source, source_type=None, chunk_size=None, chunk_strategy=None, reference=None, context=None, idempotency_key=None)` posts `POST /memory/ingest/document` (Python twin of JS `ingestDocument`) and returns the `document_save` `Receipt` (`item_id` is the document id). Strict decode: a 1.x body raises `ReceiptError(not_a_receipt)`, no legacy bridge (`_save(..., legacy_bridge=False)`). A non-http(s) `source` raises `ValueError` before any request. No async client exists, so no async twin.
 
 - PYCLIENT-2.0-RECEIPT-LEGACY-BRIDGE-1 (Python twin of SDKJS-2.0-RECEIPT-LEGACY-BRIDGE-1): `add()` and `ingest()` read the legacy hosted save 2xx body (`id` or `item_id`, `status` in created/unchanged/replaced) as a stored `Receipt` with `legacy=True`, no `run_id`/`status_url`, one WARNING per process, until the hosted receipt producer lands. `await_receipt` on it raises `ReceiptError(code="legacy_receipt_no_status")`. Every other non-receipt body is still `not_a_receipt`; edits, stages and status reads stay strict. TODO(SVC-INGEST-WAIT-STATUS-1): remove the bridge with that unit.
