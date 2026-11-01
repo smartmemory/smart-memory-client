@@ -802,7 +802,11 @@ class SmartMemoryClient:
             item_id: Memory item ID
 
         Returns:
-            MemoryItem object.
+            MemoryItem object. Its ``metadata`` never carries ``owner_key`` or ``is_global``
+            and leaves out a reserved key with no value (SVC-2.0-METADATA-RESERVED-KEY-REFUSE-1
+            fix round 1), so it can be saved again unchanged. A personal memory's
+            ``scope: "personal"`` is the exception: ``add`` raises ``ReservedMetadataKeyError``
+            for it, so drop ``scope`` before saving a copy.
 
         Raises:
             SmartMemoryNotFoundError: 404 — no item with that ID.
@@ -1975,6 +1979,8 @@ class SmartMemoryClient:
         Returns:
             ``{"items": [...], "total": int, "limit": int, "offset": int}``, where
             ``total`` counts the filtered set and so can drive pagination directly.
+            Each item's ``metadata`` never carries ``owner_key`` or ``is_global`` and can
+            be saved again unchanged (see :meth:`get`).
             Also retains ``policy: {include_grounding: bool, source: str}``, the
             resolved choice and its request/workspace/env source, and the skip
             counts ``skipped_rows: int`` (the caller's own rows the server could

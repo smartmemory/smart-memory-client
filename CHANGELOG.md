@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- SVC-2.0-METADATA-RESERVED-KEY-REFUSE-1 fix round 1 (2026-11-01): docs only. `get` and `list_memories` docstrings: the server no longer returns `owner_key` or `is_global` inside `metadata` (nor a reserved key with no value), so read-back metadata saves again unchanged, except a personal memory's `scope`. No code reads either key.
 - SVC-2.0-METADATA-RESERVED-KEY-REFUSE-1 (2026-11-01): new `ReservedMetadataKeyError` (a `SmartMemoryValidationError`, exported from `smartmemory_client`) with `.key`. `_request` raises it for a 400 whose `detail.error_type` is `reserved_metadata_key`: a save (`add`, `ingest`, and every other save call) set `scope`, `workspace_id`, `tenant_id`, `team_id`, `owner_key`, `is_global` or `security_scope` in `metadata`/`context` to a value the server does not stamp. Existing `except SmartMemoryValidationError` handlers still catch it. Contract: docs `PLAT-API-CODES-1`. Test: `tests/test_reserved_metadata_key_error.py`.
 
 - ci, CI-2.0-MANUAL-ONLY-SWEEP-1 (2.0 port of main GH-ACTIONS-MANUAL-1, owner policy 2026-10-29): the Actions workflow triggers on this line are `workflow_dispatch` only (no push or pull_request triggers). Workflow trigger blocks only, no job body change.
