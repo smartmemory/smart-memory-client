@@ -56,6 +56,37 @@ class SmartMemoryValidationError(SmartMemoryClientError):
     """Raised on HTTP 400/409/422 — request shape or state was rejected."""
 
 
+class ReservedMetadataKeyError(SmartMemoryValidationError):
+    """HTTP 400 ``reserved_metadata_key``: a save set a reserved ownership key the server stamps itself.
+
+    ``key`` is the refused name (``scope``, ``workspace_id``, ``tenant_id``, ``team_id``, ``owner_key``,
+    ``is_global`` or ``security_scope``), the first in alphabetical order when several differ. Remove the key from
+    ``metadata``/``context`` or rename it; resending the same body fails the same way
+    (SVC-2.0-METADATA-RESERVED-KEY-REFUSE-1, contract PLAT-API-CODES-1).
+    """
+
+    #: The ``detail.error_type`` the server answers.
+    ERROR_TYPE = "reserved_metadata_key"
+
+    def __init__(
+        self, message: str, *, key: Optional[str] = None, **kwargs: Any
+    ) -> None:
+        super().__init__(message, **kwargs)
+        self.key = key
+
+
+def reserved_metadata_key(body: Any) -> Optional[str]:
+    """The refused key when ``body`` is a ``reserved_metadata_key`` 400 body, else None."""
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if (
+        isinstance(detail, dict)
+        and detail.get("error_type") == ReservedMetadataKeyError.ERROR_TYPE
+    ):
+        key = detail.get("key")
+        return key if isinstance(key, str) else ""
+    return None
+
+
 class SmartMemoryServerError(SmartMemoryClientError):
     """Raised on HTTP 5xx — the server failed to process the request."""
 

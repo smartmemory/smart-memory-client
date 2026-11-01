@@ -34,6 +34,7 @@ For more information:
 
 from smartmemory_client.client import (
     RemoteCallTiming,
+    ReservedMetadataKeyError,
     SmartMemoryClient,
     SmartMemoryClientError,
     SmartMemoryNotFoundError,
@@ -66,6 +67,7 @@ except ImportError:
 
 __all__ = [
     "RemoteCallTiming",
+    "ReservedMetadataKeyError",
     "SmartMemoryClient",
     "SmartMemoryClientError",
     "SmartMemoryNotFoundError",

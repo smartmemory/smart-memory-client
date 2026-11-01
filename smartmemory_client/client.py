@@ -35,10 +35,12 @@ from smartmemory_client.models.session import (
 
 from smartmemory_client import _save_transport as _transport
 from smartmemory_client.receipt import Receipt, parse_receipt
+from smartmemory_client.errors import reserved_metadata_key as _reserved_metadata_key
 from smartmemory_client.errors import (  # noqa: F401  (re-exported: the classes lived here before 2.0)
     STAGE_CHAIN_CODES,
     IdempotencyConflictError,
     ReceiptError,
+    ReservedMetadataKeyError,
     RetryKeyExpiredError,
     RevisionConflictError,
     SaveConflictError,
@@ -5627,6 +5629,19 @@ class SmartMemoryClient:
         except httpx.HTTPStatusError as e:
             status = e.response.status_code if hasattr(e, "response") else 0
             error_detail = e.response.text if hasattr(e, "response") else str(e)
+            if status == 400:
+                # SVC-2.0-METADATA-RESERVED-KEY-REFUSE-1: a reserved ownership key in save metadata.
+                try:
+                    refused = _reserved_metadata_key(e.response.json())
+                except ValueError:
+                    refused = None
+                if refused is not None:
+                    raise ReservedMetadataKeyError(
+                        f"Request failed: {e} - Detail: {error_detail}",
+                        key=refused,
+                        status_code=status,
+                        detail=error_detail,
+                    ) from e
             exc_cls = _exception_for_status(status)
             raise exc_cls(
                 f"Request failed: {e} - Detail: {error_detail}",
