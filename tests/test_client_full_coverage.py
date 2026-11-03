@@ -335,7 +335,7 @@ class TestClientFullCoverage:
         mock_request.assert_called_with(
             "POST",
             "/memory/pipeline/storage",
-            json_body={"run_id": "pipeline_1", "storage_strategy": "standard"},
+            json_body={"run_id": "pipeline_1"},
         )
         client.run_linking_stage("pipeline_1")
         mock_request.assert_called_with(

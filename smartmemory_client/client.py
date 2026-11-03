@@ -3353,17 +3353,23 @@ class SmartMemoryClient:
         return self._stage("extraction", body)
 
     def run_storage_stage(
-        self, predecessor: Union[Receipt, str], storage_strategy: str = "standard"
+        self,
+        predecessor: Union[Receipt, str],
+        storage_strategy: Optional[str] = None,
     ) -> Receipt:
         """Run the storage stage from the awaited extraction receipt (or its ``pipeline_state_run_id``).
+
+        ``storage_strategy`` is one of ``dual_node|single_node|memory_only``; ``None`` (default) omits the
+        key so the server default (``dual_node``) applies.
 
         Raises ``StageChainError`` (``stage_result_pending|stage_result_expired|stage_result_unavailable|
         stage_chain_invalid``) when the predecessor cannot be chained. Returns the ``stage_job`` receipt.
         """
         run_id = _transport.chain_run_id(predecessor, self._stage_receipt_runs)
-        return self._stage(
-            "storage", {"run_id": run_id, "storage_strategy": storage_strategy}
-        )
+        body: Dict[str, Any] = {"run_id": run_id}
+        if storage_strategy is not None:
+            body["storage_strategy"] = storage_strategy
+        return self._stage("storage", body)
 
     def run_linking_stage(
         self, predecessor: Union[Receipt, str], linking_algorithm: str = "exact"

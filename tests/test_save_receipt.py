@@ -794,3 +794,16 @@ def test_a_future_major_stage_receipt_is_unsupported_receipt_version_with_its_ha
         "unsupported_receipt_version",
         "run_stage_1",
     )
+
+
+def test_storage_stage_default_omits_strategy_and_explicit_value_passes_through(
+    client, monkeypatch
+):
+    fake = wired(client, monkeypatch, STAGE_PENDING)
+    client.run_storage_stage("pipeline_1")
+    client.run_storage_stage("pipeline_1", storage_strategy="single_node")
+    assert fake.calls[0][3] == {"run_id": "pipeline_1"}
+    assert fake.calls[1][3] == {
+        "run_id": "pipeline_1",
+        "storage_strategy": "single_node",
+    }

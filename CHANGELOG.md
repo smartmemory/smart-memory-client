@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- fix, SDK-2.0-STAGE-STORAGE-STRATEGY-1: `run_storage_stage(predecessor, storage_strategy=None)` no longer sends the invalid default `"standard"` (core refuses it, surfacing as a 500). The key is omitted when `None` so the server default (`dual_node`) applies; allowed values `dual_node|single_node|memory_only` are documented. An explicit value passes through unchanged.
+
 - ci, CI-2.0-MANUAL-ONLY-SWEEP-1 (2.0 port of main GH-ACTIONS-MANUAL-1, owner policy 2026-10-29): the Actions workflow triggers on this line are `workflow_dispatch` only (no push or pull_request triggers). Workflow trigger blocks only, no job body change.
 
 - CLIENT-2.0-DOCUMENT-INGEST-1: `ingest_document(source, source_type=None, chunk_size=None, chunk_strategy=None, reference=None, context=None, idempotency_key=None)` posts `POST /memory/ingest/document` (Python twin of JS `ingestDocument`) and returns the `document_save` `Receipt` (`item_id` is the document id). Strict decode: a 1.x body raises `ReceiptError(not_a_receipt)`, no legacy bridge (`_save(..., legacy_bridge=False)`). A non-http(s) `source` raises `ValueError` before any request. No async client exists, so no async twin.
