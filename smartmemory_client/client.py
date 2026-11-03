@@ -20,7 +20,7 @@ import warnings
 from dataclasses import dataclass
 from datetime import datetime
 from time import perf_counter
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 from urllib.parse import quote
 
 import httpx
@@ -28,6 +28,12 @@ import httpx
 # Use local model instead of core dependency
 from smartmemory_client.models.memory_item import MemoryItem
 from smartmemory_client.models.conversation import ConversationContextModel
+from smartmemory_client.models.routing import (
+    RoutingEcho,
+    RoutingExplain,
+    RoutingPrefs,
+    routing_echo,
+)
 from smartmemory_client.models.session import (
     SessionResponse,
     normalize_session_response,
@@ -45,6 +51,7 @@ from smartmemory_client.errors import (  # noqa: F401  (re-exported: the classes
     SmartMemoryClientError,
     SmartMemoryNotFoundError,
     SmartMemoryPermissionError,
+    SmartMemoryRoutingConflictError,
     SmartMemoryServerError,
     SmartMemoryTransportError,
     SmartMemoryValidationError,
@@ -80,6 +87,32 @@ def _retry_after_s(response: Any) -> Optional[float]:
         return None
 
 
+class SmartMemoryUnsupportedError(SmartMemoryServerError):
+    """Raised by the ``vector_*`` methods on HTTP 501: the active backend does not
+    implement the capability (WEB-VECTOR-SEARCH-TAB-1). Never an empty result."""
+
+
+class SmartMemorySubstrateError(SmartMemoryServerError):
+    """Raised by the ``vector_*`` methods on HTTP 503: the vector backend reported a
+    substrate error (``VectorSubstrateError``), surfaced instead of an empty page."""
+
+
+def _body_error_code(detail: str) -> str | None:
+    """Read the ``error`` code out of an error body: ``{"detail": {"error": code}}``,
+    ``{"detail": "code"}`` or ``{"error": code}``. ``None`` when there is none (a 422
+    list, plain text)."""
+    try:
+        body = json.loads(detail)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(body, dict):
+        return None
+    inner = body.get("detail", body)
+    if isinstance(inner, dict):
+        inner = inner.get("error")
+    return inner if isinstance(inner, str) and inner else None
+
+
 def _exception_for_status(status: int) -> type[SmartMemoryClientError]:
     """Map an HTTP status code to the most specific SDK exception class."""
     if status == 404:
@@ -104,6 +137,27 @@ LATENCY_HEADER = "X-SM-Latency-Ms"
 #: dropped at the source, where the caller can see the warning, rather than
 #: silently ignored one process away.
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
+
+# CLIENT-CONN-REUSE-1: how long an idle pooled connection stays open. httpx's own
+# default is 5 s, so a caller that pauses longer between calls (an agent loop
+# waiting on a model) re-pays TCP + TLS (3 round trips, about 0.6 s at 260 ms RTT)
+# on every call. Pool sizes below are httpx's defaults, restated because passing
+# ``limits=`` replaces the whole object (``Limits()`` alone means "unlimited").
+_KEEPALIVE_EXPIRY_S = 30.0
+_POOL_LIMITS = dict(max_connections=100, max_keepalive_connections=20)
+
+
+def _http2_available() -> bool:
+    """True when the optional ``h2`` package is installed (``pip install smartmemory-client[http2]``).
+
+    With HTTP/2, concurrent calls from threads share one connection instead of
+    opening one each. The server negotiates it by ALPN and falls back to HTTP/1.1.
+    """
+    try:
+        import h2  # noqa: F401
+    except ImportError:
+        return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -253,6 +307,8 @@ class SmartMemoryClient:
         self._client = httpx.Client(
             verify=verify_ssl,
             timeout=timeout,
+            limits=httpx.Limits(keepalive_expiry=_KEEPALIVE_EXPIRY_S, **_POOL_LIMITS),
+            http2=_http2_available(),
             # Hooks rather than a wrapper around _request(): a few calls (health,
             # search-session) go through self._client directly, and a hook cannot
             # be bypassed by adding another one of those later.
@@ -632,6 +688,62 @@ class SmartMemoryClient:
             )
             ```
         """
+        return self._add_response(
+            item,
+            memory_type,
+            metadata,
+            use_pipeline,
+            profile_name,
+            conversation_context,
+            embed,
+            idempotency_key=idempotency_key,
+        )
+
+    def add_detailed(
+        self,
+        item: Union[str, MemoryItem, Dict[str, Any]],
+        memory_type: str = "semantic",
+        metadata: Optional[Dict[str, Any]] = None,
+        use_pipeline: bool = True,
+        profile_name: Optional[str] = None,
+        conversation_context: Optional[
+            Union[ConversationContextModel, Dict[str, Any]]
+        ] = None,
+        embed: Optional[bool] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> Receipt:
+        """Same call and same :class:`Receipt` as ``add()`` (2.0.0: no longer the response dict).
+
+        Kept so WS-ROUTING-2b callers keep working. The WS-ROUTING-2 write echo
+        (``workspace_id``, ``workspace_name``, ``routed_by``, ``notices``) rides in
+        ``receipt.raw``; ``routing_echo(receipt)`` reads it as typed fields (an older
+        server omits them, which reads as ``None``). ``receipt.item_id`` is the item id.
+        """
+        return self._add_response(
+            item,
+            memory_type,
+            metadata,
+            use_pipeline,
+            profile_name,
+            conversation_context,
+            embed,
+            idempotency_key=idempotency_key,
+        )
+
+    def _add_response(
+        self,
+        item: Union[str, MemoryItem, Dict[str, Any]],
+        memory_type: str = "semantic",
+        metadata: Optional[Dict[str, Any]] = None,
+        use_pipeline: bool = True,
+        profile_name: Optional[str] = None,
+        conversation_context: Optional[
+            Union[ConversationContextModel, Dict[str, Any]]
+        ] = None,
+        embed: Optional[bool] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> Receipt:
+        """Shared ``POST /memory/add`` for ``add`` and ``add_detailed``: returns the save receipt."""
         # Handle different input types
         if isinstance(item, str):
             content = item
@@ -853,6 +965,7 @@ class SmartMemoryClient:
         until: Optional[Union[str, datetime]] = None,
         hop_strategy: Optional[str] = None,
         reranker: Optional[str] = None,
+        metadata_filter: Optional[Dict[str, Any]] = None,
     ):
         """
         Search for memory items using semantic matching.
@@ -864,6 +977,13 @@ class SmartMemoryClient:
                 None preserves the core default (consensus unless semantic hops are enabled).
             since: Inclusive created_at lower bound; ISO-8601 or datetime (naive means UTC).
             until: Exclusive created_at upper bound, independent of as_of_date.
+            metadata_filter: Narrow the ranked results to items whose stored properties
+                match, e.g. ``{"customer_id": "cus_8812"}`` or ``{"priority": {"gte": 2}}``
+                (operators: gte, gt, lte, lt). It can only narrow your workspace's
+                results: keys naming tenant, workspace or user scope are refused (422).
+                The filter runs on a wider candidate pool than ``top_k``; when that pool
+                still missed matches, ``last_search_coverage`` carries
+                ``metadata_filter_incomplete: True``. Not supported with ``expertise``.
             top_k: Maximum number of results
             memory_type: Type of memory to search (optional)
             use_ssg: Use Similarity Graph Traversal for better multi-hop reasoning (optional)
@@ -925,6 +1045,9 @@ class SmartMemoryClient:
 
             # Search specific memory type
             results = client.search("conversation", memory_type="episodic")
+
+            # Only one end customer's memories, still ranked by relevance
+            results = client.search("billing plan", metadata_filter={"customer_id": "cus_8812"})
 
             for item in results:
                 print(f"{item.item_id}: {item.content}")
@@ -1011,6 +1134,14 @@ class SmartMemoryClient:
             body_dict["include_archived"] = True  # CORE-ARCHIVED-RECALL-1
         if exclude_speculative:
             body_dict["exclude_speculative"] = True  # PLAT-MCP-HOSTED-1 / CORE-ORIGIN-1
+        if metadata_filter is not None:
+            # DEV-ONBOARD-FU-SCOPED-SEARCH-1: the service validates the grammar and refuses scope keys.
+            if not isinstance(metadata_filter, dict):
+                raise ValueError(
+                    f"metadata_filter must be a dict, got {type(metadata_filter).__name__}"
+                )
+            if metadata_filter:
+                body_dict["metadata_filter"] = metadata_filter
 
         # SELF-IMPROVE-6: use _request_raw to capture X-Search-Session-Id header
         url = f"{self.base_url}/memory/search"
@@ -1621,6 +1752,8 @@ class SmartMemoryClient:
 
         Returns:
             A :class:`Receipt` (2.0.0: no longer a result dict). ``receipt.item_id`` is the saved item.
+            WS-ROUTING-2 servers also put ``workspace_id``, ``workspace_name``, ``routed_by`` and
+            ``notices`` in ``receipt.raw`` (``SmartMemoryClient.routing_echo(receipt)``).
 
         Example:
             ```python
@@ -1936,6 +2069,225 @@ class SmartMemoryClient:
         params = {"limit": limit} if limit is not None else None
         return self._request("GET", "/memory/graph/full", params=params)
 
+    # ------------------------------------------------------------------
+    # Vector visibility (WEB-VECTOR-SEARCH-TAB-1, contract: vector-contract.json)
+    # ------------------------------------------------------------------
+
+    def _vector_request(
+        self,
+        method: str,
+        endpoint: str,
+        params: Optional[Dict[str, Any]] = None,
+        json_body: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        """``_request`` that types 501 and 503 for the vector routes.
+
+        Every other status keeps the shared mapping (404 not found, 400 validation,
+        401/403 permission, other 5xx server). 501 and 503 are re-raised as
+        subclasses of ``SmartMemoryServerError``, so ``except SmartMemoryServerError``
+        still catches them.
+        """
+        try:
+            return self._request(method, endpoint, params=params, json_body=json_body)
+        except SmartMemoryServerError as e:
+            typed = {
+                501: SmartMemoryUnsupportedError,
+                503: SmartMemorySubstrateError,
+            }.get(e.status_code or 0)
+            if typed is None or isinstance(e, typed):
+                raise
+            raise typed(str(e), status_code=e.status_code, detail=e.detail) from e
+
+    def vector_query(
+        self,
+        text: Optional[str] = None,
+        embedding: Optional[List[float]] = None,
+        top_k: int = 10,
+        memory_type: Optional[str] = None,
+        origin_prefix: Optional[str] = None,
+        collection: str = "memory",
+        include_embedding: bool = False,
+    ) -> Dict[str, Any]:
+        """Nearest-neighbour query over the vector index (read-only).
+
+        ``POST /memory/vector/query``. Pass exactly one of ``text`` (embedded
+        server-side) or ``embedding`` (a raw query vector whose length must match
+        the collection's dimension). ``top_k`` is sent as given: the server clamps
+        it to 50, it never rejects.
+
+        Args:
+            text: Query text.
+            embedding: Raw query vector.
+            top_k: Hits wanted (server max 50).
+            memory_type: Equality filter on ``hit.memory_type``.
+            origin_prefix: Prefix filter on ``hit.origin``.
+            collection: A name from ``vector_stats()["collections"]``.
+            include_embedding: Each hit carries ``embedding_preview`` (first 16
+                floats). The full vector is never returned.
+
+        Returns:
+            Dict with ``query`` (``mode``, ``dimension``, ``space``), ``hits``
+            (``item_id``, ``score`` in [0, 1] desc, ``memory_type``, ``origin``,
+            ``title``, ``snippet``, ``created_at``, ``space``, ``has_graph_node``),
+            ``truncated`` (None when the store's scope filters do not pin the
+            caller, so the figure is withheld) and ``timing_ms`` (``embed``,
+            ``search``).
+
+        Raises:
+            SmartMemoryValidationError: neither or both of text/embedding, or an
+                embedding whose dimension differs from the index (400).
+            SmartMemoryPermissionError: scope error (403).
+            SmartMemoryNotFoundError: unknown collection (404).
+            SmartMemoryUnsupportedError: backend lacks the capability (501).
+            SmartMemorySubstrateError: backend substrate error (503).
+        """
+        body: Dict[str, Any] = {
+            "top_k": top_k,
+            "collection": collection,
+            "include_embedding": include_embedding,
+        }
+        if text is not None:
+            body["text"] = text
+        if embedding is not None:
+            body["embedding"] = embedding
+        if memory_type is not None:
+            body["memory_type"] = memory_type
+        if origin_prefix is not None:
+            body["origin_prefix"] = origin_prefix
+        return self._vector_request("POST", "/memory/vector/query", json_body=body)
+
+    def vector_stats(self) -> Dict[str, Any]:
+        """Backend, embedder, per-collection counts, capabilities and warnings.
+
+        ``GET /memory/vector/stats``. ``backend`` is an opaque string. Counts are
+        in the caller's scope; ``collections[].index_count`` is present only when
+        ``single_tenant`` is true. ``collections[].count`` and ``missing_count``
+        are None when the backend cannot count or the store's scope filters do
+        not pin the caller.
+
+        Returns:
+            Dict with ``backend``, ``single_tenant``, ``capabilities``
+            (``scope_pushdown``, ``scoped_exact``, ``missing_list``), ``embedder``
+            (``model_id``, ``dimension``), ``collections``, ``scope`` and ``warnings``.
+
+        Raises:
+            SmartMemoryPermissionError: scope error (403).
+            SmartMemoryUnsupportedError: backend lacks the capability (501).
+            SmartMemorySubstrateError: backend substrate error (503).
+        """
+        return self._vector_request("GET", "/memory/vector/stats")
+
+    def vector_inspect(
+        self,
+        item_id: str,
+        top_k: int = 10,
+        collection: str = "memory",
+        include_embedding: bool = False,
+    ) -> Dict[str, Any]:
+        """One item's vector facts plus its nearest neighbours.
+
+        ``GET /memory/vector/items/{item_id}``. ``top_k`` is sent as given: the
+        server clamps it to 20.
+
+        Args:
+            item_id: Memory item id.
+            top_k: Neighbours wanted (server max 20).
+            collection: A name from ``vector_stats()["collections"]``.
+            include_embedding: ``item.vector`` and neighbours carry
+                ``embedding_preview`` (first 16 floats), never the full vector.
+
+        Returns:
+            Dict with ``item``, ``neighbours`` (the item itself excluded, score
+            desc) and ``space``.
+
+        Raises:
+            SmartMemoryNotFoundError: item not visible, unknown collection, or no
+                vector row (``detail`` contains ``no_vector`` when the memory exists
+                but has no embedding) (404).
+            SmartMemoryPermissionError: scope error (403).
+            SmartMemoryUnsupportedError: backend lacks the capability (501).
+            SmartMemorySubstrateError: backend substrate error (503).
+        """
+        return self._vector_request(
+            "GET",
+            f"/memory/vector/items/{quote(item_id, safe='')}",
+            params={
+                "top_k": top_k,
+                "collection": collection,
+                "include_embedding": include_embedding,
+            },
+        )
+
+    def vector_missing(
+        self,
+        limit: int = 50,
+        cursor: Optional[str] = None,
+        collection: str = "memory",
+    ) -> Dict[str, Any]:
+        """One page of in-scope memories that have no usable vector.
+
+        ``GET /memory/vector/missing``. ``limit`` is sent as given (server max 200)
+        and ``cursor`` is the opaque ``next_cursor`` of the previous page.
+
+        Returns:
+            Dict with ``items`` (``item_id``, ``memory_type``, ``origin``,
+            ``created_at``, ``reason``), ``next_cursor`` (None on the last page) and
+            ``total`` (None when the backend cannot count cheaply or the store's
+            scope filters do not pin the caller).
+
+        Raises:
+            SmartMemoryNotFoundError: unknown collection (404).
+            SmartMemoryPermissionError: scope error (403).
+            SmartMemoryUnsupportedError: the backend has no missing list, see
+                ``vector_stats()["capabilities"]["missing_list"]`` (501).
+            SmartMemorySubstrateError: backend substrate error (503).
+        """
+        params: Dict[str, Any] = {"limit": limit, "collection": collection}
+        if cursor is not None:
+            params["cursor"] = cursor
+        return self._vector_request("GET", "/memory/vector/missing", params=params)
+
+    def vector_projection(
+        self,
+        dims: int = 3,
+        method: str = "pca",
+        limit: Optional[int] = None,
+        collection: str = "memory",
+    ) -> Dict[str, Any]:
+        """The caller's in-scope vectors projected to 2D/3D coordinates (map view).
+
+        ``GET /memory/vector/projection``. ``limit`` is sent as given: the server
+        clamps it to 2000 and samples larger scopes deterministically.
+
+        Args:
+            dims: 2 or 3.
+            method: ``"pca"`` (default, deterministic) or ``"umap"`` where the
+                server enables it.
+            limit: Points wanted (server default and max 2000).
+            collection: A name from ``vector_stats()["collections"]``.
+
+        Returns:
+            Dict with ``points`` (``item_id``, ``coords``, ``memory_type``,
+            ``title``, ``has_graph_node``; ordered by ``item_id``), ``total``
+            (None when withheld), ``sampled`` (None when ``total`` is withheld), ``limit``, ``explained_variance``, ``space``,
+            ``warnings`` and ``cached``. Never an embedding.
+
+        Raises:
+            SmartMemoryValidationError: dims not 2/3, unknown method, bad limit (400).
+            SmartMemoryNotFoundError: unknown collection (404).
+            SmartMemoryUnsupportedError: umap not enabled, or the backend cannot
+                sample vectors (501).
+            SmartMemorySubstrateError: backend substrate error (503).
+        """
+        params: Dict[str, Any] = {
+            "dims": dims,
+            "method": method,
+            "collection": collection,
+        }
+        if limit is not None:
+            params["limit"] = limit
+        return self._vector_request("GET", "/memory/vector/projection", params=params)
+
     def get_lineage(self, item_id: str) -> Dict[str, Any]:
         """Get the supersession lineage chain for a memory item."""
         return self._request("GET", f"/memory/{item_id}/lineage")
@@ -1953,6 +2305,8 @@ class SmartMemoryClient:
         metadata_value: Optional[str] = None,
         memory_type: Optional[str] = None,
         include_grounding: Optional[bool] = None,
+        exclude_node_category: Optional[Union[str, Sequence[str]]] = None,
+        q: Optional[str] = None,
     ) -> Dict[str, Any]:
         """List memory items, optionally filtered by an exact metadata match.
 
@@ -1969,6 +2323,13 @@ class SmartMemoryClient:
             memory_type: Exact type filter, applied before pagination and counting.
             include_grounding: Include grounding nodes. None inherits the workspace
                 default, then env (OFF unless configured); False is sent explicitly.
+            exclude_node_category: SVC-LIST-EXCLUDE-ENTITY-1. Stored ``node_category``
+                values to leave out (for example ``["entity"]``), sent as a repeated
+                ``exclude_node_category`` param. A bare string is one value, an empty
+                list sends nothing. Applied before pagination, so ``total`` counts the
+                filtered set.
+            q: Case-insensitive substring match over content, applied before
+                pagination.
 
         Returns:
             ``{"items": [...], "total": int, "limit": int, "offset": int}``, where
@@ -1985,7 +2346,10 @@ class SmartMemoryClient:
 
         Raises:
             APIError: 422 if only one half of the metadata pair is supplied, if the
-                key is not a valid identifier, or if the value is empty.
+                key is not a valid identifier, if the value is empty, if more than
+                20 ``exclude_node_category`` values are sent, or if ``q`` is longer
+                than 200 characters. Over-limit input is passed through untouched so
+                the service rejects it, never truncated here.
         """
         params: Dict[str, Any] = {
             "limit": limit,
@@ -2002,6 +2366,17 @@ class SmartMemoryClient:
             params["memory_type"] = memory_type
         if include_grounding is not None:
             params["include_grounding"] = include_grounding
+        if exclude_node_category is not None:
+            categories = (
+                [exclude_node_category]
+                if isinstance(exclude_node_category, str)
+                else list(exclude_node_category)
+            )
+            # httpx encodes a list value as a repeated query param.
+            if categories:
+                params["exclude_node_category"] = categories
+        if q is not None:
+            params["q"] = q
         return self._request("GET", "/memory/list", params=params)
 
     def search_by_metadata(
@@ -3458,14 +3833,112 @@ class SmartMemoryClient:
         return self._request("POST", "/subscription/upgrade", json_body=body)
 
     def get_subscription(self) -> Dict[str, Any]:
-        """Get current subscription details."""
+        """Get current subscription details.
+
+        The result includes ``can_manage_billing`` (bool): whether the caller may change the plan.
+        It is false for every caller of an internal comp tenant, whose billing a superadmin manages.
+        ``billing_refusal`` says why it is false: ``""`` (the caller can manage billing), ``"api_key"``,
+        ``"not_admin"`` or ``"comp"``. The body is returned as the service sent it.
+        """
         return self._request("GET", "/subscription/current")
+
+    def grant_billing_manager(self, user_id: str) -> Dict[str, Any]:
+        """Let a member of your organization manage billing (organization admins only).
+
+        Returns ``{"user_id": ..., "listed": True}``: ``listed`` is the explicit list entry, not the
+        effective permission (an admin can manage billing either way, see ``get_subscription``).
+        Idempotent. Grants no workspace access.
+        """
+        return self._request(
+            "PUT", f"/subscription/billing-managers/{quote(user_id, safe='')}"
+        )
+
+    def revoke_billing_manager(self, user_id: str) -> Dict[str, Any]:
+        """Take billing management back from a member (organization admins only).
+
+        Returns ``{"user_id": ..., "listed": False}``. Idempotent.
+        """
+        return self._request(
+            "DELETE", f"/subscription/billing-managers/{quote(user_id, safe='')}"
+        )
+
+    def list_billing_managers(self) -> Dict[str, Any]:
+        """List the members an organization admin let manage billing.
+
+        Returns ``{"user_ids": [...]}``, current members of your organization only. Any signed-in
+        member may read it. Raises ``SmartMemoryPermissionError`` for an API key.
+
+        An organization admin also gets ``"members"``: one ``{"user_id", "email", "name", "is_admin",
+        "listed"}`` entry per current member, ``listed`` being the explicit list entry. Everyone else
+        gets no ``"members"`` key at all, so check for the key rather than assuming an empty list.
+        """
+        return self._request("GET", "/subscription/billing-managers")
 
     def cancel_subscription(self, immediately: bool = False) -> Dict[str, Any]:
         """Cancel subscription."""
         return self._request(
             "POST", "/subscription/cancel", params={"immediately": immediately}
         )
+
+    # ============================================================================
+    # Upgrade nudges (UPGRADE-NUDGES-9)
+    # ============================================================================
+
+    def get_next_upgrade_nudge(self, surface: str = "web") -> Dict[str, Any]:
+        """The upgrade banner to show now, or no banner.
+
+        ``GET /upgrade-nudges/next?surface=`` (contract ``smart-memory-docs``
+        ``docs/features/UPGRADE-NUDGES-1/upgrade-nudges-contract.json``, section ``endpoint``).
+        Writes nothing. The server decides the audience, the caps and the copy from the signed-in
+        caller. The body is returned as the service sent it.
+
+        Returns ``{"nudge": None}`` for every ineligible caller, the server's kill switch and every
+        server-side failure (a 200, never an error): render nothing then. Otherwise ``{"nudge": {...}}``
+        with ``nudge_key``, ``kind`` (``"banner"``), ``surface``, ``target_tier`` (``"team"`` or
+        ``"enterprise"``), ``audience`` (``"billing_manager"``), ``anchor`` (``cap-<capability_key>``, link
+        "Compare plans" to ``/pricing#<anchor>``), ``copy`` (render exactly as returned) and ``actions``
+        (``{"compare": ..., "dismiss": ...}`` button labels).
+
+        Args:
+            surface: Only ``"web"`` is accepted by the service.
+
+        Raises:
+            SmartMemoryValidationError: ``surface`` is not ``"web"`` (422 ``validation_error``).
+        """
+        return self._request("GET", "/upgrade-nudges/next", params={"surface": surface})
+
+    def _record_upgrade_nudge(self, nudge_key: str, event: str) -> Dict[str, Any]:
+        if not isinstance(nudge_key, str) or not nudge_key:
+            raise ValueError("nudge_key must be a non-empty string")
+        return self._request(
+            "POST", f"/upgrade-nudges/{quote(nudge_key, safe='')}/{event}"
+        )
+
+    def record_upgrade_nudge_shown(self, nudge_key: str) -> Dict[str, Any]:
+        """The banner was rendered (``POST /upgrade-nudges/{nudge_key}/shown``).
+
+        Returns ``{"recorded": bool}``: ``False`` for an ineligible caller or the kill switch off,
+        not an error.
+
+        Raises:
+            ValueError: ``nudge_key`` is empty or not a string (raised before any request).
+            SmartMemoryNotFoundError: the key is not a registry banner key (404 ``unknown_nudge_key``).
+        """
+        return self._record_upgrade_nudge(nudge_key, "shown")
+
+    def record_upgrade_nudge_clicked(self, nudge_key: str) -> Dict[str, Any]:
+        """The "Compare plans" button was clicked (``POST /upgrade-nudges/{nudge_key}/clicked``).
+
+        Returns ``{"recorded": bool}``. Errors as ``record_upgrade_nudge_shown``.
+        """
+        return self._record_upgrade_nudge(nudge_key, "clicked")
+
+    def record_upgrade_nudge_dismissed(self, nudge_key: str) -> Dict[str, Any]:
+        """The "Not now" button was clicked (``POST /upgrade-nudges/{nudge_key}/dismissed``).
+
+        Returns ``{"recorded": bool}``. Errors as ``record_upgrade_nudge_shown``.
+        """
+        return self._record_upgrade_nudge(nudge_key, "dismissed")
 
     # ============================================================================
     # Workspaces
@@ -3546,6 +4019,54 @@ class SmartMemoryClient:
     def revoke_workspace_share(self, workspace_id: str, team_id: str) -> None:
         """Revoke a Team's grant from a Workspace."""
         self._request("DELETE", f"/memory/workspaces/{workspace_id}/share/{team_id}")
+
+    def get_workspace_access(self, workspace_id: str) -> Dict[str, Any]:
+        """Read a Workspace's Team grants and direct user grants.
+
+        ``GET /memory/workspaces/{workspace_id}/access`` (SVC-WORKSPACE-ACCESS-1).
+        Returns ``{workspace_id, teams: [{team_id, name, permission,
+        team_exists}], users: [{user_id, permission}]}``. A grant whose Team
+        was deleted is listed with ``team_exists`` False and ``name`` None.
+        Readable by whoever may share or revoke on that Workspace (a tenant
+        admin or a Workspace admin). Raises ``SmartMemoryPermissionError`` (403)
+        for anyone else in the tenant and ``SmartMemoryNotFoundError`` (404)
+        for another tenant's or an unknown Workspace id.
+        """
+        return self._request("GET", f"/memory/workspaces/{workspace_id}/access")
+
+    def set_session_workspace(
+        self,
+        workspace_id: str,
+        client_key: str,
+        context_key: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Select ``workspace_id`` for one client (and context): ``PUT /memory/routing/session`` (WS-ROUTING-4).
+
+        A write that names no workspace and carries ``X-SM-Client: <client_key>`` (and ``X-SM-Context`` when
+        ``context_key`` is set) then lands there until the pick goes idle (service ``ROUTING_SESSION_IDLE_TTL_S``,
+        default 24 h). ``client_key`` follows the contract grammar (``mcp:<name>``, ``app:<name>``, ...).
+        Returns the record: ``workspace_id``, ``client_key_digest``, ``context_key_digest``, ``set_at``,
+        ``set_via``, ``expires_at``, ``client_key``, ``context_key``, ``workspace_name``.
+        Raises ``SmartMemoryPermissionError`` (403) for a workspace the caller cannot use (same answer whether or
+        not it exists) and ``SmartMemoryValidationError`` for a workspace-bound API key (409) or a key outside the
+        grammar (422).
+        """
+        body: Dict[str, Any] = {"workspace_id": workspace_id, "client_key": client_key}
+        if context_key is not None:
+            body["context_key"] = context_key
+        return self._request("PUT", "/memory/routing/session", json_body=body)
+
+    def clear_session_workspace(
+        self, client_key: str, context_key: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Clear the caller's own pick for one client (and context): ``DELETE /memory/routing/session``.
+
+        Returns ``{deleted, client_key, context_key}``; clearing nothing is not an error (``deleted`` False).
+        """
+        params: Dict[str, Any] = {"client_key": client_key}
+        if context_key is not None:
+            params["context_key"] = context_key
+        return self._request("DELETE", "/memory/routing/session", params=params)
 
     # ============================================================================
     # Teams
@@ -5429,7 +5950,10 @@ class SmartMemoryClient:
         return result.get("value") if isinstance(result, dict) else None
 
     def export_okf(self) -> bytes:
-        """Export this workspace as a gzipped OKF bundle."""
+        """Export this workspace as a gzipped OKF bundle.
+
+        Needs workspace admin or tenant admin: any other caller gets a 403.
+        """
         response = self._request("GET", "/memory/okf/export", return_response=True)
         return response.content
 
@@ -5699,6 +6223,103 @@ class SmartMemoryClient:
             SmartMemoryServerError: the service could not read its plugin registry (503).
         """
         return self._request("GET", "/memory/plugins/catalog")
+
+    # ------------------------------------------------------------------
+    # Workspace routing (WS-ROUTING-2b)
+    # ------------------------------------------------------------------
+
+    def _routing_request(self, method: str, endpoint: str, **kwargs: Any) -> Any:
+        """``_request`` that stamps the server ``error`` code on a raised error and turns
+        ``409 routing_prefs_version_conflict`` into ``SmartMemoryRoutingConflictError``."""
+        try:
+            return self._request(method, endpoint, **kwargs)
+        except SmartMemoryClientError as e:
+            e.error_code = _body_error_code(e.detail)
+            if (
+                e.status_code == 409
+                and e.error_code == SmartMemoryRoutingConflictError.error_code
+            ):
+                raise SmartMemoryRoutingConflictError(
+                    str(e), status_code=e.status_code, detail=e.detail
+                ) from e
+            raise
+
+    def get_routing_prefs(self) -> RoutingPrefs:
+        """Read the caller's account-default routing prefs (``GET /memory/routing/prefs``).
+
+        User-scoped, no workspace header needed. No stored row reads as
+        ``{"account_default_workspace_id": None, "version": 0, "updated_at": None}``.
+        Pass the returned ``version`` to ``set_routing_prefs``.
+        """
+        return self._routing_request("GET", "/memory/routing/prefs")
+
+    def set_routing_prefs(
+        self, account_default_workspace_id: Optional[str], version: int
+    ) -> RoutingPrefs:
+        """Set (or clear, with ``None``) the account default workspace (``PUT /memory/routing/prefs``).
+
+        Compare-and-set: ``version`` is the value last read from ``get_routing_prefs()``
+        (0 when there was no row). Returns the new prefs.
+
+        Raises:
+            SmartMemoryRoutingConflictError: 409 ``routing_prefs_version_conflict``, a
+                lost CAS. Re-read with ``get_routing_prefs()`` and retry.
+            SmartMemoryPermissionError: 403, ``error_code`` is ``routing_prefs_human_only``
+                (agent principal) or ``insufficient_team_permissions`` (workspace not usable).
+            SmartMemoryValidationError: 409 ``client_bound_to_workspace`` (workspace-bound
+                API key) or 422; ``error_code`` carries the server code when there is one.
+        """
+        if isinstance(version, bool) or not isinstance(version, int) or version < 0:
+            raise ValueError("version must be an int >= 0 (the value last read)")
+        return self._routing_request(
+            "PUT",
+            "/memory/routing/prefs",
+            json_body={
+                "account_default_workspace_id": account_default_workspace_id,
+                "version": version,
+            },
+        )
+
+    def explain_routing(
+        self,
+        client_key: Optional[str] = None,
+        context_key: Optional[str] = None,
+        file_workspace_id: Optional[str] = None,
+    ) -> RoutingExplain:
+        """Explain where a write would land, and why (``GET /memory/routing/explain``). Writes nothing.
+
+        Args:
+            client_key: stands in for the ``X-SM-Client`` header (max 200 chars).
+            context_key: the project/context binding key (max 200 chars).
+            file_workspace_id: what an accepted ``.smartmemory`` file would pick. A usable
+                id reads ``status: file_hint_not_applied`` on the ``context`` candidate;
+                an unusable one reads ``inaccessible`` with no id or name.
+
+        Returns:
+            Dict with ``workspace_id``, ``workspace_name``, ``routed_by``, ``notices``,
+            ``refusal`` (``missing_team_context`` or ``insufficient_team_permissions``),
+            ``candidates`` (one per lever, in order) and ``flags``.
+        """
+        params = {
+            k: v
+            for k, v in (
+                ("client_key", client_key),
+                ("context_key", context_key),
+                ("file_workspace_id", file_workspace_id),
+            )
+            if v is not None
+        }
+        return self._routing_request(
+            "GET", "/memory/routing/explain", params=params or None
+        )
+
+    @staticmethod
+    def routing_echo(result: Any) -> RoutingEcho:
+        """Typed write echo (``workspace_id``, ``workspace_name``, ``routed_by``,
+        ``notices``) from an ``add``/``add_detailed``/``ingest`` :class:`Receipt` (read off
+        ``receipt.raw``) or an ``ingest_conversation`` result dict. Absent on an older
+        server reads as ``None``/``[]``."""
+        return routing_echo(result)
 
     def __repr__(self) -> str:
         auth_status = "authenticated" if self.api_key else "unauthenticated"

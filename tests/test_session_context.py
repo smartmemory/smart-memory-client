@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from smartmemory_client import SessionResponse, SmartMemoryClient
 
 
@@ -83,3 +85,31 @@ def test_refresh_token_returns_typed_dict_compatible_session() -> None:
     assert session["default_workspace_id"] == "workspace-legacy"
     assert client._token == "new-access"
     assert client._refresh_token == "new-refresh"
+
+
+# SVC-AUTH-ME-TENANT-NAME-1: `tenant_name` passes through as optional, never invented.
+# (id, payload fields, expected `tenant_name` in the session: a value, None, or "absent")
+TENANT_NAME_ROWS = [
+    ("named", {"tenant_name": "Acme Corp"}, "Acme Corp"),
+    ("null", {"tenant_name": None}, None),
+    ("absent-older-server", {}, "absent"),
+]
+
+
+@pytest.mark.parametrize(
+    "fields,expected",
+    [r[1:] for r in TENANT_NAME_ROWS],
+    ids=[r[0] for r in TENANT_NAME_ROWS],
+)
+def test_get_me_passes_tenant_name_through_as_optional(fields, expected) -> None:
+    client = SmartMemoryClient("http://test", api_key="test-key")
+    client._request = MagicMock(
+        return_value={"id": "user-1", "tenant_id": "tenant-1", **fields}
+    )
+
+    session = client.get_me()
+
+    if expected == "absent":
+        assert "tenant_name" not in session
+    else:
+        assert session["tenant_name"] == expected

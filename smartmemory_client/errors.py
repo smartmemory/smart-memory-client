@@ -43,6 +43,11 @@ class SmartMemoryClientError(Exception):
         self.idempotency_key: Optional[str] = None
         self.attempts: Optional[int] = None
 
+    #: Server ``error`` code of the response (``routing_prefs_human_only``,
+    #: ``insufficient_team_permissions``, ...), set by the routing methods
+    #: (WS-ROUTING-2b); ``None`` when the body carried none.
+    error_code: str | None = None
+
 
 class SmartMemoryNotFoundError(SmartMemoryClientError):
     """Raised on HTTP 404 — the requested resource does not exist."""
@@ -54,6 +59,14 @@ class SmartMemoryPermissionError(SmartMemoryClientError):
 
 class SmartMemoryValidationError(SmartMemoryClientError):
     """Raised on HTTP 400/409/422 — request shape or state was rejected."""
+
+
+class SmartMemoryRoutingConflictError(SmartMemoryValidationError):
+    """Raised by ``set_routing_prefs`` on ``409 routing_prefs_version_conflict``: the
+    prefs changed since they were read (WS-ROUTING-2b). Catch it, re-read with
+    ``get_routing_prefs()`` and retry with the fresh ``version``."""
+
+    error_code = "routing_prefs_version_conflict"
 
 
 class SmartMemoryServerError(SmartMemoryClientError):
