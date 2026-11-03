@@ -449,6 +449,13 @@ class TestClientFullCoverage:
         client.remove_team_member("team-1", "user-1")
         mock_request.assert_called_with("DELETE", "/memory/teams/team-1/members/user-1")
 
+        client.set_team_member_read_only("team-1", "user-1", True)
+        mock_request.assert_called_with(
+            "PUT",
+            "/memory/teams/team-1/members/user-1/read-only",
+            json_body={"read_only": True},
+        )
+
         client.get_team_permissions("team-1")
         mock_request.assert_called_with("GET", "/memory/teams/team-1/permissions")
 

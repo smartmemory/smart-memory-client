@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- **AUTH-ORG-DOMAIN-SSO-1 rescope (c):** new `set_team_member_read_only(team_id, member_user_id, read_only)` (`PUT /memory/teams/{team_id}/members/{member_user_id}/read-only`, body `{"read_only": bool}`): an organization admin sets or clears another member's read-only flag (session only, never an API key or the caller's own membership; an admin target is 409). The team, member list and permissions responses now carry `read_only`.
+
 - fix, SDK-2.0-STAGE-STORAGE-STRATEGY-1: `run_storage_stage(predecessor, storage_strategy=None)` no longer sends the invalid default `"standard"` (core refuses it, surfacing as a 500). The key is omitted when `None` so the server default (`dual_node`) applies; allowed values `dual_node|single_node|memory_only` are documented. An explicit value passes through unchanged.
 
 - ci, CI-2.0-MANUAL-ONLY-SWEEP-1 (2.0 port of main GH-ACTIONS-MANUAL-1, owner policy 2026-10-29): the Actions workflow triggers on this line are `workflow_dispatch` only (no push or pull_request triggers). Workflow trigger blocks only, no job body change.

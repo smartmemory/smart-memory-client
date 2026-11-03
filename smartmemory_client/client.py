@@ -3632,6 +3632,23 @@ class SmartMemoryClient:
             "DELETE", f"/memory/teams/{team_id}/members/{member_user_id}"
         )
 
+    def set_team_member_read_only(
+        self, team_id: str, member_user_id: str, read_only: bool
+    ) -> Dict[str, Any]:
+        """Set or clear another member's read-only flag.
+
+        A read-only member keeps their ``member`` role and can read, but every write is refused
+        with 403. Only an organization admin (or a superadmin) signed in with a session may call
+        this, never with an API key and never on their own membership; an admin target is 409.
+        ``list_team_members``, ``get_team`` and ``get_team_permissions`` report the flag as
+        ``read_only``.
+        """
+        return self._request(
+            "PUT",
+            f"/memory/teams/{team_id}/members/{member_user_id}/read-only",
+            json_body={"read_only": read_only},
+        )
+
     def get_team_permissions(self, team_id: str) -> Dict[str, Any]:
         """Get available permissions for a team."""
         return self._request("GET", f"/memory/teams/{team_id}/permissions")
