@@ -378,8 +378,10 @@ class TestClientFullCoverage:
         mock_request.assert_called_with(
             "POST",
             "/subscription/checkout",
-            json_body={"tier": "pro", "billing_period": "monthly", "trial_days": None},
+            json_body={"tier": "pro", "billing_period": "monthly"},
         )
+        with pytest.raises(TypeError):
+            client.create_checkout_session("pro", trial_days=30)
 
         client.upgrade_subscription("pro")
         mock_request.assert_called_with(

@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- security, SVC-BILLING-TRIAL-DAYS-1 (2026-11-03): `create_checkout_session(tier, billing_period)` loses its `trial_days` parameter and no longer sends a `trial_days` key. The service now owns the trial length (`POST /subscription/checkout` dropped the request field); a caller passing `trial_days=` gets a `TypeError` instead of a checkout that silently has no trial.
 - fix, SDK-2.0-STAGE-STORAGE-STRATEGY-1: `run_storage_stage(predecessor, storage_strategy=None)` no longer sends the invalid default `"standard"` (core refuses it, surfacing as a 500). The key is omitted when `None` so the server default (`dual_node`) applies; allowed values `dual_node|single_node|memory_only` are documented. An explicit value passes through unchanged.
 
 - ci, CI-2.0-MANUAL-ONLY-SWEEP-1 (2.0 port of main GH-ACTIONS-MANUAL-1, owner policy 2026-10-29): the Actions workflow triggers on this line are `workflow_dispatch` only (no push or pull_request triggers). Workflow trigger blocks only, no job body change.
