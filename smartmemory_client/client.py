@@ -3816,13 +3816,11 @@ class SmartMemoryClient:
         self,
         tier: str,
         billing_period: str = "monthly",
-        trial_days: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Create a Stripe Checkout session for subscription upgrade."""
+        """Create a Stripe Checkout session for subscription upgrade. The server sets any trial; a caller cannot."""
         body = {
             "tier": tier,
             "billing_period": billing_period,
-            "trial_days": trial_days,
         }
         return self._request("POST", "/subscription/checkout", json_body=body)
 
