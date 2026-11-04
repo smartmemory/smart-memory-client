@@ -182,6 +182,19 @@ def _called_path(mock_request: MagicMock) -> str:
             "/memory/decisions/decision_123/reinforce",
         ),
         (
+            "link_decision_evidence",
+            ("decision_123", "item_123"),
+            "POST",
+            "/memory/decisions/decision_123/evidence",
+        ),
+        (
+            "record_evidence",
+            ({"id": "ev:0123456789abcdef"},),
+            "POST",
+            "/memory/evidence",
+        ),
+        ("get_evidence", ("item_123",), "GET", "/memory/evidence/item_123"),
+        (
             "get_provenance_chain",
             ("decision_123",),
             "GET",

@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+- SM-EVIDENCE-TYPE-1 (2026-11-04; service routes on smart-memory-service `wk/SM-EVIDENCE-TYPE-1`): `record_evidence(record)` (`POST /memory/evidence`, a Compose `ev:` record, idempotent on its id), `get_evidence(evidence_id)` (`GET /memory/evidence/{id}`, node id or `ev:` ref) and `link_decision_evidence(decision_id, evidence_id)` (`POST /memory/decisions/{id}/evidence`, confidence unchanged). Path ids are URL-quoted. Tests: `TestEvidenceMethods` in `tests/test_decision_methods.py`, three rows in `tests/test_url_contracts.py`.
 
 - FWD-MERGE-4 (main -> 2.0 catch-up, 2026-11-04): main's 23 commits merged whole. Conflicts resolved onto the 2.0 contract: the HTTP error classes stay in `errors.py`, which gains main's `SmartMemoryClientError.error_code` and `SmartMemoryRoutingConflictError` (still re-exported from `client` and the package). `add()` keeps returning the `Receipt` (G52); main's `add_detailed()` is kept with the same arguments plus `idempotency_key` and also returns the `Receipt`, and `routing_echo()` now reads a `Receipt` (the WS-ROUTING-2 write echo rides in `receipt.raw`). `ingest()` keeps the 2.0 receipt docstring plus a routing-echo note; main's 1.x `held`/low-confidence result wording (CORE-CONSOLIDATION-MIN-CONF-1) is not carried, it describes the 1.x result dict. `list_memories()` keeps the 2.0 twin text and test table (both skip counts).
 
