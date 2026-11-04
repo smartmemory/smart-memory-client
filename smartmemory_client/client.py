@@ -5309,6 +5309,51 @@ class SmartMemoryClient:
             json_body={"evidence_id": evidence_id},
         )
 
+    def link_decision_evidence(
+        self, decision_id: str, evidence_id: str
+    ) -> Dict[str, Any]:
+        """Link a stored evidence receipt to a live decision (SM-EVIDENCE-TYPE-1).
+
+        Confidence is unchanged (``reinforce_decision`` raises it); linking twice adds nothing.
+
+        Args:
+            decision_id: ID of the decision.
+            evidence_id: The evidence node id, or the Compose ``ev:`` ref it was recorded under.
+
+        Returns:
+            Dict with decision_id, evidence_id (the node id), evidence_ids and confidence.
+            The service answers 404 for a missing decision or evidence, 409 for a superseded or
+            retracted decision and 422 for a node that is not evidence.
+        """
+        return self._request(
+            "POST",
+            f"/memory/decisions/{quote(decision_id, safe='')}/evidence",
+            json_body={"evidence_id": evidence_id},
+        )
+
+    def record_evidence(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        """Store one checked Compose evidence receipt as an ``evidence`` memory (SM-EVIDENCE-TYPE-1).
+
+        Args:
+            record: The Compose record (``contracts/evidence.schema.json#/definitions/record``):
+                id (``ev:`` + 16 hex), evidence (kind-specific, with ``at`` and ``by``),
+                checked_at, checks and optional subject. Saving the same record again is a no-op;
+                a different body under a stored id is refused (409).
+
+        Returns:
+            Dict with evidence_id, evidence_ref, kind, subject, checker, observed_at, checked_at,
+            checks, payload and the round-tripped ``record``.
+        """
+        return self._request("POST", "/memory/evidence", json_body={"record": record})
+
+    def get_evidence(self, evidence_id: str) -> Dict[str, Any]:
+        """Read one evidence receipt by node id or ``ev:`` ref (SM-EVIDENCE-TYPE-1); 404 when absent.
+
+        Returns:
+            The same dict as ``record_evidence``.
+        """
+        return self._request("GET", f"/memory/evidence/{quote(evidence_id, safe='')}")
+
     def contradict_decision(self, decision_id: str, evidence_id: str) -> Dict[str, Any]:
         """Record contradicting evidence against a decision.
 

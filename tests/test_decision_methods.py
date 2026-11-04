@@ -260,6 +260,65 @@ class TestReinforceDecision:
         assert body["evidence_id"] == "mem_evidence_42"
 
 
+class TestEvidenceMethods:
+    """SM-EVIDENCE-TYPE-1: record_evidence, get_evidence, link_decision_evidence call the service routes."""
+
+    RECORD = {
+        "id": "ev:0123456789abcdef",
+        "evidence": {
+            "kind": "sha",
+            "repo": "/r",
+            "sha": "afee2c429d3e",
+            "at": "2026-11-04T15:00:00Z",
+            "by": "sm20-main",
+        },
+        "checked_at": "2026-11-04T15:00:05Z",
+        "checks": ["commit exists"],
+        "subject": {"unit": "SM-EVIDENCE-TYPE-1"},
+    }
+
+    @patch("httpx.Client.request")
+    def test_record_evidence(self, mock_req, client, mock_response):
+        mock_req.return_value = mock_response(
+            {"evidence_id": "ev:0123456789abcdef", "record": self.RECORD}
+        )
+
+        result = client.record_evidence(self.RECORD)
+        assert result["evidence_id"] == "ev:0123456789abcdef"
+        args, kwargs = mock_req.call_args
+        assert args[0] == "POST" and args[1].endswith("/memory/evidence")
+        assert kwargs["json"] == {"record": self.RECORD}
+
+    @patch("httpx.Client.request")
+    def test_get_evidence_quotes_the_ref(self, mock_req, client, mock_response):
+        mock_req.return_value = mock_response({"evidence_id": "ev:0123456789abcdef"})
+
+        client.get_evidence("ev:0123456789abcdef")
+        args, _kwargs = mock_req.call_args
+        assert args[0] == "GET" and args[1].endswith(
+            "/memory/evidence/ev%3A0123456789abcdef"
+        )
+
+    @patch("httpx.Client.request")
+    def test_link_decision_evidence(self, mock_req, client, mock_response):
+        mock_req.return_value = mock_response(
+            {
+                "decision_id": "dec_123",
+                "evidence_id": "ev:0123456789abcdef",
+                "evidence_ids": ["ev:0123456789abcdef"],
+                "confidence": 0.8,
+            }
+        )
+
+        result = client.link_decision_evidence("dec_123", "ev:0123456789abcdef")
+        assert result["evidence_ids"] == ["ev:0123456789abcdef"]
+        args, kwargs = mock_req.call_args
+        assert args[0] == "POST" and args[1].endswith(
+            "/memory/decisions/dec_123/evidence"
+        )
+        assert kwargs["json"] == {"evidence_id": "ev:0123456789abcdef"}
+
+
 class TestContradictDecision:
     @patch("httpx.Client.request")
     def test_contradict_decision(self, mock_req, client, mock_response):
