@@ -1574,6 +1574,100 @@ class SmartMemoryClient:
             "POST", f"/memory/plans/{plan_id}/fail", json_body={"reason": reason}
         )
 
+    # -- Adherence patterns (CORE-ADHERENCE-1; writes SM-PATTERN-CRUD-1) --
+
+    def list_patterns(
+        self,
+        scope: Optional[str] = None,
+        severity: Optional[str] = None,
+        q: Optional[str] = None,
+        limit: int = 100,
+    ) -> Dict[str, Any]:
+        """List active adherence patterns. Returns ``{patterns, count, ...}``."""
+        params: Dict[str, Any] = {"limit": limit}
+        if scope is not None:
+            params["scope"] = scope
+        if severity is not None:
+            params["severity"] = severity
+        if q is not None:
+            params["q"] = q
+        return self._request("GET", "/memory/patterns", params=params)
+
+    def get_pattern(self, pattern_id: str) -> Dict[str, Any]:
+        """Get one pattern. Returns ``{pattern, ...}``; 404 raises SmartMemoryNotFoundError."""
+        return self._request("GET", f"/memory/patterns/{quote(pattern_id, safe='')}")
+
+    def create_pattern(
+        self,
+        title: str,
+        content: str,
+        severity: str = "warn",
+        scope: Optional[List[str]] = None,
+        examples: Optional[List[Dict[str, Any]]] = None,
+        rationale: str = "",
+        source: str = "user",
+    ) -> Dict[str, Any]:
+        """Create an adherence pattern in the current workspace. Returns ``{pattern, pattern_id, ...}``."""
+        return self._request(
+            "POST",
+            "/memory/patterns",
+            json_body={
+                "title": title,
+                "content": content,
+                "severity": severity,
+                "scope": list(scope or []),
+                "examples": list(examples or []),
+                "rationale": rationale,
+                "source": source,
+            },
+        )
+
+    def update_pattern(self, pattern_id: str, **fields: Any) -> Dict[str, Any]:
+        """Change fields on an active pattern; the server bumps ``version`` and records ``updated_by``.
+
+        Accepts ``title, content, severity, scope, examples, rationale, source`` and an optional
+        client tag ``updated_by``. A protected field (``pattern_id, status, superseded_by,
+        created_at``) or an unknown one is refused by the server (422, SmartMemoryValidationError).
+        """
+        return self._request(
+            "PUT",
+            f"/memory/patterns/{quote(pattern_id, safe='')}",
+            json_body=fields,
+        )
+
+    def retire_pattern(
+        self, pattern_id: str, reason: str = "retired via SDK"
+    ) -> Dict[str, Any]:
+        """Retire (soft-delete) a pattern: status becomes ``retracted``. Returns ``{pattern_id, status}``."""
+        return self._request(
+            "DELETE",
+            f"/memory/patterns/{quote(pattern_id, safe='')}",
+            params={"reason": reason},
+        )
+
+    def seed_patterns(
+        self,
+        index_text: str,
+        files: Optional[Dict[str, str]] = None,
+        refused: Optional[Dict[str, str]] = None,
+        source_prefix: str = "memory_md",
+    ) -> Dict[str, Any]:
+        """Seed patterns from MEMORY.md TEXT (never a path): ``files`` maps each link to its text.
+
+        Returns ``{created: [ids], skipped: [{title, link, reason}]}``. Titles already active are
+        skipped; absolute and ``..`` links are refused by the server.
+        """
+        return self._request(
+            "POST",
+            "/memory/patterns/seed",
+            json_body={
+                "index_text": index_text,
+                "files": dict(files or {}),
+                "refused": dict(refused or {}),
+                "source_prefix": source_prefix,
+            },
+        )
+
     def update(
         self,
         item_id: str,
