@@ -5111,6 +5111,72 @@ class SmartMemoryClient:
             body["agent_id"] = agent_id
         return self._request("POST", "/memory/opinions/create", json_body=body)
 
+    def add_learning(
+        self,
+        content: str,
+        *,
+        category: Optional[str] = None,
+        incident_link: Optional[str] = None,
+        learned_scope: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Record a lesson learned in the caller's workspace.
+
+        Mirrors POST /memory/learned (SM-LEARNED-TOOLS-1). The workspace comes from the
+        auth context, never the body. Read it back with ``recall_pack`` and
+        ``sections=[{"name": "learned"}]``.
+
+        Args:
+            content: The lesson (required).
+            category: Free-form category tag.
+            incident_link: The incident or ticket the lesson came from.
+            learned_scope: Where it applies: ``"repo"``, ``"workspace"`` or ``"global"``.
+
+        Returns:
+            Dict with item_id (also learned_id), content, category, incident_link,
+            learned_scope.
+        """
+        body: Dict[str, Any] = {"content": content}
+        if category is not None:
+            body["category"] = category
+        if incident_link is not None:
+            body["incident_link"] = incident_link
+        if learned_scope is not None:
+            body["learned_scope"] = learned_scope
+        return self._request("POST", "/memory/learned", json_body=body)
+
+    def add_constraint(
+        self,
+        content: str,
+        *,
+        domain: Optional[str] = None,
+        source: Optional[str] = None,
+        expires_at: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Record a constraint (a hard limit) in the caller's workspace.
+
+        Mirrors POST /memory/constraints (SM-LEARNED-TOOLS-1). The workspace comes from
+        the auth context, never the body. Read it back with ``recall_pack`` and
+        ``sections=[{"name": "constraints"}]``; an expired constraint is left out.
+
+        Args:
+            content: The constraint (required).
+            domain: Its area (compliance, security, infra, release, ...).
+            source: Who or what set it.
+            expires_at: ISO-8601 time after which it no longer applies; a naive time is
+                read as UTC.
+
+        Returns:
+            Dict with item_id (also constraint_id), content, domain, source, expires_at.
+        """
+        body: Dict[str, Any] = {"content": content}
+        if domain is not None:
+            body["domain"] = domain
+        if source is not None:
+            body["source"] = source
+        if expires_at is not None:
+            body["expires_at"] = expires_at
+        return self._request("POST", "/memory/constraints", json_body=body)
+
     def get_decision(self, decision_id: str) -> Dict[str, Any]:
         """Retrieve a decision by ID.
 

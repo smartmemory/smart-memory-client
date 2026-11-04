@@ -479,6 +479,8 @@ SAVE_PATH = re.compile(
 MAYBE_SAVE = re.compile(r"add|ingest|import|save|store|bulk|upload|document")
 # Methods that POST under a save-like name or path and are NOT a memory save, each with its reason.
 NOT_SAVE = {
+    "add_constraint": "synchronous typed write (SM-LEARNED-TOOLS-1): the node exists when the call returns, no pipeline, nothing to wait for (/memory/constraints)",
+    "add_learning": "synchronous typed write (SM-LEARNED-TOOLS-1): the node exists when the call returns, no pipeline, nothing to wait for (/memory/learned)",
     "add_edge": "links two existing items, saves no content (/memory/edge)",
     "add_team_member": "membership admin, no memory content (/memory/teams/<id>/members)",
     "archive_put": "stores an archive blob keyed by the caller, outside the pipeline (/memory/archive/store)",

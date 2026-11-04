@@ -154,6 +154,9 @@ def _called_path(mock_request: MagicMock) -> str:
             "POST",
             "/memory/plans/plan_abcdef123456/fail",
         ),
+        # Learned lessons and constraints (SM-LEARNED-TOOLS-1).
+        ("add_learning", ("Dry-run every migration",), "POST", "/memory/learned"),
+        ("add_constraint", ("Never publish an sdist",), "POST", "/memory/constraints"),
         # Decision surfaces.
         (
             "create_decision",
