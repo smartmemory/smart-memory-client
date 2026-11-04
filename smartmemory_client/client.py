@@ -147,6 +147,16 @@ _KEEPALIVE_EXPIRY_S = 30.0
 _POOL_LIMITS = dict(max_connections=100, max_keepalive_connections=20)
 
 
+def _as_of_params(as_of: Optional[str]) -> Dict[str, Any]:
+    """``{"as_of": as_of}`` when set, else ``{}`` (SM-ASOF-DECISIONS-1).
+
+    A call without ``as_of`` sends exactly the request it sent before. The value
+    passes through unchanged: the server parses it and answers 400 ``invalid_as_of``
+    when it is not an ISO 8601 instant.
+    """
+    return {} if as_of is None else {"as_of": as_of}
+
+
 def _http2_available() -> bool:
     """True when the optional ``h2`` package is installed (``pip install smartmemory-client[http2]``).
 
@@ -5111,11 +5121,17 @@ class SmartMemoryClient:
             body["agent_id"] = agent_id
         return self._request("POST", "/memory/opinions/create", json_body=body)
 
-    def get_decision(self, decision_id: str) -> Dict[str, Any]:
+    def get_decision(
+        self, decision_id: str, as_of: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Retrieve a decision by ID.
 
         Args:
             decision_id: The decision ID to retrieve.
+            as_of: Optional ISO 8601 instant (SM-ASOF-DECISIONS-1). When set, the
+                server answers from the decision state as it stood at that instant:
+                the status, statement and version live then, never notes added later.
+                Omitted means now. An unparseable value is a 400 ``invalid_as_of``.
 
         Returns:
             Decision dict with all fields.
@@ -5130,7 +5146,11 @@ class SmartMemoryClient:
             ``ignorance``) — a distinction ``stability`` cannot express, since it reads
             0.5 for both.
         """
-        return self._request("GET", f"/memory/decisions/{decision_id}")
+        return self._request(
+            "GET",
+            f"/memory/decisions/{decision_id}",
+            params=_as_of_params(as_of) or None,
+        )
 
     def list_decisions(
         self,
@@ -5140,6 +5160,7 @@ class SmartMemoryClient:
         limit: int = 50,
         provenance_memory_id: Optional[str] = None,
         agent_id: Optional[str] = None,
+        as_of: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """List active decisions with optional filters.
 
@@ -5153,6 +5174,11 @@ class SmartMemoryClient:
                 Filters compose in-query so the response never silently truncates
                 below ``limit`` when more matches exist. Unknown or out-of-scope
                 memory ids return an empty list (never 404) to avoid existence leakage.
+            as_of: Optional ISO 8601 instant (SM-ASOF-DECISIONS-1). When set, the
+                server answers from the decision state as it stood at that instant:
+                the status, statement and version live then, never notes added later.
+                Omitted means now. An unparseable value is a 400 ``invalid_as_of``.
+                Does not combine with ``provenance_memory_id`` (the server answers 400).
 
         Returns:
             List of decision dicts.
@@ -5176,6 +5202,7 @@ class SmartMemoryClient:
             params["provenance_memory_id"] = provenance_memory_id
         if agent_id is not None:
             params["agent_id"] = agent_id
+        params.update(_as_of_params(as_of))
         result = self._request("GET", "/memory/decisions", params=params)
         return result.get("decisions", [])
 
@@ -5184,18 +5211,24 @@ class SmartMemoryClient:
         workflow: Optional[str] = None,
         domain: Optional[str] = None,
         statuses: tuple[str, ...] = ("active",),
+        as_of: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Compile active workspace decisions into a Stratum policy bundle.
 
         ``statuses`` is sent as a list so httpx encodes repeatable ``status``
         query parameters. P1 accepts only the default active selector; the
         server returns a typed validation error for any unsupported value.
+
+        ``as_of`` (ISO 8601, SM-ASOF-DECISIONS-1) compiles the bundle from the
+        decisions that were active at that instant, each rule pinned to the
+        version live then; the bundle echoes it as ``as_of``. Omitted means now.
         """
         params: Dict[str, Any] = {"status": list(statuses)}
         if workflow is not None:
             params["workflow"] = workflow
         if domain is not None:
             params["domain"] = domain
+        params.update(_as_of_params(as_of))
         return self._request("GET", "/memory/policy/bundle", params=params)
 
     def record_enforcement_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
@@ -5310,12 +5343,18 @@ class SmartMemoryClient:
             params={"min_contest": min_contest},
         )
 
-    def search_decisions(self, topic: str, limit: int = 20) -> Dict[str, Any]:
+    def search_decisions(
+        self, topic: str, limit: int = 20, as_of: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Search active decisions related to a topic.
 
         Args:
             topic: Search topic.
             limit: Maximum matching decisions (1-100).
+            as_of: Optional ISO 8601 instant (SM-ASOF-DECISIONS-1). When set, the
+                server answers from the decision state as it stood at that instant:
+                the status, statement and version live then, never notes added later.
+                Omitted means now. An unparseable value is a 400 ``invalid_as_of``.
 
         Returns:
             Dict with decisions, count, and topic.
@@ -5331,19 +5370,31 @@ class SmartMemoryClient:
             0.5 for both.
         """
         return self._request(
-            "GET", "/memory/decisions/search", params={"topic": topic, "limit": limit}
+            "GET",
+            "/memory/decisions/search",
+            params={"topic": topic, "limit": limit, **_as_of_params(as_of)},
         )
 
-    def get_provenance_chain(self, decision_id: str) -> Dict[str, Any]:
+    def get_provenance_chain(
+        self, decision_id: str, as_of: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Get full provenance chain for a decision.
 
         Args:
             decision_id: The decision ID.
+            as_of: Optional ISO 8601 instant (SM-ASOF-DECISIONS-1). When set, the
+                server answers from the decision state as it stood at that instant:
+                the status, statement and version live then, never notes added later.
+                Omitted means now. An unparseable value is a 400 ``invalid_as_of``.
 
         Returns:
             Dict with decision, reasoning_trace, evidence, superseded.
         """
-        return self._request("GET", f"/memory/decisions/{decision_id}/provenance")
+        return self._request(
+            "GET",
+            f"/memory/decisions/{decision_id}/provenance",
+            params=_as_of_params(as_of) or None,
+        )
 
     def get_causal_chain(
         self,
@@ -6023,6 +6074,7 @@ class SmartMemoryClient:
         query: Optional[str] = None,
         sections: Optional[List[Dict[str, Any]]] = None,
         preset: Optional[str] = None,
+        as_of: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Assemble one priority-ordered context block within a token budget.
 
@@ -6045,6 +6097,10 @@ class SmartMemoryClient:
                 budget (~300 tokens); the default sections go degenerate at that
                 size. The card is content-bounded, so a typical workspace renders
                 far under that. Mutually exclusive with ``sections``.
+            as_of: Optional ISO 8601 instant (SM-ASOF-DECISIONS-1). Packs the
+                decisions as they stood then; sections with no history (active
+                plan, anchors) are dropped and listed in
+                ``manifest["dropped_sections"]``. Omitted means now.
 
         Returns:
             The RecallPack dict: ``{"block": str, "manifest": {...}}`` — see
@@ -6066,6 +6122,8 @@ class SmartMemoryClient:
             body["sections"] = sections
         if preset is not None:
             body["preset"] = preset
+        if as_of is not None:
+            body["as_of"] = as_of
         return self._request("POST", "/memory/recall/pack", json_body=body)
 
     def ask(
