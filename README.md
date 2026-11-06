@@ -619,3 +619,11 @@ Scheduled replacement receipts contain `status="scheduled"`, `old_item_id`,
 keep their existing shape. Server status and details remain available through
 `SmartMemoryValidationError` (400/409), `SmartMemoryPermissionError` (401/403)
 and `SmartMemoryServerError` (5xx). Writes are sent once without automatic retries.
+
+### SDK-2.0-RETRY-SAFETY-1
+
+`add()` makes one attempt because the hosted add route does not admit retry keys.
+A lost response or a retryable HTTP failure raises `WriteOutcomeUnknown` with
+`code=write_outcome_unknown`, `attempts=1`, and the original `idempotency_key`.
+The memory may already exist. Check search or list before deliberately saving again.
+Reusing the key alone does not deduplicate add. Other save routes retain their retry policy.

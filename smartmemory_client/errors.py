@@ -80,6 +80,12 @@ class SmartMemoryTransportError(SmartMemoryClientError):
     """
 
 
+class WriteOutcomeUnknown(SmartMemoryClientError):
+    """An add may have committed. Check search/list before deliberately retrying."""
+
+    code = "write_outcome_unknown"
+
+
 class ReceiptError(SmartMemoryClientError):
     """The server answered, but the body is not a receipt this client can read as success.
 

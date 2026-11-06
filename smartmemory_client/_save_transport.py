@@ -28,6 +28,7 @@ from smartmemory_client.errors import (
     SmartMemoryTransportError,
     SmartMemoryValidationError,
     StageChainError,
+    WriteOutcomeUnknown,
 )
 from smartmemory_client.receipt import (
     Receipt,
@@ -114,6 +115,7 @@ def submit_with_retry(
     call: Callable[[], Any],
     *,
     key: Optional[str],
+    retry_safe: bool = True,
     deadline_s: float = AWAIT_TIMEOUT_S,
     monotonic: Optional[Callable[[], float]] = None,
     sleep: Optional[Callable[[float], None]] = None,
@@ -121,6 +123,8 @@ def submit_with_retry(
 ) -> Any:
     """Run one logical save with the ST14 policy: same key and same bytes on every attempt.
 
+    ``retry_safe=False`` makes one attempt and raises ``WriteOutcomeUnknown`` on a retryable failure.
+    Use it for routes such as add that do not admit retry keys.
     ``call`` must send an identical request each time. A failure that is not retryable (400, 401, 403, 404,
     409, 422, anything outside the retry list) raises at once. After the fourth failed attempt, or when a
     ``Retry-After`` cannot fit in ``deadline_s``, the last error is raised carrying ``idempotency_key`` and
@@ -136,6 +140,15 @@ def submit_with_retry(
         try:
             return call()
         except Exception as exc:  # noqa: BLE001 - classified below, re-raised typed
+            if not retry_safe and is_retryable(exc):
+                unknown = WriteOutcomeUnknown(
+                    "Add outcome is unconfirmed. The memory may have been saved. "
+                    "Check search or list before retrying to avoid a duplicate. "
+                    "The add route does not deduplicate idempotency keys.",
+                    status_code=getattr(exc, "status_code", None),
+                    detail=getattr(exc, "detail", None),
+                )
+                raise _annotate(unknown, key, attempt) from exc
             if not is_retryable(exc) or attempt == MAX_ATTEMPTS:
                 annotated = _annotate(exc, key, attempt)
                 if annotated is exc:

@@ -309,7 +309,7 @@ def test_three_transport_losses_then_success_is_four_identical_requests(
     client, monkeypatch, clock
 ):
     fake = wired(client, monkeypatch, lost(), lost(), lost(), PENDING)
-    assert client.add("x").run_id == "run_1"
+    assert client.ingest("x").run_id == "run_1"
     assert len(fake.calls) == 4
     keys = {c[3]["idempotency_key"] for c in fake.calls}
     bodies = {json.dumps(c[3], sort_keys=True) for c in fake.calls}
@@ -328,7 +328,7 @@ def test_a_fake_that_always_fails_gets_exactly_four_attempts_then_the_typed_erro
     for name, failure in rows:
         fake = wired(client, monkeypatch, failure)
         with pytest.raises(SmartMemoryClientError) as exc:
-            client.add("x")
+            client.ingest("x")
         assert len(fake.calls) == 4, name
         assert exc.value.attempts == 4 and KEY_RE.match(exc.value.idempotency_key), name
 
@@ -339,7 +339,7 @@ def test_statuses_outside_the_retry_list_are_one_request_and_never_a_new_key(
     for status in OTHER_STATUS_REFUSED + (409,):
         fake = wired(client, monkeypatch, http(status))
         with pytest.raises(SmartMemoryClientError) as exc:
-            client.add("x")
+            client.ingest("x")
         assert (
             len(fake.calls) == 1 and exc.value.attempts == 1 and clock.sleeps == []
         ), status
@@ -349,11 +349,11 @@ def test_a_retry_after_is_a_minimum_delay_and_one_that_cannot_fit_stops_the_retr
     client, monkeypatch, clock
 ):
     fake = wired(client, monkeypatch, http(503, retry_after=2.0), PENDING)
-    client.add("x")
+    client.ingest("x")
     assert (len(fake.calls), clock.sleeps) == (2, [2.0])
     fake = wired(client, monkeypatch, http(429, retry_after=120.0), PENDING)
     with pytest.raises(SmartMemoryClientError) as exc:
-        client.add("x")
+        client.ingest("x")
     assert (
         len(fake.calls) == 1
         and exc.value.status_code == 429
@@ -371,7 +371,7 @@ def test_a_raw_connection_error_is_transport_loss_and_comes_back_typed(
     ):
         fake = wired(client, monkeypatch, failure)
         with pytest.raises(SmartMemoryTransportError) as exc:
-            client.add("x")
+            client.ingest("x")
         assert len(fake.calls) == 4 and isinstance(exc.value.__cause__, type(failure))
 
 
