@@ -43,8 +43,8 @@ client = SmartMemoryClient(
 )
 
 # Add a memory
-item_id = client.add("This is a test memory")
-print(f"Added memory: {item_id}")
+receipt = client.add("This is a test memory")
+print(f"Added memory: {receipt.item_id}")
 
 # Search memories
 results = client.search("test", top_k=5)
@@ -52,13 +52,26 @@ for memory in results:
     print(f"{memory.item_id}: {memory.content}")
 
 # Ingest with full pipeline
-result = client.ingest(
+receipt = client.ingest(
     content="Complex content to process",
     extractor_name="llm",
     context={"source": "user", "timestamp": "2025-11-10"}
 )
-print(f"Ingested: {result['item_id']}")
+print(f"Ingested: {receipt.item_id}")
 ```
+
+## 2.0 receipt migration
+
+`add()` and `ingest()` return a `Receipt`. `ingest_conversation()` now also returns a
+strict `Receipt` instead of a raw dict. Read the conversation container handle from
+`receipt.document_id` and hosted additive fields from `receipt.raw`.
+`ingest_document()` uses `receipt.document_id` too. Document receipts return `None`
+for `receipt.item_id` unless the subject explicitly includes an item handle.
+
+Hosted 2.0.0 does not provide ingestion wait/status support or extraction results in
+the receipt. Any supplied `ingest(wait=...)` value raises `SmartMemoryValidationError`
+before sending. Omit `wait` to submit ingestion. Hosted edits with `expected_revision`
+are refused before writing with HTTP 422 `expected_revision_unsupported`.
 
 ## Authentication
 

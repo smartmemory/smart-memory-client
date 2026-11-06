@@ -37,7 +37,7 @@ REASONS = frozenset(
 #: subject kind -> the id field its ``item_id`` view reads (None: the subject has no item identity).
 _ITEM_ID_FIELD = {
     "item_save": "item_id",
-    "document_save": "document_id",  # G114: a document parent's id is the same scoped item id
+    "document_save": "item_id",
     "edit": "item_id",
     "generation_save": None,
     "manual_occurrence": None,
@@ -70,8 +70,9 @@ def _wrap(value: Any) -> Any:
 class Receipt:
     """What a 2.0 save, edit, document save or public stage call returns.
 
-    ``item_id`` is the saved item's handle (``None`` for a stage or job receipt). ``run_id`` and ``status_url``
-    are the poll handle, never an authorization token. ``terminal`` is true only once the fate is committed;
+    ``item_id`` reads the saved subject's item handle (``None`` when absent).
+    ``document_id`` reads the document or conversation container handle for a document save.
+    ``run_id`` and ``status_url`` are the poll handle, never an authorization token. ``terminal`` is true only once the fate is committed;
     ``client_timed_out`` is set by :meth:`SmartMemoryClient.await_receipt` when its deadline passed first, and
     says nothing about the server run. ``result`` is present when ``result_availability == "available"``.
     """
@@ -109,6 +110,10 @@ class Receipt:
     def item_id(self) -> Optional[str]:
         name = _ITEM_ID_FIELD.get(self.subject.get("kind"))
         return self.subject.get(name) if name else None
+
+    @property
+    def document_id(self) -> Optional[str]:
+        return self.subject.get("document_id")
 
     @property
     def subject_kind(self) -> str:

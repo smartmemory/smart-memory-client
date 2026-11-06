@@ -731,7 +731,9 @@ for _key in (
     "test_save_receipt.py::test_add_returns_the_receipt_and_sends_one_minted_key",
     "test_save_receipt.py::test_an_empty_save_answer_is_a_typed_error_not_a_receipt",
     "test_save_receipt.py::test_ingest_omits_wait_when_unset_and_refuses_an_unknown_wait_before_sending",
-    "test_save_receipt.py::test_ingest_with_wait_extracted_replaces_ingest_full",
+    "test_save_receipt.py::test_ingest_wait_refuses_hosted_2_0_0_before_sending",
+    "test_save_receipt.py::test_ingest_conversation_receipt_and_typed_errors",
+    "test_save_receipt.py::test_ingest_conversation_refuses_a_legacy_body",
     "test_save_receipt.py::test_statuses_outside_the_retry_list_are_one_request_and_never_a_new_key",
     "test_save_receipt.py::test_three_transport_losses_then_success_is_four_identical_requests",
 ):
