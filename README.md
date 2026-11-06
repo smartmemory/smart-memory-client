@@ -578,3 +578,44 @@ Search uses `lexical` with default weight 0.8. Replace removed `contains` and `k
 Use `client.search(query, channel_weights={"lexical": 0})`. Validation and server failures remain visible to callers.
 
 Quiesce old writers before first-open indexing. Verify the engine capability pin and use `sm rebuild --lexical` for recovery. [Migration, targets and measured limitations](https://github.com/smartmemory/smart-memory-docs/blob/main/docs/features/CORE-LEXICAL-INDEX-1/migration.md).
+
+### Site-specific rule activation
+
+`SM-SCOPED-VALIDITY-1` supports one amendment with separate site go-live dates.
+Business scope selects guidance within your authenticated workspace.
+
+```python
+original = client.create_decision(
+    "Original CRF guidance",
+    scope_go_lives=[{"scope": None, "valid_from": "2026-01-01T00:00:00Z"}],
+)
+rollout = client.supersede_decision(
+    original["decision_id"], "Amended CRF guidance", "Protocol amendment",
+    scope_go_lives=[
+        {"scope": {"site": "A"}, "valid_from": "2026-02-01T00:00:00Z"},
+        {"scope": {"site": "B"}, "valid_from": "2026-02-15T00:00:00Z"},
+    ],
+)
+guidance = client.get_decision(
+    original["decision_id"],
+    business_scope={"site": "B"}, valid_at="2026-02-08T00:00:00Z",
+)  # Original CRF guidance
+```
+
+`search`, `get_decision`, `list_decisions`, `search_decisions` and
+`get_provenance_chain` accept keyword-only `business_scope` and `valid_at`.
+Transaction-time `as_of` on decision reads and `as_of_date` on search remain
+independent. An omitted date uses the server's request-start time. An unknown
+or omitted site uses sponsor guidance until an exact-site entry has activated.
+
+`supersede`, `supersede_link` and `supersede_decision` accept `scope_go_lives`
+or a global `valid_from`. Supplying both is a validation error. Decision creation
+also accepts `scope_go_lives`. Entries retain snake_case names. Python datetimes
+are serialized in UTC, with naive values interpreted as UTC. Unset options are
+omitted. Empty schedules are sent to the service and rejected.
+
+Scheduled replacement receipts contain `status="scheduled"`, `old_item_id`,
+`new_item_id`, `scope_go_lives` and `recorded_at`. Legacy replacement receipts
+keep their existing shape. Server status and details remain available through
+`SmartMemoryValidationError` (400/409), `SmartMemoryPermissionError` (401/403)
+and `SmartMemoryServerError` (5xx). Writes are sent once without automatic retries.

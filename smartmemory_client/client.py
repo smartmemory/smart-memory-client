@@ -18,7 +18,7 @@ import os
 import re
 import warnings
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from time import perf_counter
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 from urllib.parse import quote
@@ -145,6 +145,35 @@ _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 # ``limits=`` replaces the whole object (``Limits()`` alone means "unlimited").
 _KEEPALIVE_EXPIRY_S = 30.0
 _POOL_LIMITS = dict(max_connections=100, max_keepalive_connections=20)
+
+
+def _scoped_options(*, query: bool = False, **options: Any) -> Dict[str, Any]:
+    """Copy supplied validity options, encoding dates in UTC and GET scope once.
+
+    Validation belongs to the service so its status and details reach callers.
+    None means omitted. Empty schedules remain supplied and are refused there.
+    """
+
+    def encode(value: Any) -> Any:
+        if isinstance(value, datetime):
+            aware = (
+                value
+                if value.tzinfo is not None
+                else value.replace(tzinfo=timezone.utc)
+            )
+            return aware.astimezone(timezone.utc).isoformat()
+        if isinstance(value, dict):
+            return {key: encode(child) for key, child in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [encode(child) for child in value]
+        return value
+
+    result = {key: encode(value) for key, value in options.items() if value is not None}
+    if query and "business_scope" in result:
+        result["business_scope"] = json.dumps(
+            result["business_scope"], separators=(",", ":")
+        )
+    return result
 
 
 def _as_of_params(as_of: Optional[str]) -> Dict[str, Any]:
@@ -976,9 +1005,16 @@ class SmartMemoryClient:
         hop_strategy: Optional[str] = None,
         reranker: Optional[str] = None,
         metadata_filter: Optional[Dict[str, Any]] = None,
+        *,
+        business_scope: Optional[Dict[str, Any]] = None,
+        valid_at: Optional[Union[str, datetime]] = None,
     ):
         """
         Search for memory items using semantic matching.
+
+        ``business_scope={"site": "A"}`` selects an exact business site, with
+        sponsor fallback. ``valid_at`` selects business time independently of
+        transaction time. Unset options are omitted and datetimes use UTC.
 
         Args:
             query: Search query
@@ -1074,6 +1110,9 @@ class SmartMemoryClient:
             "top_k": top_k,
             "enable_hybrid": enable_hybrid,
         }
+        body_dict.update(
+            _scoped_options(business_scope=business_scope, valid_at=valid_at)
+        )
         for key, value in (("since", since), ("until", until)):
             if value is not None:
                 body_dict[key] = (
@@ -1669,8 +1708,15 @@ class SmartMemoryClient:
         memory_type: str,
         reason: str,
         metadata: Optional[Dict[str, Any]] = None,
+        valid_from: Optional[Union[str, datetime]] = None,
+        scope_go_lives: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
-        """Append a replacement while retaining the prior item's history."""
+        """Append a replacement while retaining the prior item's history.
+
+        ``scope_go_lives`` schedules site activation without globally closing the
+        predecessor. ``valid_from`` sets global validity and cannot accompany a
+        schedule. Unset options are omitted. Datetimes are serialized in UTC.
+        """
         return self._request(
             "POST",
             f"/memory/{item_id}/supersede",
@@ -1679,6 +1725,7 @@ class SmartMemoryClient:
                 "memory_type": memory_type,
                 "metadata": metadata or {},
                 "reason": reason,
+                **_scoped_options(valid_from=valid_from, scope_go_lives=scope_go_lives),
             },
         )
 
@@ -1687,16 +1734,24 @@ class SmartMemoryClient:
         item_id: str,
         new_item_id: str,
         reason: Optional[str] = None,
+        *,
+        valid_from: Optional[Union[str, datetime]] = None,
+        scope_go_lives: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Link two ALREADY-STORED items as a supersession (SVC-SUPERSEDE-LINK-1).
 
         Use this when both records exist. Use :meth:`supersede` instead when the
         replacement still has to be created from content.
 
-        The write stamps the OLD record with ``superseded``, ``superseded_by`` and
+        An unscoped write stamps the OLD record with ``superseded``, ``superseded_by`` and
         ``superseded_at``. Detect supersession by reading those off a recalled
         record — the newer record carries no marker, so never scan for inbound
         links.
+
+        ``scope_go_lives`` carries a schedule of ``{scope, valid_from}`` entries.
+        Site-only activation keeps the predecessor available to other sites.
+        Datetimes use UTC. Unset options are omitted and invalid schedules retain
+        the service's typed validation errors.
 
         Args:
             item_id: The OLD item (the one being superseded).
@@ -1716,7 +1771,11 @@ class SmartMemoryClient:
         return self._request(
             "POST",
             f"/memory/{item_id}/supersede-link",
-            json_body={"new_item_id": new_item_id, "reason": reason},
+            json_body={
+                "new_item_id": new_item_id,
+                "reason": reason,
+                **_scoped_options(valid_from=valid_from, scope_go_lives=scope_go_lives),
+            },
         )
 
     def delete(self, item_id: str) -> None:
@@ -5042,8 +5101,15 @@ class SmartMemoryClient:
         rationale: Optional[str] = None,
         constraints: Optional[List[str]] = None,
         agent_id: Optional[str] = None,
+        *,
+        scope_go_lives: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Create a new decision with provenance tracking.
+
+        ``scope_go_lives`` carries a schedule of ``{scope, valid_from}`` entries.
+        Site-only activation keeps the predecessor available to other sites.
+        Datetimes use UTC. Unset options are omitted and invalid schedules retain
+        the service's typed validation errors.
 
         Args:
             content: The decision statement.
@@ -5084,6 +5150,7 @@ class SmartMemoryClient:
             body["constraints"] = constraints
         if agent_id is not None:
             body["agent_id"] = agent_id
+        body.update(_scoped_options(scope_go_lives=scope_go_lives))
         return self._request("POST", "/memory/decisions/create", json_body=body)
 
     def create_opinion(
@@ -5137,9 +5204,18 @@ class SmartMemoryClient:
         return self._request("POST", "/memory/opinions/create", json_body=body)
 
     def get_decision(
-        self, decision_id: str, as_of: Optional[str] = None
+        self,
+        decision_id: str,
+        as_of: Optional[str] = None,
+        *,
+        business_scope: Optional[Dict[str, Any]] = None,
+        valid_at: Optional[Union[str, datetime]] = None,
     ) -> Dict[str, Any]:
         """Retrieve a decision by ID.
+
+        ``business_scope={"site": "A"}`` selects an exact business site, with
+        sponsor fallback. ``valid_at`` selects business time independently of
+        transaction time. Unset options are omitted and datetimes use UTC.
 
         Args:
             decision_id: The decision ID to retrieve.
@@ -5164,7 +5240,13 @@ class SmartMemoryClient:
         return self._request(
             "GET",
             f"/memory/decisions/{decision_id}",
-            params=_as_of_params(as_of) or None,
+            params={
+                **_as_of_params(as_of),
+                **_scoped_options(
+                    query=True, business_scope=business_scope, valid_at=valid_at
+                ),
+            }
+            or None,
         )
 
     def list_decisions(
@@ -5176,8 +5258,15 @@ class SmartMemoryClient:
         provenance_memory_id: Optional[str] = None,
         agent_id: Optional[str] = None,
         as_of: Optional[str] = None,
+        *,
+        business_scope: Optional[Dict[str, Any]] = None,
+        valid_at: Optional[Union[str, datetime]] = None,
     ) -> List[Dict[str, Any]]:
         """List active decisions with optional filters.
+
+        ``business_scope={"site": "A"}`` selects an exact business site, with
+        sponsor fallback. ``valid_at`` selects business time independently of
+        transaction time. Unset options are omitted and datetimes use UTC.
 
         Args:
             domain: Filter by domain.
@@ -5218,6 +5307,11 @@ class SmartMemoryClient:
         if agent_id is not None:
             params["agent_id"] = agent_id
         params.update(_as_of_params(as_of))
+        params.update(
+            _scoped_options(
+                query=True, business_scope=business_scope, valid_at=valid_at
+            )
+        )
         result = self._request("GET", "/memory/decisions", params=params)
         return result.get("decisions", [])
 
@@ -5260,8 +5354,16 @@ class SmartMemoryClient:
         rejected_alternatives: Optional[List[str]] = None,
         rationale: Optional[str] = None,
         constraints: Optional[List[str]] = None,
+        *,
+        valid_from: Optional[Union[str, datetime]] = None,
+        scope_go_lives: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Replace a decision with a new one.
+
+        ``scope_go_lives`` carries a schedule of ``{scope, valid_from}`` entries.
+        Site-only activation keeps the predecessor available to other sites.
+        Datetimes use UTC. Unset options are omitted and invalid schedules retain
+        the service's typed validation errors.
 
         Args:
             decision_id: ID of the decision to supersede.
@@ -5288,6 +5390,9 @@ class SmartMemoryClient:
             body["rationale"] = rationale
         if constraints is not None:
             body["constraints"] = constraints
+        body.update(
+            _scoped_options(valid_from=valid_from, scope_go_lives=scope_go_lives)
+        )
         return self._request(
             "POST", f"/memory/decisions/{decision_id}/supersede", json_body=body
         )
@@ -5404,9 +5509,19 @@ class SmartMemoryClient:
         )
 
     def search_decisions(
-        self, topic: str, limit: int = 20, as_of: Optional[str] = None
+        self,
+        topic: str,
+        limit: int = 20,
+        as_of: Optional[str] = None,
+        *,
+        business_scope: Optional[Dict[str, Any]] = None,
+        valid_at: Optional[Union[str, datetime]] = None,
     ) -> Dict[str, Any]:
         """Search active decisions related to a topic.
+
+        ``business_scope={"site": "A"}`` selects an exact business site, with
+        sponsor fallback. ``valid_at`` selects business time independently of
+        transaction time. Unset options are omitted and datetimes use UTC.
 
         Args:
             topic: Search topic.
@@ -5432,13 +5547,29 @@ class SmartMemoryClient:
         return self._request(
             "GET",
             "/memory/decisions/search",
-            params={"topic": topic, "limit": limit, **_as_of_params(as_of)},
+            params={
+                "topic": topic,
+                "limit": limit,
+                **_as_of_params(as_of),
+                **_scoped_options(
+                    query=True, business_scope=business_scope, valid_at=valid_at
+                ),
+            },
         )
 
     def get_provenance_chain(
-        self, decision_id: str, as_of: Optional[str] = None
+        self,
+        decision_id: str,
+        as_of: Optional[str] = None,
+        *,
+        business_scope: Optional[Dict[str, Any]] = None,
+        valid_at: Optional[Union[str, datetime]] = None,
     ) -> Dict[str, Any]:
         """Get full provenance chain for a decision.
+
+        ``business_scope={"site": "A"}`` selects an exact business site, with
+        sponsor fallback. ``valid_at`` selects business time independently of
+        transaction time. Unset options are omitted and datetimes use UTC.
 
         Args:
             decision_id: The decision ID.
@@ -5453,7 +5584,13 @@ class SmartMemoryClient:
         return self._request(
             "GET",
             f"/memory/decisions/{decision_id}/provenance",
-            params=_as_of_params(as_of) or None,
+            params={
+                **_as_of_params(as_of),
+                **_scoped_options(
+                    query=True, business_scope=business_scope, valid_at=valid_at
+                ),
+            }
+            or None,
         )
 
     def get_causal_chain(
