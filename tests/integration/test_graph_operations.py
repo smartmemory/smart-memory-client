@@ -11,6 +11,7 @@ import uuid
 import pytest
 
 from smartmemory_client import SmartMemoryClientError
+from tests.integration.receipt_assertions import assert_item_receipt
 
 
 @pytest.mark.integration
@@ -19,7 +20,7 @@ class TestGraphOperationsFlow:
     """Test graph operations with real service."""
 
     @pytest.fixture(autouse=True)
-    def setup_test_items(self, authenticated_client):
+    def setup_test_items(self, authenticated_client, saved_receipts):
         """Create test items for graph operations."""
         self.client = authenticated_client
         self.unique_id = uuid.uuid4().hex[:8]
@@ -31,21 +32,15 @@ class TestGraphOperationsFlow:
         self.source_id = self.client.add(
             self.source_content, memory_type="semantic", use_pipeline=False
         )
+        saved_receipts.append(self.source_id)
+        self.source_id = assert_item_receipt(self.source_id)
         self.target_id = self.client.add(
             self.target_content, memory_type="semantic", use_pipeline=False
         )
+        saved_receipts.append(self.target_id)
+        self.target_id = assert_item_receipt(self.target_id)
 
         yield
-
-        # Cleanup
-        try:
-            self.client.delete(self.source_id)
-        except Exception:
-            pass
-        try:
-            self.client.delete(self.target_id)
-        except Exception:
-            pass
 
     def test_link_and_get_neighbors(self):
         """Golden flow: link → get_neighbors.
@@ -62,9 +57,9 @@ class TestGraphOperationsFlow:
         assert isinstance(neighbors, list)
 
         # Should find target as a neighbor
-        assert len(neighbors) >= 0  # At minimum, should not error
+        assert len(neighbors) >= 1
 
-    def test_link_with_different_types(self):
+    def test_link_with_different_types(self, saved_receipts):
         """Test creating links with different relationship types."""
         link_types = ["RELATED", "SUPPORTS", "CONTRADICTS", "EXTENDS"]
 
@@ -74,6 +69,8 @@ class TestGraphOperationsFlow:
             target_id = self.client.add(
                 target_content, memory_type="semantic", use_pipeline=False
             )
+            saved_receipts.append(target_id)
+            target_id = assert_item_receipt(target_id)
 
             try:
                 linked = self.client.link(
@@ -124,7 +121,7 @@ class TestZettelkastenOperations:
     """Test Zettelkasten-specific graph operations."""
 
     @pytest.fixture(autouse=True)
-    def setup_zettel_items(self, authenticated_client):
+    def setup_zettel_items(self, authenticated_client, saved_receipts):
         """Create zettel-type items for testing."""
         self.client = authenticated_client
         self.unique_id = uuid.uuid4().hex[:8]
@@ -136,21 +133,15 @@ class TestZettelkastenOperations:
         self.note1_id = self.client.add(
             self.note1_content, memory_type="zettel", use_pipeline=False
         )
+        saved_receipts.append(self.note1_id)
+        self.note1_id = assert_item_receipt(self.note1_id)
         self.note2_id = self.client.add(
             self.note2_content, memory_type="zettel", use_pipeline=False
         )
+        saved_receipts.append(self.note2_id)
+        self.note2_id = assert_item_receipt(self.note2_id)
 
         yield
-
-        # Cleanup
-        try:
-            self.client.delete(self.note1_id)
-        except Exception:
-            pass
-        try:
-            self.client.delete(self.note2_id)
-        except Exception:
-            pass
 
     def test_backlinks_and_forward_links(self):
         """Test backlink and forward link retrieval."""
@@ -170,21 +161,11 @@ class TestZettelkastenOperations:
         # Create a link
         self.client.link(self.note1_id, self.note2_id, link_type="RELATED")
 
-        # Get all connections - may fail if endpoint not implemented
-        try:
-            connections = self.client.get_connections(self.note1_id)
-            assert connections is not None
-        except SmartMemoryClientError as e:
-            # Endpoint may not be fully implemented
-            if (
-                "500" in str(e)
-                or "not implemented" in str(e).lower()
-                or "no attribute" in str(e).lower()
-            ):
-                pytest.skip("get_connections endpoint not fully implemented")
-            if "404" in str(e) or "not found" in str(e).lower():
-                pytest.skip("get_connections endpoint not implemented")
-            raise
+        connections = self.client.get_connections(self.note1_id)
+        assert isinstance(connections, dict)
+        assert connections["note_id"] == self.note1_id
+        assert isinstance(connections["connections"], list)
+        assert connections["total"] == len(connections["connections"])
 
 
 @pytest.mark.integration

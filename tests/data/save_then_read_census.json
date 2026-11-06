@@ -1,13 +1,20 @@
 {
  "blind_spots": {
-  "dynamic_dispatch": {},
+  "dynamic_dispatch": {
+   "tests/test_client_billing_manager_errors.py:57": "_call helper receives only ROWS billing-manager grant/revoke/list methods (lines 29-45); none saves memory content",
+   "tests/test_scoped_validity.py:111": "WRITES[1:] contains only supersede_decision and supersede; scope schedule mutation, not an item-save seam",
+   "tests/test_scoped_validity.py:118": "READS + WRITES comprehension contains decision reads and decision/supersession writes, no item-save methods",
+   "tests/test_scoped_validity.py:178": "typed error loop over READS + WRITES + search uses MockTransport and contains no item-save methods"
+  },
   "non_python": [
    "tests/data/save_receipt_fixtures.json"
   ],
   "wait_users": {
+   "tests/test_receipt_legacy_bridge.py": "await_receipt is tested with a synthetic legacy body and a read lambda; refusal is asserted before any read, no live wait",
    "tests/test_save_receipt.py": "tests the SDK await helper itself against a fake transport and a fake clock; it waits on no live save"
   },
   "waits": [
+   "tests/test_receipt_legacy_bridge.py:121",
    "tests/test_save_receipt.py:81",
    "tests/test_save_receipt.py:499",
    "tests/test_save_receipt.py:506",
@@ -151,7 +158,7 @@
    "call": "add",
    "file": "tests/integration/test_crud_golden.py",
    "function": "TestCRUDGoldenFlow.test_add_get_delete_flow",
-   "line": 31,
+   "line": 34,
    "memory_like": true,
    "receiver": "client"
   },
@@ -159,7 +166,7 @@
    "call": "add",
    "file": "tests/integration/test_crud_golden.py",
    "function": "TestCRUDGoldenFlow.test_add_search_flow_with_pipeline",
-   "line": 66,
+   "line": 69,
    "memory_like": true,
    "receiver": "client"
   },
@@ -167,7 +174,7 @@
    "call": "add",
    "file": "tests/integration/test_crud_golden.py",
    "function": "TestCRUDGoldenFlow.test_add_with_metadata",
-   "line": 90,
+   "line": 94,
    "memory_like": true,
    "receiver": "client"
   },
@@ -175,15 +182,7 @@
    "call": "add",
    "file": "tests/integration/test_crud_golden.py",
    "function": "TestCRUDGoldenFlow.test_add_different_memory_types",
-   "line": 112,
-   "memory_like": true,
-   "receiver": "client"
-  },
-  {
-   "call": "add",
-   "file": "tests/integration/test_crud_golden.py",
-   "function": "TestCRUDGoldenFlow.test_search_with_filters",
-   "line": 127,
+   "line": 117,
    "memory_like": true,
    "receiver": "client"
   },
@@ -196,10 +195,18 @@
    "receiver": "client"
   },
   {
+   "call": "add",
+   "file": "tests/integration/test_crud_golden.py",
+   "function": "TestCRUDGoldenFlow.test_search_with_filters",
+   "line": 140,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
    "call": "ingest",
    "file": "tests/integration/test_crud_golden.py",
    "function": "TestIngestFlow.test_ingest_content",
-   "line": 185,
+   "line": 190,
    "memory_like": true,
    "receiver": "client"
   },
@@ -207,7 +214,7 @@
    "call": "add",
    "file": "tests/integration/test_graph_operations.py",
    "function": "TestGraphOperationsFlow.setup_test_items",
-   "line": 31,
+   "line": 32,
    "memory_like": true,
    "receiver": "self.client"
   },
@@ -215,7 +222,7 @@
    "call": "add",
    "file": "tests/integration/test_graph_operations.py",
    "function": "TestGraphOperationsFlow.setup_test_items",
-   "line": 34,
+   "line": 37,
    "memory_like": true,
    "receiver": "self.client"
   },
@@ -223,7 +230,7 @@
    "call": "add",
    "file": "tests/integration/test_graph_operations.py",
    "function": "TestGraphOperationsFlow.test_link_with_different_types",
-   "line": 74,
+   "line": 69,
    "memory_like": true,
    "receiver": "self.client"
   },
@@ -231,7 +238,7 @@
    "call": "add",
    "file": "tests/integration/test_graph_operations.py",
    "function": "TestZettelkastenOperations.setup_zettel_items",
-   "line": 136,
+   "line": 133,
    "memory_like": true,
    "receiver": "self.client"
   },
@@ -239,7 +246,7 @@
    "call": "add",
    "file": "tests/integration/test_graph_operations.py",
    "function": "TestZettelkastenOperations.setup_zettel_items",
-   "line": 139,
+   "line": 138,
    "memory_like": true,
    "receiver": "self.client"
   },
@@ -332,6 +339,38 @@
    "receiver": "_client()"
   },
   {
+   "call": "ingest_document",
+   "file": "tests/test_ingest_document.py",
+   "function": "call",
+   "line": 54,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "ingest_document",
+   "file": "tests/test_ingest_document.py",
+   "function": "test_ingest_document_rows",
+   "line": 85,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "ingest_document",
+   "file": "tests/test_ingest_document.py",
+   "function": "test_ingest_document_rows",
+   "line": 99,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "ingest_document",
+   "file": "tests/test_ingest_document.py",
+   "function": "test_ingest_document_rows",
+   "line": 102,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
    "call": "import_okf",
    "file": "tests/test_okf_portability.py",
    "function": "test_import_okf_uploads_archive_as_multipart_with_workspace_auth",
@@ -352,6 +391,14 @@
    "file": "tests/test_origin_propagation.py",
    "function": "test_ingest_and_conversation_context",
    "line": 28,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "add",
+   "file": "tests/test_retry_safety.py",
+   "function": "test_add_does_not_duplicate_an_unconfirmed_commit",
+   "line": 46,
    "memory_like": true,
    "receiver": "client"
   },
@@ -404,7 +451,7 @@
    "receiver": "client"
   },
   {
-   "call": "add",
+   "call": "ingest",
    "file": "tests/test_save_receipt.py",
    "function": "test_three_transport_losses_then_success_is_four_identical_requests",
    "line": 312,
@@ -412,7 +459,7 @@
    "receiver": "client"
   },
   {
-   "call": "add",
+   "call": "ingest",
    "file": "tests/test_save_receipt.py",
    "function": "test_a_fake_that_always_fails_gets_exactly_four_attempts_then_the_typed_error_with_the_key",
    "line": 331,
@@ -420,7 +467,7 @@
    "receiver": "client"
   },
   {
-   "call": "add",
+   "call": "ingest",
    "file": "tests/test_save_receipt.py",
    "function": "test_statuses_outside_the_retry_list_are_one_request_and_never_a_new_key",
    "line": 342,
@@ -428,7 +475,7 @@
    "receiver": "client"
   },
   {
-   "call": "add",
+   "call": "ingest",
    "file": "tests/test_save_receipt.py",
    "function": "test_a_retry_after_is_a_minimum_delay_and_one_that_cannot_fit_stops_the_retries",
    "line": 352,
@@ -436,7 +483,7 @@
    "receiver": "client"
   },
   {
-   "call": "add",
+   "call": "ingest",
    "file": "tests/test_save_receipt.py",
    "function": "test_a_retry_after_is_a_minimum_delay_and_one_that_cannot_fit_stops_the_retries",
    "line": 356,
@@ -444,7 +491,7 @@
    "receiver": "client"
   },
   {
-   "call": "add",
+   "call": "ingest",
    "file": "tests/test_save_receipt.py",
    "function": "test_a_raw_connection_error_is_transport_loss_and_comes_back_typed",
    "line": 374,
@@ -487,7 +534,7 @@
    "call": "add",
    "file": "tests/test_url_contracts.py",
    "function": "test_public_api_method_urls",
-   "line": 258,
+   "line": 271,
    "memory_like": true,
    "receiver": "client"
   },
@@ -495,7 +542,7 @@
    "call": "code_index",
    "file": "tests/test_url_contracts.py",
    "function": "test_public_api_method_urls",
-   "line": 258,
+   "line": 271,
    "memory_like": true,
    "receiver": "client"
   },
@@ -503,7 +550,7 @@
    "call": "ingest",
    "file": "tests/test_url_contracts.py",
    "function": "test_public_api_method_urls",
-   "line": 258,
+   "line": 271,
    "memory_like": true,
    "receiver": "client"
   },
@@ -511,7 +558,7 @@
    "call": "ingest_conversation",
    "file": "tests/test_url_contracts.py",
    "function": "test_public_api_method_urls",
-   "line": 258,
+   "line": 271,
    "memory_like": true,
    "receiver": "client"
   },
@@ -519,23 +566,7 @@
    "call": "code_index",
    "file": "tests/test_url_contracts.py",
    "function": "test_code_index_sends_exact_service_body",
-   "line": 286,
-   "memory_like": true,
-   "receiver": "client"
-  },
-  {
-   "call": "code_index",
-   "file": "tests/test_url_contracts.py",
-   "function": "test_code_index_defaults_and_validates_before_request",
-   "line": 308,
-   "memory_like": true,
-   "receiver": "client"
-  },
-  {
-   "call": "code_index",
-   "file": "tests/test_url_contracts.py",
-   "function": "test_code_index_defaults_and_validates_before_request",
-   "line": 319,
+   "line": 299,
    "memory_like": true,
    "receiver": "client"
   },
@@ -550,8 +581,24 @@
   {
    "call": "code_index",
    "file": "tests/test_url_contracts.py",
+   "function": "test_code_index_defaults_and_validates_before_request",
+   "line": 332,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "code_index",
+   "file": "tests/test_url_contracts.py",
+   "function": "test_code_index_defaults_and_validates_before_request",
+   "line": 334,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "code_index",
+   "file": "tests/test_url_contracts.py",
    "function": "test_code_index_sends_repo_identity_only_when_given",
-   "line": 462,
+   "line": 502,
    "memory_like": true,
    "receiver": "client"
   }
@@ -565,12 +612,12 @@
    "file": "tests/integration/test_crud_golden.py",
    "function": "TestCRUDGoldenFlow.test_add_different_memory_types",
    "key": "tests/integration/test_crud_golden.py::TestCRUDGoldenFlow.test_add_different_memory_types",
-   "line": 102,
+   "line": 107,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     112,
+     117,
      "add"
     ]
    ],
@@ -592,21 +639,21 @@
    "file": "tests/integration/test_crud_golden.py",
    "function": "TestCRUDGoldenFlow.test_add_get_delete_flow",
    "key": "tests/integration/test_crud_golden.py::TestCRUDGoldenFlow.test_add_get_delete_flow",
-   "line": 21,
+   "line": 22,
    "reads": [
     [
-     37,
+     39,
      "get"
     ],
     [
-     46,
+     49,
      "get"
     ]
    ],
    "reads_after_save": true,
    "saves": [
     [
-     31,
+     34,
      "add"
     ]
    ],
@@ -628,17 +675,17 @@
    "file": "tests/integration/test_crud_golden.py",
    "function": "TestCRUDGoldenFlow.test_add_search_flow_with_pipeline",
    "key": "tests/integration/test_crud_golden.py::TestCRUDGoldenFlow.test_add_search_flow_with_pipeline",
-   "line": 50,
+   "line": 53,
    "reads": [
     [
-     70,
+     74,
      "search"
     ]
    ],
    "reads_after_save": true,
    "saves": [
     [
-     66,
+     69,
      "add"
     ]
    ],
@@ -660,17 +707,17 @@
    "file": "tests/integration/test_crud_golden.py",
    "function": "TestCRUDGoldenFlow.test_add_with_metadata",
    "key": "tests/integration/test_crud_golden.py::TestCRUDGoldenFlow.test_add_with_metadata",
-   "line": 78,
+   "line": 82,
    "reads": [
     [
-     96,
+     101,
      "get"
     ]
    ],
    "reads_after_save": true,
    "saves": [
     [
-     90,
+     94,
      "add"
     ]
    ],
@@ -692,21 +739,21 @@
    "file": "tests/integration/test_crud_golden.py",
    "function": "TestCRUDGoldenFlow.test_search_with_filters",
    "key": "tests/integration/test_crud_golden.py::TestCRUDGoldenFlow.test_search_with_filters",
-   "line": 120,
+   "line": 126,
    "reads": [
     [
-     138,
+     149,
      "search"
     ]
    ],
    "reads_after_save": true,
    "saves": [
     [
-     127,
+     133,
      "add"
     ],
     [
-     133,
+     140,
      "add"
     ]
    ],
@@ -717,17 +764,17 @@
   {
    "disposition": {
     "class": "save_only",
-    "why": "ingest returns a dict whose item_id or queued key is asserted; nothing is read back through a seam"
+    "why": "ingest returns an item_save Receipt whose fields are asserted; nothing is read back through a seam"
    },
    "file": "tests/integration/test_crud_golden.py",
    "function": "TestIngestFlow.test_ingest_content",
    "key": "tests/integration/test_crud_golden.py::TestIngestFlow.test_ingest_content",
-   "line": 173,
+   "line": 178,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     185,
+     190,
      "ingest"
     ]
    ],
@@ -743,16 +790,16 @@
    "file": "tests/integration/test_graph_operations.py",
    "function": "TestGraphOperationsFlow.setup_test_items",
    "key": "tests/integration/test_graph_operations.py::TestGraphOperationsFlow.setup_test_items",
-   "line": 22,
+   "line": 23,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     31,
+     32,
      "add"
     ],
     [
-     34,
+     37,
      "add"
     ]
    ],
@@ -774,10 +821,10 @@
    "file": "tests/integration/test_graph_operations.py",
    "function": "TestGraphOperationsFlow.test_link_and_get_neighbors",
    "key": "tests/integration/test_graph_operations.py::TestGraphOperationsFlow.test_link_and_get_neighbors",
-   "line": 50,
+   "line": 45,
    "reads": [
     [
-     60,
+     55,
      "get_neighbors"
     ]
    ],
@@ -795,7 +842,7 @@
    "file": "tests/integration/test_graph_operations.py",
    "function": "TestGraphOperationsFlow.test_link_nonexistent_source",
    "key": "tests/integration/test_graph_operations.py::TestGraphOperationsFlow.test_link_nonexistent_source",
-   "line": 86,
+   "line": 83,
    "reads": [],
    "reads_after_save": false,
    "saves": [],
@@ -811,7 +858,7 @@
    "file": "tests/integration/test_graph_operations.py",
    "function": "TestGraphOperationsFlow.test_link_nonexistent_target",
    "key": "tests/integration/test_graph_operations.py::TestGraphOperationsFlow.test_link_nonexistent_target",
-   "line": 103,
+   "line": 100,
    "reads": [],
    "reads_after_save": false,
    "saves": [],
@@ -827,12 +874,12 @@
    "file": "tests/integration/test_graph_operations.py",
    "function": "TestGraphOperationsFlow.test_link_with_different_types",
    "key": "tests/integration/test_graph_operations.py::TestGraphOperationsFlow.test_link_with_different_types",
-   "line": 67,
+   "line": 62,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     74,
+     69,
      "add"
     ]
    ],
@@ -849,16 +896,16 @@
    "file": "tests/integration/test_graph_operations.py",
    "function": "TestZettelkastenOperations.setup_zettel_items",
    "key": "tests/integration/test_graph_operations.py::TestZettelkastenOperations.setup_zettel_items",
-   "line": 127,
+   "line": 124,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     136,
+     133,
      "add"
     ],
     [
-     139,
+     138,
      "add"
     ]
    ],
@@ -880,14 +927,14 @@
    "file": "tests/integration/test_graph_operations.py",
    "function": "TestZettelkastenOperations.test_backlinks_and_forward_links",
    "key": "tests/integration/test_graph_operations.py::TestZettelkastenOperations.test_backlinks_and_forward_links",
-   "line": 155,
+   "line": 146,
    "reads": [
     [
-     161,
+     152,
      "get_forward_links"
     ],
     [
-     165,
+     156,
      "get_backlinks"
     ]
    ],
@@ -911,10 +958,10 @@
    "file": "tests/integration/test_graph_operations.py",
    "function": "TestZettelkastenOperations.test_get_connections",
    "key": "tests/integration/test_graph_operations.py::TestZettelkastenOperations.test_get_connections",
-   "line": 168,
+   "line": 159,
    "reads": [
     [
-     175,
+     164,
      "get_connections"
     ]
    ],
@@ -1275,6 +1322,57 @@
     "class": "mocked_seam",
     "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
    },
+   "file": "tests/test_ingest_document.py",
+   "function": "call",
+   "key": "tests/test_ingest_document.py::call",
+   "line": 53,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     54,
+     "ingest_document"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
+   "file": "tests/test_ingest_document.py",
+   "function": "test_ingest_document_rows",
+   "key": "tests/test_ingest_document.py::test_ingest_document_rows",
+   "line": 63,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     85,
+     "ingest_document"
+    ],
+    [
+     99,
+     "ingest_document"
+    ],
+    [
+     102,
+     "ingest_document"
+    ]
+   ],
+   "via": [
+    "direct",
+    "helper tests/test_ingest_document.py::call"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "mocked_seam",
+    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
+   },
    "file": "tests/test_okf_portability.py",
    "function": "test_import_okf_uploads_archive_as_multipart_with_workspace_auth",
    "key": "tests/test_okf_portability.py::test_import_okf_uploads_archive_as_multipart_with_workspace_auth",
@@ -1310,6 +1408,27 @@
     [
      28,
      "ingest_conversation"
+    ]
+   ],
+   "via": [
+    "direct"
+   ]
+  },
+  {
+   "disposition": {
+    "class": "save_only",
+    "why": "real loopback HTTP handler commits to disposable SQLite then loses the response; only the DB count is read, no public memory read"
+   },
+   "file": "tests/test_retry_safety.py",
+   "function": "test_add_does_not_duplicate_an_unconfirmed_commit",
+   "key": "tests/test_retry_safety.py::test_add_does_not_duplicate_an_unconfirmed_commit",
+   "line": 15,
+   "reads": [],
+   "reads_after_save": false,
+   "saves": [
+    [
+     46,
+     "add"
     ]
    ],
    "via": [
@@ -1376,7 +1495,7 @@
    "saves": [
     [
      331,
-     "add"
+     "ingest"
     ]
    ],
    "via": [
@@ -1418,7 +1537,7 @@
    "saves": [
     [
      374,
-     "add"
+     "ingest"
     ]
    ],
    "via": [
@@ -1439,11 +1558,11 @@
    "saves": [
     [
      352,
-     "add"
+     "ingest"
     ],
     [
      356,
-     "add"
+     "ingest"
     ]
    ],
    "via": [
@@ -1573,7 +1692,7 @@
    "saves": [
     [
      342,
-     "add"
+     "ingest"
     ]
    ],
    "via": [
@@ -1594,7 +1713,7 @@
    "saves": [
     [
      312,
-     "add"
+     "ingest"
     ]
    ],
    "via": [
@@ -1609,20 +1728,20 @@
    "file": "tests/test_url_contracts.py",
    "function": "test_code_index_defaults_and_validates_before_request",
    "key": "tests/test_url_contracts.py::test_code_index_defaults_and_validates_before_request",
-   "line": 306,
+   "line": 319,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     308,
-     "code_index"
-    ],
-    [
-     319,
-     "code_index"
-    ],
-    [
      321,
+     "code_index"
+    ],
+    [
+     332,
+     "code_index"
+    ],
+    [
+     334,
      "code_index"
     ]
    ],
@@ -1638,12 +1757,12 @@
    "file": "tests/test_url_contracts.py",
    "function": "test_code_index_sends_exact_service_body",
    "key": "tests/test_url_contracts.py::test_code_index_sends_exact_service_body",
-   "line": 265,
+   "line": 278,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     286,
+     299,
      "code_index"
     ]
    ],
@@ -1659,12 +1778,12 @@
    "file": "tests/test_url_contracts.py",
    "function": "test_code_index_sends_repo_identity_only_when_given",
    "key": "tests/test_url_contracts.py::test_code_index_sends_repo_identity_only_when_given",
-   "line": 460,
+   "line": 500,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     462,
+     502,
      "code_index"
     ]
    ],
@@ -1680,93 +1799,97 @@
    "file": "tests/test_url_contracts.py",
    "function": "test_public_api_method_urls",
    "key": "tests/test_url_contracts.py::test_public_api_method_urls",
-   "line": 245,
+   "line": 258,
    "reads": [
     [
-     258,
+     271,
      "get"
     ],
     [
-     258,
+     271,
      "get_causal_chain"
     ],
     [
-     258,
+     271,
      "get_decision"
     ],
     [
-     258,
+     271,
+     "get_evidence"
+    ],
+    [
+     271,
      "get_lineage"
     ],
     [
-     258,
+     271,
      "get_links"
     ],
     [
-     258,
+     271,
      "get_neighbors"
     ],
     [
-     258,
+     271,
      "get_plan"
     ],
     [
-     258,
+     271,
      "get_provenance_chain"
     ],
     [
-     258,
+     271,
      "get_reasoning_trace"
     ],
     [
-     258,
+     271,
      "get_working_context"
     ],
     [
-     258,
+     271,
      "list_decisions"
     ],
     [
-     258,
+     271,
      "list_memories"
     ],
     [
-     258,
+     271,
      "list_pending_decisions"
     ],
     [
-     258,
+     271,
      "query_reasoning"
     ],
     [
-     258,
+     271,
      "search"
     ],
     [
-     258,
+     271,
      "search_advanced"
     ],
     [
-     258,
+     271,
      "search_by_metadata"
     ]
    ],
    "reads_after_save": true,
    "saves": [
     [
-     258,
+     271,
      "add"
     ],
     [
-     258,
+     271,
      "code_index"
     ],
     [
-     258,
+     271,
      "ingest"
     ],
     [
-     258,
+     271,
      "ingest_conversation"
     ]
    ],
@@ -1784,9 +1907,11 @@
    "bulk_ontology_review_action": "ontology review queue admin (/memory/ontology/queue/bulk)",
    "get_edges_bulk": "a read posted as a body (/memory/graph/edges)",
    "import_registry": "ontology registry admin (/memory/ontology/registry/<id>/import)",
+   "restore_workspace": "workspace lifecycle hidden -> active, returns WorkspaceDetail; saves no memory content (/memory/workspaces/<id>/restore)",
    "store_reasoning_trace": "reasoning trace log, not a memory item (/memory/reasoning/traces/store)"
   },
   "other_post_methods": [
+   "_record_upgrade_nudge",
    "_stage",
    "acquire_lease",
    "allocate_sequence",
@@ -1824,6 +1949,7 @@
    "get_working_context",
    "ground",
    "link",
+   "link_decision_evidence",
    "logout",
    "logout_all",
    "merge_ontology_review_type",
@@ -1835,6 +1961,7 @@
    "query_reasoning",
    "recall_pack",
    "record_enforcement_event",
+   "record_evidence",
    "refresh_token",
    "reinforce_decision",
    "reinforce_opinions",
@@ -1869,16 +1996,20 @@
    "trigger_evolution",
    "trigger_stripe_webhook",
    "try_activate_decision",
-   "upgrade_subscription"
+   "upgrade_subscription",
+   "vector_query"
   ],
   "read_tools": [],
   "save_methods": [
+   "_add_response",
    "add",
+   "add_detailed",
    "code_index",
    "import_chat_export",
    "import_okf",
    "ingest",
-   "ingest_conversation"
+   "ingest_conversation",
+   "ingest_document"
   ],
   "save_tools": []
  }

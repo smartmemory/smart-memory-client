@@ -10,7 +10,8 @@ Run with: pytest tests/integration/test_crud_golden.py -v -m golden
 import uuid
 import pytest
 
-from smartmemory_client import SmartMemoryClientError
+from smartmemory_client import SmartMemoryNotFoundError
+from tests.integration.receipt_assertions import assert_item_receipt
 
 
 @pytest.mark.integration
@@ -18,7 +19,9 @@ from smartmemory_client import SmartMemoryClientError
 class TestCRUDGoldenFlow:
     """Test the complete CRUD lifecycle with real service."""
 
-    def test_add_get_delete_flow(self, authenticated_client, unique_content):
+    def test_add_get_delete_flow(
+        self, authenticated_client, unique_content, saved_receipts
+    ):
         """Golden flow: add → get → delete.
 
         Tests basic CRUD operations without search (which requires embeddings).
@@ -29,9 +32,8 @@ class TestCRUDGoldenFlow:
 
         # 1. ADD - Create a new memory item (skip pipeline for speed)
         item_id = client.add(content, memory_type="semantic", use_pipeline=False)
-        assert item_id is not None
-        assert isinstance(item_id, str)
-        assert len(item_id) > 0
+        saved_receipts.append(item_id)
+        item_id = assert_item_receipt(item_id)
 
         # 2. GET - Retrieve the specific item by ID
         item = client.get(item_id)
@@ -40,14 +42,15 @@ class TestCRUDGoldenFlow:
 
         # 3. DELETE - Remove the item
         deleted = client.delete(item_id)
-        assert deleted is True
+        assert deleted is None
 
         # 4. VERIFY DELETE - Item should no longer exist
-        deleted_item = client.get(item_id)
-        assert deleted_item is None
+        with pytest.raises(SmartMemoryNotFoundError) as exc:
+            client.get(item_id)
+        assert exc.value.status_code == 404
 
     @pytest.mark.slow
-    def test_add_search_flow_with_pipeline(self, authenticated_client):
+    def test_add_search_flow_with_pipeline(self, authenticated_client, saved_receipts):
         """Golden flow: add with pipeline → search.
 
         Tests full pipeline including embedding for search.
@@ -64,7 +67,8 @@ class TestCRUDGoldenFlow:
         try:
             # 1. ADD with pipeline (creates embeddings)
             item_id = client.add(content, memory_type="semantic", use_pipeline=True)
-            assert item_id is not None
+            saved_receipts.append(item_id)
+            item_id = assert_item_receipt(item_id)
 
             # 2. SEARCH - Should find via vector similarity
             search_results = client.search(unique_id, top_k=10)
@@ -75,7 +79,7 @@ class TestCRUDGoldenFlow:
         finally:
             client.timeout = original_timeout
 
-    def test_add_with_metadata(self, authenticated_client):
+    def test_add_with_metadata(self, authenticated_client, saved_receipts):
         """Test adding memory with custom metadata."""
         client = authenticated_client
         unique_id = uuid.uuid4().hex[:8]
@@ -90,7 +94,8 @@ class TestCRUDGoldenFlow:
         item_id = client.add(
             content, memory_type="semantic", metadata=metadata, use_pipeline=False
         )
-        assert item_id is not None
+        saved_receipts.append(item_id)
+        item_id = assert_item_receipt(item_id)
 
         # Retrieve and verify metadata
         item = client.get(item_id)
@@ -99,7 +104,7 @@ class TestCRUDGoldenFlow:
         # Cleanup
         client.delete(item_id)
 
-    def test_add_different_memory_types(self, authenticated_client):
+    def test_add_different_memory_types(self, authenticated_client, saved_receipts):
         """Test adding different memory types."""
         client = authenticated_client
         unique_id = uuid.uuid4().hex[:8]
@@ -110,14 +115,15 @@ class TestCRUDGoldenFlow:
         for mem_type in memory_types:
             content = f"{mem_type} memory test: {unique_id}"
             item_id = client.add(content, memory_type=mem_type, use_pipeline=False)
-            assert item_id is not None
+            saved_receipts.append(item_id)
+            item_id = assert_item_receipt(item_id)
             created_ids.append(item_id)
 
         # Cleanup
         for item_id in created_ids:
             client.delete(item_id)
 
-    def test_search_with_filters(self, authenticated_client):
+    def test_search_with_filters(self, authenticated_client, saved_receipts):
         """Test search with memory type filter."""
         client = authenticated_client
         unique_id = uuid.uuid4().hex[:8]
@@ -127,12 +133,17 @@ class TestCRUDGoldenFlow:
         semantic_id = client.add(
             semantic_content, memory_type="semantic", use_pipeline=False
         )
+        saved_receipts.append(semantic_id)
 
         # Add episodic memory (skip pipeline for speed)
         episodic_content = f"Episodic event: {unique_id}"
         episodic_id = client.add(
             episodic_content, memory_type="episodic", use_pipeline=False
         )
+        saved_receipts.append(episodic_id)
+
+        semantic_id = assert_item_receipt(semantic_id)
+        episodic_id = assert_item_receipt(episodic_id)
 
         # Search with filter
         semantic_results = client.search(unique_id, memory_type="semantic")
@@ -142,27 +153,21 @@ class TestCRUDGoldenFlow:
         client.delete(semantic_id)
         client.delete(episodic_id)
 
-    def test_get_nonexistent_returns_none(self, authenticated_client):
-        """Test that getting a nonexistent item returns None."""
+    def test_get_nonexistent_raises_typed_error(self, authenticated_client):
+        """A missing read raises the typed 404 error."""
         client = authenticated_client
         fake_id = f"nonexistent_{uuid.uuid4().hex}"
 
-        item = client.get(fake_id)
-        assert item is None
+        with pytest.raises(SmartMemoryNotFoundError) as exc:
+            client.get(fake_id)
+        assert exc.value.status_code == 404
 
-    def test_delete_nonexistent_returns_false(self, authenticated_client):
-        """Test that deleting a nonexistent item returns False or raises appropriately."""
-        client = authenticated_client
+    def test_delete_nonexistent_raises_typed_error(self, authenticated_client):
+        """A missing delete raises the typed 404 error."""
         fake_id = f"nonexistent_{uuid.uuid4().hex}"
-
-        # May return False or raise SmartMemoryClientError depending on API behavior
-        try:
-            result = client.delete(fake_id)
-            # If it doesn't raise, should return False
-            assert result is False or result is None
-        except SmartMemoryClientError:
-            # Also acceptable - 404 converted to exception
-            pass
+        with pytest.raises(SmartMemoryNotFoundError) as exc:
+            authenticated_client.delete(fake_id)
+        assert exc.value.status_code == 404
 
 
 @pytest.mark.integration
@@ -170,7 +175,7 @@ class TestCRUDGoldenFlow:
 class TestIngestFlow:
     """Test the ingestion pipeline flow."""
 
-    def test_ingest_content(self, authenticated_client):
+    def test_ingest_content(self, authenticated_client, saved_receipts):
         """Test content ingestion with extraction pipeline."""
         client = authenticated_client
         unique_id = uuid.uuid4().hex[:8]
@@ -183,9 +188,7 @@ class TestIngestFlow:
 
         # Ingest with pipeline
         result = client.ingest(content, extractor_name="llm")
+        saved_receipts.append(result)
         assert result is not None
-        assert "item_id" in result or "queued" in result
-
-        # If we got an item_id, clean up
-        if "item_id" in result and result["item_id"]:
-            client.delete(result["item_id"])
+        item_id = assert_item_receipt(result)
+        client.delete(item_id)

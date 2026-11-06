@@ -479,6 +479,7 @@ SAVE_PATH = re.compile(
 MAYBE_SAVE = re.compile(r"add|ingest|import|save|store|bulk|upload|document")
 # Methods that POST under a save-like name or path and are NOT a memory save, each with its reason.
 NOT_SAVE = {
+    "restore_workspace": "workspace lifecycle hidden -> active, returns WorkspaceDetail; saves no memory content (/memory/workspaces/<id>/restore)",
     "add_edge": "links two existing items, saves no content (/memory/edge)",
     "add_team_member": "membership admin, no memory content (/memory/teams/<id>/members)",
     "archive_put": "stores an archive blob keyed by the caller, outside the pipeline (/memory/archive/store)",
@@ -489,8 +490,14 @@ NOT_SAVE = {
     "store_reasoning_trace": "reasoning trace log, not a memory item (/memory/reasoning/traces/store)",
 }
 NON_MEMORY = ["tests/conftest.py:142"]
-DYNAMIC = {}
+DYNAMIC = {
+    "tests/test_client_billing_manager_errors.py:57": "_call helper receives only ROWS billing-manager grant/revoke/list methods (lines 29-45); none saves memory content",
+    "tests/test_scoped_validity.py:111": "WRITES[1:] contains only supersede_decision and supersede; scope schedule mutation, not an item-save seam",
+    "tests/test_scoped_validity.py:118": "READS + WRITES comprehension contains decision reads and decision/supersession writes, no item-save methods",
+    "tests/test_scoped_validity.py:178": "typed error loop over READS + WRITES + search uses MockTransport and contains no item-save methods",
+}
 WAIT_USERS = {
+    "tests/test_receipt_legacy_bridge.py": "await_receipt is tested with a synthetic legacy body and a read lambda; refusal is asserted before any read, no live wait",
     "tests/test_save_receipt.py": "tests the SDK await helper itself against a fake transport and a fake clock; it waits on no live save",
 }
 OWNED_BY_U4_42 = None
@@ -540,6 +547,31 @@ def derive_vocab(repo):
                     unnamed.append(fn.name)
                 else:
                     other_posts.add(fn.name)
+    # Public wrappers (add/add_detailed) delegate to the save helper. Follow literal
+    # self calls to a fixed point so refactoring the client cannot erase saves.
+    functions = {
+        fn.name: fn
+        for cls in ast.walk(tree)
+        if isinstance(cls, ast.ClassDef) and cls.name == "SmartMemoryClient"
+        for fn in cls.body
+        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    while True:
+        callers = {
+            name
+            for name, fn in functions.items()
+            if any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "self"
+                and node.func.attr in methods
+                for node in ast.walk(fn)
+            )
+        }
+        if callers <= methods:
+            break
+        methods.update(callers)
     if unnamed:
         raise SystemExit(
             f"POST methods with a save-like name or path need a NOT_SAVE reason or a save path: {sorted(set(unnamed))}"
@@ -607,7 +639,7 @@ DISPOSITIONS = {
     ),
     f"{G}::TestIngestFlow.test_ingest_content": D(
         "save_only",
-        "ingest returns a dict whose item_id or queued key is asserted; nothing is read back through a seam",
+        "ingest returns an item_save Receipt whose fields are asserted; nothing is read back through a seam",
     ),
     f"{GO}::TestGraphOperationsFlow.setup_test_items": D(
         "save_only",
@@ -669,6 +701,8 @@ DISPOSITIONS = {
     ),
 }
 for _key in (
+    "test_ingest_document.py::call",
+    "test_ingest_document.py::test_ingest_document_rows",
     "test_chat_export_import.py::test_defaults_are_auto_detection_and_a_25_conversation_cap",
     "test_chat_export_import.py::test_import_chat_export_posts_multipart_with_form_fields",
     "test_chat_export_import.py::test_warnings_survive_to_the_caller",
@@ -702,6 +736,13 @@ for _key in (
     "test_save_receipt.py::test_three_transport_losses_then_success_is_four_identical_requests",
 ):
     DISPOSITIONS["tests/" + _key] = D("mocked_seam", MOCK)
+
+DISPOSITIONS[
+    "tests/test_retry_safety.py::test_add_does_not_duplicate_an_unconfirmed_commit"
+] = D(
+    "save_only",
+    "real loopback HTTP handler commits to disposable SQLite then loses the response; only the DB count is read, no public memory read",
+)
 
 # --- COMMON BEGIN (byte-identical in smart-memory-client and smart-memory-mcp scripts/save_then_read_census.py) ---
 

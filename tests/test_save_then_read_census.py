@@ -488,7 +488,10 @@ def test_the_ignored_files_are_the_censuss_own_and_visible_in_the_fixture():
 
 
 SAVE_PATH_METHODS = {
+    "_add_response",
     "add",
+    "add_detailed",
+    "ingest_document",
     "code_index",
     "import_chat_export",
     "import_okf",
@@ -557,3 +560,23 @@ def test_each_prepared_wait_refuses_a_readable_row_until_the_sdk_carries_its_sta
             eval(
                 item_row["prepared"], dict(names)
             )  # the prepared text is data we authored, run it once
+
+
+def test_vocabulary_follows_delegated_saves_without_admitting_unrelated_cycles(
+    tmp_path,
+):
+    package = tmp_path / "smartmemory_client"
+    package.mkdir()
+    (package / "client.py").write_text(
+        "class SmartMemoryClient:\n"
+        "    def add(self): return self.middle()\n"
+        "    def middle(self): return self._add_response()\n"
+        "    def _add_response(self): return self._save('/memory/add', {})\n"
+        "    def unrelated(self): return self.cycle()\n"
+        "    def cycle(self): return self.unrelated()\n"
+    )
+    assert set(census.derive_vocab(tmp_path)["save_methods"]) == {
+        "add",
+        "middle",
+        "_add_response",
+    }

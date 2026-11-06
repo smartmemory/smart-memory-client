@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+- CLIENT-2.0-ACCEPT-TEST-DRIFT-1: align HTTP integration assertions with 2.0 item-save receipts and typed missing-item errors. Classify workspace restore as lifecycle administration, follow delegated save methods, name newer test dispositions and regenerate the save/read fixture without weakening the census rule.
 - SM-SCOPED-VALIDITY-1 U09: add optional business_scope and valid_at to search and decision reads, plus scope_go_lives and global valid_from on replacement methods. Decision creation carries schedules. New options omit None, encode GET scope once and serialize datetimes in UTC. Preserve positional arguments, existing ASOF behavior and typed server errors without write retries. Adds request mapping tests and real local HTTP golden flows.
 - SM-EVIDENCE-TYPE-1 (2026-11-04; service routes on smart-memory-service `wk/SM-EVIDENCE-TYPE-1`): `record_evidence(record)` (`POST /memory/evidence`, a Compose `ev:` record, idempotent on its id), `get_evidence(evidence_id)` (`GET /memory/evidence/{id}`, node id or `ev:` ref) and `link_decision_evidence(decision_id, evidence_id)` (`POST /memory/decisions/{id}/evidence`, confidence unchanged). Path ids are URL-quoted. Tests: `TestEvidenceMethods` in `tests/test_decision_methods.py`, three rows in `tests/test_url_contracts.py`.
 
