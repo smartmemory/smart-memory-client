@@ -52,6 +52,7 @@ from smartmemory_client.errors import (  # noqa: F401  (re-exported: the classes
     SmartMemoryNotFoundError,
     SmartMemoryPermissionError,
     SmartMemoryRoutingConflictError,
+    RecallConflictError,
     SmartMemoryServerError,
     SmartMemoryTransportError,
     SmartMemoryValidationError,
@@ -113,8 +114,19 @@ def _body_error_code(detail: str) -> str | None:
     return inner if isinstance(inner, str) and inner else None
 
 
-def _exception_for_status(status: int) -> type[SmartMemoryClientError]:
+def _exception_for_status(status: int, detail: str = "") -> type[SmartMemoryClientError]:
     """Map an HTTP status code to the most specific SDK exception class."""
+    if status == 409:
+        try:
+            wire = json.loads(detail)
+        except (TypeError, ValueError):
+            wire = {}
+        if (
+            isinstance(wire, dict)
+            and isinstance(wire.get("detail"), dict)
+            and wire["detail"].get("error") == "recall_conflict"
+        ):
+            return RecallConflictError
     if status == 404:
         return SmartMemoryNotFoundError
     if status in (401, 403):
@@ -1009,11 +1021,15 @@ class SmartMemoryClient:
         reranker: Optional[str] = None,
         metadata_filter: Optional[Dict[str, Any]] = None,
         *,
+        fail_if_conflicted: bool = False,
         business_scope: Optional[Dict[str, Any]] = None,
         valid_at: Optional[Union[str, datetime]] = None,
     ):
         """
         Search for memory items using semantic matching.
+
+        fail_if_conflicted=True refuses supported disagreements with RecallConflictError (409).
+        MemoryItem.conflict is response evidence for the returned bounded pool.
 
         ``business_scope={"site": "A"}`` selects an exact business site, with
         sponsor fallback. ``valid_at`` selects business time independently of
@@ -1113,6 +1129,8 @@ class SmartMemoryClient:
             "top_k": top_k,
             "enable_hybrid": enable_hybrid,
         }
+        if fail_if_conflicted:
+            body_dict["fail_if_conflicted"] = fail_if_conflicted
         body_dict.update(
             _scoped_options(business_scope=business_scope, valid_at=valid_at)
         )
@@ -1224,7 +1242,7 @@ class SmartMemoryClient:
                     body = None
                 if isinstance(body, dict) and isinstance(body.get("detail"), str):
                     error_detail = body["detail"]
-            exc_cls = _exception_for_status(status)
+            exc_cls = _exception_for_status(status, error_detail)
             raise exc_cls(
                 error_detail,
                 status_code=status,
@@ -6275,6 +6293,8 @@ class SmartMemoryClient:
         sections: Optional[List[Dict[str, Any]]] = None,
         preset: Optional[str] = None,
         as_of: Optional[str] = None,
+        *,
+        fail_if_conflicted: bool = False,
     ) -> Dict[str, Any]:
         """Assemble one priority-ordered context block within a token budget.
 
@@ -6316,6 +6336,8 @@ class SmartMemoryClient:
             ```
         """
         body: Dict[str, Any] = {"budget_tokens": budget_tokens}
+        if fail_if_conflicted:
+            body["fail_if_conflicted"] = fail_if_conflicted
         if query is not None:
             body["query"] = query
         if sections is not None:
@@ -6415,7 +6437,7 @@ class SmartMemoryClient:
         except httpx.HTTPStatusError as e:
             status = e.response.status_code if hasattr(e, "response") else 0
             error_detail = e.response.text if hasattr(e, "response") else str(e)
-            exc_cls = _exception_for_status(status)
+            exc_cls = _exception_for_status(status, error_detail)
             raise exc_cls(
                 f"Request failed: {e} - Detail: {error_detail}",
                 status_code=status,

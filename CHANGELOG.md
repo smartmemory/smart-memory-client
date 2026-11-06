@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased - RECALL-CONFLICT-FLAG-1 continuation
+
+- Preserve recall conflict evidence and expose strict read options with typed RecallConflictError.
+
 - SDK-2.0-RETRY-SAFETY-1: Raise WriteOutcomeUnknown after one ambiguous add attempt instead of duplicating a possibly committed write.
 All notable changes to this project will be documented in this file.
 

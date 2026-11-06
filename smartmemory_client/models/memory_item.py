@@ -86,6 +86,8 @@ class MemoryItem:
     rerank_pool_capped: Optional[bool] = None
     rerank_max_doc_chars: Optional[int] = None
 
+    conflict: Optional[Dict[str, Any]] = None
+
     def __getitem__(self, key: str) -> Any:
         """Dict-like access for compatibility."""
         return getattr(self, key)
@@ -123,6 +125,7 @@ class MemoryItem:
             memory_type=data.get("memory_type", data.get("type", "semantic")),
             metadata=data.get("metadata", {}),
             score=data.get("score"),
+            conflict=data.get("conflict"),
             rerank_status=rerank_status,
             rerank_score=data.get("rerank_score"),
             rerank_model=data.get("rerank_model"),
