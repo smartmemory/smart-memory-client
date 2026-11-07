@@ -20,7 +20,7 @@ import warnings
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from time import perf_counter
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Sequence, Union
 from urllib.parse import quote
 
 import httpx
@@ -59,6 +59,9 @@ from smartmemory_client.errors import (  # noqa: F401  (re-exported: the classes
 )
 
 logger = logging.getLogger(__name__)
+
+# Mirrors service_common StorageRequest.storage_strategy; the service answers any other value with a 422 naming these.
+StorageStrategy = Literal["dual_node", "single_node", "memory_only"]
 
 
 def _retry_after_s(response: Any) -> Optional[float]:
@@ -3802,7 +3805,7 @@ class SmartMemoryClient:
     def run_storage_stage(
         self,
         predecessor: Union[Receipt, str],
-        storage_strategy: Optional[str] = None,
+        storage_strategy: Optional[StorageStrategy] = None,
     ) -> Receipt:
         """Run the storage stage from the awaited extraction receipt (or its ``pipeline_state_run_id``).
 
