@@ -189,3 +189,9 @@ class StageChainError(SmartMemoryClientError):
         self.code = code
         self.run_id = run_id
         self.retryable = retryable
+
+
+class RecallConflictError(SmartMemoryValidationError):
+    """Strict recall refused (409). Scoped pairs are retained in JSON detail."""
+
+    code = "recall_conflict"
