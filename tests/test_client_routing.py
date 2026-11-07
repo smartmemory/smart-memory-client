@@ -286,11 +286,6 @@ class TestWriteEcho:
         "name,call,path",
         [
             ("ingest", lambda c: c.ingest("x"), "/memory/ingest"),
-            (
-                "ingest wait=extracted (2.0 replacement of ingest_full)",
-                lambda c: c.ingest("x", wait="extracted"),
-                "/memory/ingest",
-            ),
         ],
     )
     def test_ingest_receipts_carry_the_echo(self, name, call, path):
@@ -305,13 +300,14 @@ class TestWriteEcho:
         c = _client()
         out, req = _call(
             c,
-            _ok({"item_id": "i", **ECHO}),
+            _ok({**FX["pending_save"], "subject": {"kind": "document_save", "document_id": "i"}, **ECHO}),
             lambda: c.ingest_conversation([{"role": "user", "content": "x"}]),
         )
         assert (
             req.call_args.args[1] == "http://localhost:9001/memory/ingest/conversation"
         )
-        assert out["item_id"] == "i"  # existing keys untouched
+        assert isinstance(out, Receipt) and out.document_id == "i"
+        assert out.item_id is None
         assert SmartMemoryClient.routing_echo(out) == ECHO
 
     @pytest.mark.parametrize(

@@ -67,7 +67,8 @@ def test_ingest_document_rows(monkeypatch):
     method, endpoint, _ = fake.calls[0]
     assert (method, endpoint) == ("POST", "/memory/ingest/document")
     assert r.subject_kind == "document_save"
-    assert r.item_id == "doc_9"
+    assert r.document_id == "doc_9"
+    assert r.item_id is None
 
     # row 2: a 1.x body is a strict refusal, not a bridged receipt
     client, fake, kw = run(monkeypatch, LEGACY_BODY)

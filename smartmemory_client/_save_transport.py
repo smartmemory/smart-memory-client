@@ -124,7 +124,7 @@ def submit_with_retry(
     """Run one logical save with the ST14 policy: same key and same bytes on every attempt.
 
     ``retry_safe=False`` makes one attempt and raises ``WriteOutcomeUnknown`` on a retryable failure.
-    Use it for routes such as add that do not admit retry keys.
+    Use it for routes such as add and conversation ingestion that do not admit retry keys.
     ``call`` must send an identical request each time. A failure that is not retryable (400, 401, 403, 404,
     409, 422, anything outside the retry list) raises at once. After the fourth failed attempt, or when a
     ``Retry-After`` cannot fit in ``deadline_s``, the last error is raised carrying ``idempotency_key`` and
@@ -142,9 +142,9 @@ def submit_with_retry(
         except Exception as exc:  # noqa: BLE001 - classified below, re-raised typed
             if not retry_safe and is_retryable(exc):
                 unknown = WriteOutcomeUnknown(
-                    "Add outcome is unconfirmed. The memory may have been saved. "
+                    "Write outcome is unconfirmed. The data may have been saved. "
                     "Check search or list before retrying to avoid a duplicate. "
-                    "The add route does not deduplicate idempotency keys.",
+                    "This route does not deduplicate idempotency keys.",
                     status_code=getattr(exc, "status_code", None),
                     detail=getattr(exc, "detail", None),
                 )

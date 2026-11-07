@@ -263,9 +263,11 @@ def test_public_api_method_urls(
     expected_verb: str,
     expected_path: str,
 ) -> None:
-    # add/ingest answer a 2.0 save receipt (G52); every other row keeps the generic body.
+    # Save methods answer a 2.0 receipt (G52). Other rows keep the generic body.
     mock_request.return_value = _ok(
-        SAVE_RECEIPT if method_name in ("add", "ingest") else None
+        ({**SAVE_RECEIPT, "subject": {"kind": "document_save", "document_id": "conversation_1"}}
+         if method_name == "ingest_conversation" else
+         SAVE_RECEIPT if method_name in ("add", "ingest") else None)
     )
 
     getattr(client, method_name)(*args)

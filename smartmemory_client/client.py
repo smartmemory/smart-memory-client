@@ -869,7 +869,7 @@ class SmartMemoryClient:
 
         One key (the caller's, or a freshly minted ``sm2_`` UUID v4) rides in the body of every attempt, and the
         body is built once, so a retry is byte-identical. A 409 becomes the typed ``SaveConflictError``.
-        The add route makes one attempt because it does not admit retry keys. Ambiguous failures
+        Add and conversation routes make one attempt because they do not admit retry keys. Ambiguous failures
         raise ``WriteOutcomeUnknown`` so the caller can check existing records before retrying.
         """
         key = (
@@ -883,7 +883,7 @@ class SmartMemoryClient:
                 lambda: self._request("POST", endpoint, json_body=sent),
                 key=key,
                 deadline_s=self.save_retry_deadline_s,
-                retry_safe=endpoint != "/memory/add",
+                retry_safe=endpoint not in {"/memory/add", "/memory/ingest/conversation"},
             )
         except SmartMemoryClientError as exc:
             conflict = _transport.conflict_from(exc)
@@ -1645,8 +1645,9 @@ class SmartMemoryClient:
             properties: Advanced — direct node-property dict. Takes precedence
                 over content/metadata when provided.
             write_mode: "merge" (default) or "replace"
-            expected_revision: The item revision this edit was made against (G131). The service answers
-                409 when the item moved on; nothing is retried and no new key is minted, keep your draft.
+            expected_revision: The item revision this edit was made against (G131). Hosted 2.0.0
+                refuses this option before writing with HTTP 422 ``expected_revision_unsupported``
+                until hosted CAS is available. A server supporting CAS can answer 409 on a stale revision.
 
         Returns:
             The edit :class:`Receipt` when the service admitted the edit as a run, else ``None``. A call that
@@ -1816,16 +1817,18 @@ class SmartMemoryClient:
             content: Content to ingest
             extractor_name: Name of the extractor to use (default: "llm")
             context: Additional context information
-            wait: ``"stored"`` or ``"extracted"`` asks the service to hold the answer until that milestone
-                (a completed wait is HTTP 200 with the same receipt and its ``result``). This replaces the
-                removed ``ingest_full()``: ``ingest(content, wait="extracted")`` returns the receipt whose
-                ``result`` carries the entities and relations. Omit it for the quick-return 202.
+            wait: Unsupported on hosted 2.0.0. Any non-None value raises
+                ``SmartMemoryValidationError`` before sending until SVC-INGEST-WAIT-STATUS-1
+                provides hosted wait/status support. Omit this option to submit ingestion.
             idempotency_key: See :meth:`add`.
 
         Returns:
             A :class:`Receipt` (2.0.0: no longer a result dict). ``receipt.item_id`` is the saved item.
             WS-ROUTING-2 servers also put ``workspace_id``, ``workspace_name``, ``routed_by`` and
             ``notices`` in ``receipt.raw`` (``SmartMemoryClient.routing_echo(receipt)``).
+
+        Raises:
+            SmartMemoryValidationError: A wait option was supplied, or the service rejected the input.
 
         Example:
             ```python
@@ -1842,18 +1845,16 @@ class SmartMemoryClient:
         Note:
             user_id is automatically determined from the JWT token.
         """
-        if wait is not None and wait not in ("stored", "extracted"):
+        if wait is not None:
             raise SmartMemoryValidationError(
-                f"wait must be 'stored' or 'extracted', got {wait!r}"
+                "ingest(wait=...) is unsupported on hosted 2.0.0 until "
+                "SVC-INGEST-WAIT-STATUS-1 provides wait/status support"
             )
         body_dict: Dict[str, Any] = {
             "content": content,
             "extractor_name": extractor_name,
             "context": context or {},
         }
-        if wait is not None:
-            body_dict["wait"] = wait
-
         return self._save("/memory/ingest", body_dict, idempotency_key=idempotency_key)
 
     def ingest_document(
@@ -1873,7 +1874,8 @@ class SmartMemoryClient:
 
         Args:
             source: Public ``http://`` or ``https://`` document URL.
-            source_type: ``html`` | ``pdf`` | ``docx`` | ``txt`` | ``markdown`` | ``auto``.
+            source_type: Hosted 2.0.0 supports ``html`` or ``auto`` for HTML URLs.
+                Other explicit types are refused with HTTP 422 before fetching.
             chunk_size: Maximum characters per chunk (100-50000).
             chunk_strategy: ``paragraph`` | ``sentence`` | ``markdown`` | ``recursive``.
             reference: Mark nodes as reference material.
@@ -1881,7 +1883,8 @@ class SmartMemoryClient:
             idempotency_key: See :meth:`add`.
 
         Returns:
-            A :class:`Receipt` with ``subject.kind`` ``document_save``; ``receipt.item_id`` is the document id.
+            A :class:`Receipt` with ``subject.kind`` ``document_save`` and the document handle
+            in ``receipt.document_id``. ``receipt.item_id`` is absent unless supplied by the subject.
             Decoded strictly: a body without ``schema_version`` (a 1.x body) raises ``ReceiptError``, there
             is no legacy bridge on this method.
 
@@ -1891,9 +1894,8 @@ class SmartMemoryClient:
 
         Example:
             ```python
-            receipt = client.ingest_document("https://example.com/paper.pdf", source_type="pdf")
-            receipt = client.await_receipt(receipt)
-            print(receipt.item_id)
+            receipt = client.ingest_document("https://example.com/article.html", source_type="html")
+            print(receipt.document_id)
             ```
         """
         if not isinstance(source, str) or not source.lower().startswith(
@@ -1930,7 +1932,8 @@ class SmartMemoryClient:
         max_chunk_chars: int = 12000,
         max_concurrent: int = 4,
         context: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        idempotency_key: Optional[str] = None,
+    ) -> Receipt:
         """Ingest a conversation as session chunks through the full pipeline (RLM-1g).
 
         Args:
@@ -1941,10 +1944,22 @@ class SmartMemoryClient:
             turns_per_chunk: Max turns per auto-chunk (default 15).
             max_chunk_chars: Safety split for oversized chunks (default 12000).
             max_concurrent: Semaphore limit for parallel chunk ingestion (default 4).
+            context: Ingestion context.
+            idempotency_key: See :meth:`add`.
 
         Returns:
-            Dict with conversation_id, conversation_node_id, chunks_ingested,
-            chunks_failed, total_turns, total_chunks, chunk_results, total_duration_ms.
+            A :class:`Receipt` with ``subject.kind`` ``document_save`` and the conversation
+            container handle in ``receipt.document_id``. Hosted additive fields remain in ``receipt.raw``.
+            This replaces the pre-2.0 raw dict return.
+
+        Raises:
+            SmartMemoryValidationError: 400/422 for rejected conversation input.
+            SmartMemoryPermissionError: 401/403 for denied access.
+            SmartMemoryNotFoundError: 404 for a missing resource.
+            WriteOutcomeUnknown: Transport loss or retryable HTTP failure after one attempt.
+                Check existing records before retrying. Hosted conversation keys do not deduplicate.
+            SmartMemoryServerError: Other 5xx server failures.
+            ReceiptError: The answer is not a supported receipt.
         """
         body_dict: Dict[str, Any] = {"turns": turns}
         if session_boundaries is not None:
@@ -1963,12 +1978,12 @@ class SmartMemoryClient:
         if context is not None:
             body_dict["context"] = context
 
-        try:
-            return self._request(
-                "POST", "/memory/ingest/conversation", json_body=body_dict
-            )
-        except Exception as e:
-            raise SmartMemoryClientError(f"Failed to ingest conversation: {str(e)}")
+        return self._save(
+            "/memory/ingest/conversation",
+            body_dict,
+            idempotency_key=idempotency_key,
+            legacy_bridge=False,
+        )
 
     def link(self, source_id: str, target_id: str, link_type: str = "RELATED") -> bool:
         """
