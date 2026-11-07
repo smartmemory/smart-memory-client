@@ -727,6 +727,23 @@ def test_chaining_storage_from_a_receipt(client, monkeypatch, name, wire, code):
     assert (exc.value.code, exc.value.run_id, fake.calls) == (code, wire["run_id"], [])
 
 
+@pytest.mark.parametrize("strategy", ["dual_node", "single_node", "memory_only"])
+def test_storage_stage_sends_each_allowed_strategy(client, monkeypatch, strategy):
+    fake = wired(client, monkeypatch, STAGE_PENDING)
+    client.run_storage_stage("pipeline_1", storage_strategy=strategy)
+    assert fake.calls[0][3] == {"run_id": "pipeline_1", "storage_strategy": strategy}
+
+
+def test_storage_strategy_annotation_is_the_allowed_literal():
+    from typing import get_args, get_type_hints
+
+    from smartmemory_client.client import SmartMemoryClient, StorageStrategy
+
+    hint = get_type_hints(SmartMemoryClient.run_storage_stage)["storage_strategy"]
+    assert set(get_args(StorageStrategy)) == {"dual_node", "single_node", "memory_only"}
+    assert set(get_args(get_args(hint)[0])) == set(get_args(StorageStrategy))
+
+
 def test_the_execution_run_id_is_never_a_chain_id_but_the_pipeline_state_id_is(
     client, monkeypatch, caplog
 ):
