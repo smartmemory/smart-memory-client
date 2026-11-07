@@ -16,18 +16,18 @@
   "waits": [
    "tests/test_receipt_legacy_bridge.py:121",
    "tests/test_save_receipt.py:81",
-   "tests/test_save_receipt.py:537",
-   "tests/test_save_receipt.py:544",
-   "tests/test_save_receipt.py:563",
-   "tests/test_save_receipt.py:573",
-   "tests/test_save_receipt.py:587",
-   "tests/test_save_receipt.py:597",
-   "tests/test_save_receipt.py:605",
-   "tests/test_save_receipt.py:664",
-   "tests/test_save_receipt.py:679",
-   "tests/test_save_receipt.py:682",
-   "tests/test_save_receipt.py:690",
-   "tests/test_save_receipt.py:699"
+   "tests/test_save_receipt.py:499",
+   "tests/test_save_receipt.py:506",
+   "tests/test_save_receipt.py:525",
+   "tests/test_save_receipt.py:535",
+   "tests/test_save_receipt.py:549",
+   "tests/test_save_receipt.py:559",
+   "tests/test_save_receipt.py:567",
+   "tests/test_save_receipt.py:626",
+   "tests/test_save_receipt.py:641",
+   "tests/test_save_receipt.py:644",
+   "tests/test_save_receipt.py:652",
+   "tests/test_save_receipt.py:661"
   ]
  },
  "core_wait_imports": [],
@@ -350,7 +350,7 @@
    "call": "ingest_document",
    "file": "tests/test_ingest_document.py",
    "function": "test_ingest_document_rows",
-   "line": 86,
+   "line": 85,
    "memory_like": true,
    "receiver": "client"
   },
@@ -358,7 +358,7 @@
    "call": "ingest_document",
    "file": "tests/test_ingest_document.py",
    "function": "test_ingest_document_rows",
-   "line": 100,
+   "line": 99,
    "memory_like": true,
    "receiver": "client"
   },
@@ -366,7 +366,7 @@
    "call": "ingest_document",
    "file": "tests/test_ingest_document.py",
    "function": "test_ingest_document_rows",
-   "line": 103,
+   "line": 102,
    "memory_like": true,
    "receiver": "client"
   },
@@ -406,7 +406,7 @@
    "call": "add",
    "file": "tests/test_save_receipt.py",
    "function": "test_add_returns_the_receipt_and_sends_one_minted_key",
-   "line": 258,
+   "line": 253,
    "memory_like": true,
    "receiver": "client"
   },
@@ -414,7 +414,7 @@
    "call": "add",
    "file": "tests/test_save_receipt.py",
    "function": "test_a_future_major_through_add_raises_the_typed_error_with_the_handle",
-   "line": 275,
+   "line": 270,
    "memory_like": true,
    "receiver": "client"
   },
@@ -422,6 +422,14 @@
    "call": "add",
    "file": "tests/test_save_receipt.py",
    "function": "test_an_empty_save_answer_is_a_typed_error_not_a_receipt",
+   "line": 277,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "ingest",
+   "file": "tests/test_save_receipt.py",
+   "function": "test_ingest_with_wait_extracted_replaces_ingest_full",
    "line": 282,
    "memory_like": true,
    "receiver": "client"
@@ -429,32 +437,8 @@
   {
    "call": "ingest",
    "file": "tests/test_save_receipt.py",
-   "function": "test_ingest_wait_refuses_hosted_2_0_0_before_sending",
-   "line": 289,
-   "memory_like": true,
-   "receiver": "client"
-  },
-  {
-   "call": "ingest_conversation",
-   "file": "tests/test_save_receipt.py",
-   "function": "test_ingest_conversation_receipt_and_typed_errors",
-   "line": 306,
-   "memory_like": true,
-   "receiver": "client"
-  },
-  {
-   "call": "ingest_conversation",
-   "file": "tests/test_save_receipt.py",
-   "function": "test_ingest_conversation_receipt_and_typed_errors",
-   "line": 312,
-   "memory_like": true,
-   "receiver": "client"
-  },
-  {
-   "call": "ingest_conversation",
-   "file": "tests/test_save_receipt.py",
-   "function": "test_ingest_conversation_refuses_a_legacy_body",
-   "line": 325,
+   "function": "test_ingest_omits_wait_when_unset_and_refuses_an_unknown_wait_before_sending",
+   "line": 295,
    "memory_like": true,
    "receiver": "client"
   },
@@ -462,15 +446,7 @@
    "call": "ingest",
    "file": "tests/test_save_receipt.py",
    "function": "test_ingest_omits_wait_when_unset_and_refuses_an_unknown_wait_before_sending",
-   "line": 333,
-   "memory_like": true,
-   "receiver": "client"
-  },
-  {
-   "call": "ingest",
-   "file": "tests/test_save_receipt.py",
-   "function": "test_ingest_omits_wait_when_unset_and_refuses_an_unknown_wait_before_sending",
-   "line": 336,
+   "line": 298,
    "memory_like": true,
    "receiver": "client"
   },
@@ -478,7 +454,7 @@
    "call": "ingest",
    "file": "tests/test_save_receipt.py",
    "function": "test_three_transport_losses_then_success_is_four_identical_requests",
-   "line": 350,
+   "line": 312,
    "memory_like": true,
    "receiver": "client"
   },
@@ -486,7 +462,7 @@
    "call": "ingest",
    "file": "tests/test_save_receipt.py",
    "function": "test_a_fake_that_always_fails_gets_exactly_four_attempts_then_the_typed_error_with_the_key",
-   "line": 369,
+   "line": 331,
    "memory_like": true,
    "receiver": "client"
   },
@@ -494,7 +470,7 @@
    "call": "ingest",
    "file": "tests/test_save_receipt.py",
    "function": "test_statuses_outside_the_retry_list_are_one_request_and_never_a_new_key",
-   "line": 380,
+   "line": 342,
    "memory_like": true,
    "receiver": "client"
   },
@@ -502,7 +478,7 @@
    "call": "ingest",
    "file": "tests/test_save_receipt.py",
    "function": "test_a_retry_after_is_a_minimum_delay_and_one_that_cannot_fit_stops_the_retries",
-   "line": 390,
+   "line": 352,
    "memory_like": true,
    "receiver": "client"
   },
@@ -510,7 +486,7 @@
    "call": "ingest",
    "file": "tests/test_save_receipt.py",
    "function": "test_a_retry_after_is_a_minimum_delay_and_one_that_cannot_fit_stops_the_retries",
-   "line": 394,
+   "line": 356,
    "memory_like": true,
    "receiver": "client"
   },
@@ -518,7 +494,7 @@
    "call": "ingest",
    "file": "tests/test_save_receipt.py",
    "function": "test_a_raw_connection_error_is_transport_loss_and_comes_back_typed",
-   "line": 412,
+   "line": 374,
    "memory_like": true,
    "receiver": "client"
   },
@@ -526,7 +502,7 @@
    "call": "add",
    "file": "tests/test_save_receipt.py",
    "function": "test_a_status_less_error_with_no_transport_cause_is_not_retried",
-   "line": 423,
+   "line": 385,
    "memory_like": true,
    "receiver": "client"
   },
@@ -534,7 +510,7 @@
    "call": "add",
    "file": "tests/test_save_receipt.py",
    "function": "test_a_caller_key_is_kept_and_a_malformed_key_is_refused_before_any_request",
-   "line": 431,
+   "line": 393,
    "memory_like": true,
    "receiver": "client"
   },
@@ -542,7 +518,7 @@
    "call": "add",
    "file": "tests/test_save_receipt.py",
    "function": "test_a_caller_key_is_kept_and_a_malformed_key_is_refused_before_any_request",
-   "line": 435,
+   "line": 397,
    "memory_like": true,
    "receiver": "client"
   },
@@ -550,7 +526,7 @@
    "call": "add",
    "file": "tests/test_save_receipt.py",
    "function": "test_a_409_on_a_save_is_the_typed_scoped_conflict_with_one_request",
-   "line": 474,
+   "line": 436,
    "memory_like": true,
    "receiver": "client"
   },
@@ -558,7 +534,7 @@
    "call": "add",
    "file": "tests/test_url_contracts.py",
    "function": "test_public_api_method_urls",
-   "line": 273,
+   "line": 271,
    "memory_like": true,
    "receiver": "client"
   },
@@ -566,7 +542,7 @@
    "call": "code_index",
    "file": "tests/test_url_contracts.py",
    "function": "test_public_api_method_urls",
-   "line": 273,
+   "line": 271,
    "memory_like": true,
    "receiver": "client"
   },
@@ -574,7 +550,7 @@
    "call": "ingest",
    "file": "tests/test_url_contracts.py",
    "function": "test_public_api_method_urls",
-   "line": 273,
+   "line": 271,
    "memory_like": true,
    "receiver": "client"
   },
@@ -582,7 +558,7 @@
    "call": "ingest_conversation",
    "file": "tests/test_url_contracts.py",
    "function": "test_public_api_method_urls",
-   "line": 273,
+   "line": 271,
    "memory_like": true,
    "receiver": "client"
   },
@@ -590,7 +566,7 @@
    "call": "code_index",
    "file": "tests/test_url_contracts.py",
    "function": "test_code_index_sends_exact_service_body",
-   "line": 301,
+   "line": 299,
    "memory_like": true,
    "receiver": "client"
   },
@@ -598,7 +574,15 @@
    "call": "code_index",
    "file": "tests/test_url_contracts.py",
    "function": "test_code_index_defaults_and_validates_before_request",
-   "line": 323,
+   "line": 321,
+   "memory_like": true,
+   "receiver": "client"
+  },
+  {
+   "call": "code_index",
+   "file": "tests/test_url_contracts.py",
+   "function": "test_code_index_defaults_and_validates_before_request",
+   "line": 332,
    "memory_like": true,
    "receiver": "client"
   },
@@ -613,16 +597,8 @@
   {
    "call": "code_index",
    "file": "tests/test_url_contracts.py",
-   "function": "test_code_index_defaults_and_validates_before_request",
-   "line": 336,
-   "memory_like": true,
-   "receiver": "client"
-  },
-  {
-   "call": "code_index",
-   "file": "tests/test_url_contracts.py",
    "function": "test_code_index_sends_repo_identity_only_when_given",
-   "line": 504,
+   "line": 502,
    "memory_like": true,
    "receiver": "client"
   }
@@ -1375,15 +1351,15 @@
    "reads_after_save": false,
    "saves": [
     [
-     86,
+     85,
      "ingest_document"
     ],
     [
-     100,
+     99,
      "ingest_document"
     ],
     [
-     103,
+     102,
      "ingest_document"
     ]
    ],
@@ -1467,12 +1443,12 @@
    "file": "tests/test_save_receipt.py",
    "function": "test_a_409_on_a_save_is_the_typed_scoped_conflict_with_one_request",
    "key": "tests/test_save_receipt.py::test_a_409_on_a_save_is_the_typed_scoped_conflict_with_one_request",
-   "line": 462,
+   "line": 424,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     474,
+     436,
      "add"
     ]
    ],
@@ -1488,16 +1464,16 @@
    "file": "tests/test_save_receipt.py",
    "function": "test_a_caller_key_is_kept_and_a_malformed_key_is_refused_before_any_request",
    "key": "tests/test_save_receipt.py::test_a_caller_key_is_kept_and_a_malformed_key_is_refused_before_any_request",
-   "line": 427,
+   "line": 389,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     431,
+     393,
      "add"
     ],
     [
-     435,
+     397,
      "add"
     ]
    ],
@@ -1513,12 +1489,12 @@
    "file": "tests/test_save_receipt.py",
    "function": "test_a_fake_that_always_fails_gets_exactly_four_attempts_then_the_typed_error_with_the_key",
    "key": "tests/test_save_receipt.py::test_a_fake_that_always_fails_gets_exactly_four_attempts_then_the_typed_error_with_the_key",
-   "line": 362,
+   "line": 324,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     369,
+     331,
      "ingest"
     ]
    ],
@@ -1534,12 +1510,12 @@
    "file": "tests/test_save_receipt.py",
    "function": "test_a_future_major_through_add_raises_the_typed_error_with_the_handle",
    "key": "tests/test_save_receipt.py::test_a_future_major_through_add_raises_the_typed_error_with_the_handle",
-   "line": 270,
+   "line": 265,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     275,
+     270,
      "add"
     ]
    ],
@@ -1555,12 +1531,12 @@
    "file": "tests/test_save_receipt.py",
    "function": "test_a_raw_connection_error_is_transport_loss_and_comes_back_typed",
    "key": "tests/test_save_receipt.py::test_a_raw_connection_error_is_transport_loss_and_comes_back_typed",
-   "line": 402,
+   "line": 364,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     412,
+     374,
      "ingest"
     ]
    ],
@@ -1576,16 +1552,16 @@
    "file": "tests/test_save_receipt.py",
    "function": "test_a_retry_after_is_a_minimum_delay_and_one_that_cannot_fit_stops_the_retries",
    "key": "tests/test_save_receipt.py::test_a_retry_after_is_a_minimum_delay_and_one_that_cannot_fit_stops_the_retries",
-   "line": 386,
+   "line": 348,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     390,
+     352,
      "ingest"
     ],
     [
-     394,
+     356,
      "ingest"
     ]
    ],
@@ -1601,12 +1577,12 @@
    "file": "tests/test_save_receipt.py",
    "function": "test_a_status_less_error_with_no_transport_cause_is_not_retried",
    "key": "tests/test_save_receipt.py::test_a_status_less_error_with_no_transport_cause_is_not_retried",
-   "line": 416,
+   "line": 378,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     423,
+     385,
      "add"
     ]
    ],
@@ -1622,12 +1598,12 @@
    "file": "tests/test_save_receipt.py",
    "function": "test_add_returns_the_receipt_and_sends_one_minted_key",
    "key": "tests/test_save_receipt.py::test_add_returns_the_receipt_and_sends_one_minted_key",
-   "line": 256,
+   "line": 251,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     258,
+     253,
      "add"
     ]
    ],
@@ -1643,59 +1619,13 @@
    "file": "tests/test_save_receipt.py",
    "function": "test_an_empty_save_answer_is_a_typed_error_not_a_receipt",
    "key": "tests/test_save_receipt.py::test_an_empty_save_answer_is_a_typed_error_not_a_receipt",
-   "line": 279,
+   "line": 274,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     282,
+     277,
      "add"
-    ]
-   ],
-   "via": [
-    "direct"
-   ]
-  },
-  {
-   "disposition": {
-    "class": "mocked_seam",
-    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
-   },
-   "file": "tests/test_save_receipt.py",
-   "function": "test_ingest_conversation_receipt_and_typed_errors",
-   "key": "tests/test_save_receipt.py::test_ingest_conversation_receipt_and_typed_errors",
-   "line": 295,
-   "reads": [],
-   "reads_after_save": false,
-   "saves": [
-    [
-     306,
-     "ingest_conversation"
-    ],
-    [
-     312,
-     "ingest_conversation"
-    ]
-   ],
-   "via": [
-    "direct"
-   ]
-  },
-  {
-   "disposition": {
-    "class": "mocked_seam",
-    "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
-   },
-   "file": "tests/test_save_receipt.py",
-   "function": "test_ingest_conversation_refuses_a_legacy_body",
-   "key": "tests/test_save_receipt.py::test_ingest_conversation_refuses_a_legacy_body",
-   "line": 322,
-   "reads": [],
-   "reads_after_save": false,
-   "saves": [
-    [
-     325,
-     "ingest_conversation"
     ]
    ],
    "via": [
@@ -1710,16 +1640,16 @@
    "file": "tests/test_save_receipt.py",
    "function": "test_ingest_omits_wait_when_unset_and_refuses_an_unknown_wait_before_sending",
    "key": "tests/test_save_receipt.py::test_ingest_omits_wait_when_unset_and_refuses_an_unknown_wait_before_sending",
-   "line": 329,
+   "line": 291,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     333,
+     295,
      "ingest"
     ],
     [
-     336,
+     298,
      "ingest"
     ]
    ],
@@ -1733,14 +1663,14 @@
     "why": "the HTTP transport or the client call is mocked: no service and no worker, so there is nothing to wait for"
    },
    "file": "tests/test_save_receipt.py",
-   "function": "test_ingest_wait_refuses_hosted_2_0_0_before_sending",
-   "key": "tests/test_save_receipt.py::test_ingest_wait_refuses_hosted_2_0_0_before_sending",
-   "line": 286,
+   "function": "test_ingest_with_wait_extracted_replaces_ingest_full",
+   "key": "tests/test_save_receipt.py::test_ingest_with_wait_extracted_replaces_ingest_full",
+   "line": 280,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     289,
+     282,
      "ingest"
     ]
    ],
@@ -1756,12 +1686,12 @@
    "file": "tests/test_save_receipt.py",
    "function": "test_statuses_outside_the_retry_list_are_one_request_and_never_a_new_key",
    "key": "tests/test_save_receipt.py::test_statuses_outside_the_retry_list_are_one_request_and_never_a_new_key",
-   "line": 374,
+   "line": 336,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     380,
+     342,
      "ingest"
     ]
    ],
@@ -1777,12 +1707,12 @@
    "file": "tests/test_save_receipt.py",
    "function": "test_three_transport_losses_then_success_is_four_identical_requests",
    "key": "tests/test_save_receipt.py::test_three_transport_losses_then_success_is_four_identical_requests",
-   "line": 346,
+   "line": 308,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     350,
+     312,
      "ingest"
     ]
    ],
@@ -1798,20 +1728,20 @@
    "file": "tests/test_url_contracts.py",
    "function": "test_code_index_defaults_and_validates_before_request",
    "key": "tests/test_url_contracts.py::test_code_index_defaults_and_validates_before_request",
-   "line": 321,
+   "line": 319,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     323,
+     321,
+     "code_index"
+    ],
+    [
+     332,
      "code_index"
     ],
     [
      334,
-     "code_index"
-    ],
-    [
-     336,
      "code_index"
     ]
    ],
@@ -1827,12 +1757,12 @@
    "file": "tests/test_url_contracts.py",
    "function": "test_code_index_sends_exact_service_body",
    "key": "tests/test_url_contracts.py::test_code_index_sends_exact_service_body",
-   "line": 280,
+   "line": 278,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     301,
+     299,
      "code_index"
     ]
    ],
@@ -1848,12 +1778,12 @@
    "file": "tests/test_url_contracts.py",
    "function": "test_code_index_sends_repo_identity_only_when_given",
    "key": "tests/test_url_contracts.py::test_code_index_sends_repo_identity_only_when_given",
-   "line": 502,
+   "line": 500,
    "reads": [],
    "reads_after_save": false,
    "saves": [
     [
-     504,
+     502,
      "code_index"
     ]
    ],
@@ -1872,94 +1802,94 @@
    "line": 258,
    "reads": [
     [
-     273,
+     271,
      "get"
     ],
     [
-     273,
+     271,
      "get_causal_chain"
     ],
     [
-     273,
+     271,
      "get_decision"
     ],
     [
-     273,
+     271,
      "get_evidence"
     ],
     [
-     273,
+     271,
      "get_lineage"
     ],
     [
-     273,
+     271,
      "get_links"
     ],
     [
-     273,
+     271,
      "get_neighbors"
     ],
     [
-     273,
+     271,
      "get_plan"
     ],
     [
-     273,
+     271,
      "get_provenance_chain"
     ],
     [
-     273,
+     271,
      "get_reasoning_trace"
     ],
     [
-     273,
+     271,
      "get_working_context"
     ],
     [
-     273,
+     271,
      "list_decisions"
     ],
     [
-     273,
+     271,
      "list_memories"
     ],
     [
-     273,
+     271,
      "list_pending_decisions"
     ],
     [
-     273,
+     271,
      "query_reasoning"
     ],
     [
-     273,
+     271,
      "search"
     ],
     [
-     273,
+     271,
      "search_advanced"
     ],
     [
-     273,
+     271,
      "search_by_metadata"
     ]
    ],
    "reads_after_save": true,
    "saves": [
     [
-     273,
+     271,
      "add"
     ],
     [
-     273,
+     271,
      "code_index"
     ],
     [
-     273,
+     271,
      "ingest"
     ],
     [
-     273,
+     271,
      "ingest_conversation"
     ]
    ],

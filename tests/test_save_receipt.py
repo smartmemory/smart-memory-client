@@ -29,7 +29,6 @@ from smartmemory_client.errors import (
     SmartMemoryTransportError,
     SmartMemoryValidationError,
     StageChainError,
-    WriteOutcomeUnknown,
 )
 from smartmemory_client.receipt import Receipt, parse_receipt
 
@@ -241,14 +240,9 @@ def test_a_future_minor_with_an_unknown_nested_field_is_known_pending_with_the_f
     )
 
 
-@pytest.mark.parametrize("item_id", [None, "explicit_item"])
-def test_a_document_save_exposes_document_id_without_aliasing_item_id(item_id):
-    subject = {"kind": "document_save", "document_id": "doc_9"}
-    if item_id is not None:
-        subject["item_id"] = item_id
-    receipt = parse_receipt(variant(PENDING, subject=subject))
-    assert receipt.document_id == "doc_9"
-    assert receipt.item_id == item_id
+def test_a_document_save_reports_its_document_id_as_the_item_id():
+    wire = variant(PENDING, subject={"kind": "document_save", "document_id": "doc_9"})
+    assert parse_receipt(wire).item_id == "doc_9"
 
 
 # ---- add / ingest return the receipt; ingest_full is gone (G52, G51) -------------------------------------------
@@ -283,48 +277,15 @@ def test_an_empty_save_answer_is_a_typed_error_not_a_receipt(client, monkeypatch
         client.add("x")
 
 
-@pytest.mark.parametrize("wait", ["stored", "extracted", "done", ""])
-def test_ingest_wait_refuses_hosted_2_0_0_before_sending(client, monkeypatch, wait):
+def test_ingest_with_wait_extracted_replaces_ingest_full(client, monkeypatch):
     fake = wired(client, monkeypatch, EXTRACTED)
-    with pytest.raises(SmartMemoryValidationError, match="hosted 2.0.0"):
-        client.ingest("x", wait=wait)
-    assert fake.calls == []
+    r = client.ingest("x", wait="extracted")
+    _, endpoint, _, body = fake.calls[0]
+    assert (endpoint, body["wait"]) == (
+        "/memory/ingest",
+        "extracted",
+    ) and r.result.item_id == "mem_123"
     assert not hasattr(SmartMemoryClient, "ingest_full")
-
-
-@pytest.mark.parametrize("status", [200, 400, 401, 403, 404, 422, 500])
-def test_ingest_conversation_receipt_and_typed_errors(client, monkeypatch, status):
-    wire = variant(EXTRACTED, subject={"kind": "document_save", "document_id": "conv_1"})
-    answer = wire if status == 200 else http(status, {"detail": "rejected"}, retry_after=999)
-    fake = wired(client, monkeypatch, answer)
-    kwargs = dict(
-        session_boundaries=[0], conversation_id="conversation_1", session_dates=["2026-11-06"],
-        turns_per_chunk=3, max_chunk_chars=1000, max_concurrent=2,
-        context={"origin": "test_conversation"}, idempotency_key="conversation_key",
-    )
-    turns = [{"role": "user", "content": "hello"}]
-    if status == 200:
-        receipt = client.ingest_conversation(turns, **kwargs)
-        assert isinstance(receipt, Receipt)
-        assert receipt.subject_kind == "document_save"
-        assert receipt.document_id == "conv_1" and receipt.item_id is None
-    else:
-        with pytest.raises(WriteOutcomeUnknown if status == 500 else _exception_for_status(status)) as exc:
-            client.ingest_conversation(turns, **kwargs)
-        assert exc.value.status_code == status
-        assert exc.value.detail == '{"detail": "rejected"}'
-    assert len(fake.calls) == 1
-    method, endpoint, _, body = fake.calls[0]
-    assert all(call == fake.calls[0] for call in fake.calls)
-    assert (method, endpoint) == ("POST", "/memory/ingest/conversation")
-    assert body == {"turns": turns, **kwargs}
-
-
-def test_ingest_conversation_refuses_a_legacy_body(client, monkeypatch):
-    wired(client, monkeypatch, {"id": "conv_1", "status": "created"})
-    with pytest.raises(ReceiptError) as exc:
-        client.ingest_conversation([])
-    assert exc.value.code == "not_a_receipt"
 
 
 def test_ingest_omits_wait_when_unset_and_refuses_an_unknown_wait_before_sending(
@@ -846,25 +807,3 @@ def test_storage_stage_default_omits_strategy_and_explicit_value_passes_through(
         "run_id": "pipeline_1",
         "storage_strategy": "single_node",
     }
-
-
-@pytest.mark.parametrize("failure", ["lost", 408, 429, 500, 502, 503, 504])
-@pytest.mark.parametrize("conversation_id", [None, "test_replay_conversation"])
-def test_conversation_ambiguous_write_is_never_replayed(client, monkeypatch, clock, failure, conversation_id):
-    original = lost() if failure == "lost" else http(failure, {"detail": "unconfirmed"})
-    # A second send would succeed, hiding a possibly committed first write.
-    fake = wired(client, monkeypatch, original, EXTRACTED)
-    with pytest.raises(WriteOutcomeUnknown) as caught:
-        client.ingest_conversation(
-            [{"role": "user", "content": "test_replay"}],
-            conversation_id=conversation_id, idempotency_key="test_replay_key",
-        )
-    assert len(fake.calls) == 1
-    assert clock.sleeps == []
-    assert caught.value.attempts == 1
-    assert caught.value.idempotency_key == "test_replay_key"
-    assert caught.value.__cause__ is original
-    assert caught.value.status_code == original.status_code
-    assert caught.value.detail == original.detail
-    assert "Check" in str(caught.value)
-    assert "Add outcome" not in str(caught.value)

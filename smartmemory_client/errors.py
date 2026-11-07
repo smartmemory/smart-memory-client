@@ -81,7 +81,7 @@ class SmartMemoryTransportError(SmartMemoryClientError):
 
 
 class WriteOutcomeUnknown(SmartMemoryClientError):
-    """A write may have committed. Check search/list before deliberately retrying."""
+    """An add may have committed. Check search/list before deliberately retrying."""
 
     code = "write_outcome_unknown"
 
