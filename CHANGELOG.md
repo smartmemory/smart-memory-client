@@ -1,3 +1,7 @@
+## Unreleased - SDK-2.0-STAGE-STORAGE-STRATEGY-FU-1 (2026-11-08)
+
+- `run_storage_stage(storage_strategy=...)` is typed `Optional[StorageStrategy]` (`Literal["dual_node", "single_node", "memory_only"]`, exported from `smartmemory_client.client`). The service answers any other value with a 422 naming them.
+
 ## Unreleased - D-0139 on-top merge resolution
 
 - Preserve complete SDK files while combining non-admitted-route guards with safe retry and scope binding.
