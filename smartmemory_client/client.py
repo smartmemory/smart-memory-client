@@ -114,7 +114,9 @@ def _body_error_code(detail: str) -> str | None:
     return inner if isinstance(inner, str) and inner else None
 
 
-def _exception_for_status(status: int, detail: str = "") -> type[SmartMemoryClientError]:
+def _exception_for_status(
+    status: int, detail: str = ""
+) -> type[SmartMemoryClientError]:
     """Map an HTTP status code to the most specific SDK exception class."""
     if status == 409:
         try:

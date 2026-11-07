@@ -1,3 +1,7 @@
+## Unreleased - RECALL-CONFLICT-FLAG-1 D-0139 repair
+
+- Format the restored client conflict adapter without changing the typed 409 mapping or fail_if_conflicted payload.
+
 # Changelog
 
 ## Unreleased - RECALL-CONFLICT-FLAG-1 continuation
