@@ -80,6 +80,12 @@ class SmartMemoryTransportError(SmartMemoryClientError):
     """
 
 
+class SubmitScopeChangedError(SmartMemoryClientError):
+    """A save retry was refused because its workspace, credential or destination changed."""
+
+    code = "submit_scope_changed"
+
+
 class WriteOutcomeUnknown(SmartMemoryClientError):
     """An add may have committed. Check search/list before deliberately retrying."""
 

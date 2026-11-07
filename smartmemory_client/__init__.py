@@ -44,7 +44,7 @@ from smartmemory_client.client import (
     SmartMemorySubstrateError,
     SmartMemoryUnsupportedError,
 )
-from smartmemory_client.errors import WriteOutcomeUnknown
+from smartmemory_client.errors import SubmitScopeChangedError, WriteOutcomeUnknown
 from smartmemory_client.models import (
     ConversationContextModel,
     MemoryItem,
@@ -74,6 +74,7 @@ except ImportError:
 
 __all__ = [
     "WriteOutcomeUnknown",
+    "SubmitScopeChangedError",
     "RemoteCallTiming",
     "SmartMemoryClient",
     "SmartMemoryClientError",

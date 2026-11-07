@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- SDKJS-2.0-STAGE-RETRY-NO-REPLAY-1 fix R1: capture save workspace, credential and base URL before sending. Refuse changed-scope retries with exported SubmitScopeChangedError, retaining the original key and transport attempt count across add, ingest and document saves.
+
 - SDKJS-2.0-STAGE-RETRY-NO-REPLAY-1: save submissions retry only 429 and concrete httpx connect errors or connect timeouts. Post-send failures, 408 and 5xx surface once with the key and attempt count. Hosted 2.0.0 does not guarantee key replay. Status polling retains its policy.
 - CLIENT-2.0-ACCEPT-TEST-DRIFT-1: align HTTP integration assertions with 2.0 item-save receipts and typed missing-item errors. Classify workspace restore as lifecycle administration, follow delegated save methods, name newer test dispositions and regenerate the save/read fixture without weakening the census rule.
 - SM-SCOPED-VALIDITY-1 U09: add optional business_scope and valid_at to search and decision reads, plus scope_go_lives and global valid_from on replacement methods. Decision creation carries schedules. New options omit None, encode GET scope once and serialize datetimes in UTC. Preserve positional arguments, existing ASOF behavior and typed server errors without write retries. Adds request mapping tests and real local HTTP golden flows.

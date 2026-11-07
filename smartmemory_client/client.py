@@ -56,6 +56,7 @@ from smartmemory_client.errors import (  # noqa: F401  (re-exported: the classes
     SmartMemoryTransportError,
     SmartMemoryValidationError,
     StageChainError,
+    SubmitScopeChangedError,
 )
 
 logger = logging.getLogger(__name__)
@@ -869,7 +870,8 @@ class SmartMemoryClient:
 
         One key (the caller's, or a freshly minted ``sm2_`` UUID v4) rides in the body of every attempt, and the
         body is built once, so a retry is byte-identical. A 409 becomes the typed ``SaveConflictError``.
-        Only 429 or a proven connect failure may retry. No hosted replay guarantee is assumed.
+        Only 429 or a proven connect failure may retry. A changed workspace, credential or base URL
+        refuses the retry with ``SubmitScopeChangedError``. No hosted replay guarantee is assumed.
         Ambiguous add failures raise ``WriteOutcomeUnknown`` so the caller can check existing records.
         """
         key = (
@@ -878,11 +880,21 @@ class SmartMemoryClient:
             else _transport.mint_key()
         )
         sent = {**body, "idempotency_key": key}
+        scope = (self.base_url, self.workspace_id, self.api_key)
+
+        def check_scope() -> None:
+            if (self.base_url, self.workspace_id, self.api_key) != scope:
+                raise SubmitScopeChangedError(
+                    "Save retry refused: workspace, credential or base URL changed. "
+                    "Restore the original scope and check the outcome before retrying."
+                )
+
         try:
             wire = _transport.submit_with_retry(
-                lambda: self._request("POST", endpoint, json_body=sent),
+                lambda: self._request("POST", endpoint, json_body=sent, _submission_scope=scope),
                 key=key,
                 deadline_s=self.save_retry_deadline_s,
+                before_retry=check_scope,
                 retry_safe=endpoint != "/memory/add",
             )
         except SmartMemoryClientError as exc:
@@ -6381,15 +6393,21 @@ class SmartMemoryClient:
         headers: Optional[Dict[str, str]] = None,
         files: Optional[Dict[str, Any]] = None,
         return_response: bool = False,
+        _submission_scope: Optional[tuple[str, str, Optional[str]]] = None,
     ) -> Any:
         """Internal helper for making HTTP requests."""
-        url = f"{self.base_url}{endpoint}"
-        req_headers = {"X-Workspace-Id": self.workspace_id}
+        # Save attempts use the captured identity even if the client changes during request construction.
+        base_url, workspace_id, credential = (
+            _submission_scope if _submission_scope is not None
+            else (self.base_url, self.workspace_id, self.api_key)
+        )
+        url = f"{base_url}{endpoint}"
+        req_headers = {"X-Workspace-Id": workspace_id}
         if headers:
             req_headers.update(headers)
 
-        if self.api_key:
-            req_headers["Authorization"] = f"Bearer {self.api_key}"
+        if credential:
+            req_headers["Authorization"] = f"Bearer {credential}"
 
         try:
             request_kwargs: Dict[str, Any] = {

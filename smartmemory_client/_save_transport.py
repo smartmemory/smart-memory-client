@@ -127,6 +127,7 @@ def submit_with_retry(
     key: Optional[str],
     retry_safe: bool = True,
     deadline_s: float = AWAIT_TIMEOUT_S,
+    before_retry: Optional[Callable[[], None]] = None,
     monotonic: Optional[Callable[[], float]] = None,
     sleep: Optional[Callable[[float], None]] = None,
     rng: Optional[Callable[[float, float], float]] = None,
@@ -145,6 +146,12 @@ def submit_with_retry(
     )
     started = monotonic()
     for attempt in range(1, MAX_ATTEMPTS + 1):
+        if attempt > 1 and before_retry is not None:
+            try:
+                before_retry()
+            except SmartMemoryClientError as exc:
+                # The refused retry never reached the transport. Count only sends already attempted.
+                raise _annotate(exc, key, attempt - 1)
         try:
             return call()
         except Exception as exc:  # noqa: BLE001 - classified below, re-raised typed
