@@ -101,6 +101,16 @@ def is_retryable(exc: BaseException) -> bool:
     )
 
 
+def is_safe_write_retry(exc: BaseException) -> bool:
+    """Only a 429 refusal or a proven connect-phase failure may repeat an unreplayed write."""
+    if isinstance(exc, SmartMemoryClientError) and exc.status_code == 429:
+        return True
+    # _request wraps httpx failures, retaining the concrete transport failure as its cause.
+    # Read/write/pool timeouts and generic connection loss do not prove nothing was committed.
+    transport = exc.__cause__ if isinstance(exc, SmartMemoryClientError) else exc
+    return isinstance(transport, (httpx.ConnectError, httpx.ConnectTimeout))
+
+
 def _annotate(exc: BaseException, key: Optional[str], attempts: int) -> BaseException:
     if not isinstance(exc, SmartMemoryClientError):
         wrapped = SmartMemoryTransportError(f"Request failed: {exc}")
@@ -121,14 +131,12 @@ def submit_with_retry(
     sleep: Optional[Callable[[float], None]] = None,
     rng: Optional[Callable[[float, float], float]] = None,
 ) -> Any:
-    """Run one logical save with the ST14 policy: same key and same bytes on every attempt.
+    """Retry a write only after 429 or a proven connect-phase failure, keeping body and key.
 
-    ``retry_safe=False`` makes one attempt and raises ``WriteOutcomeUnknown`` on a retryable failure.
-    Use it for routes such as add that do not admit retry keys.
-    ``call`` must send an identical request each time. A failure that is not retryable (400, 401, 403, 404,
-    409, 422, anything outside the retry list) raises at once. After the fourth failed attempt, or when a
-    ``Retry-After`` cannot fit in ``deadline_s``, the last error is raised carrying ``idempotency_key`` and
-    ``attempts`` so a later explicit retry can reuse the key.
+    Hosted 2.0.0 does not replay request keys yet (SVC-2.0-SAVE-KEY-REPLAY-1).
+    Ambiguous failures surface once with ``idempotency_key`` and ``attempts``.
+    ``retry_safe=False`` retains the add-specific ``WriteOutcomeUnknown`` on ambiguous outcomes.
+    Check existing records before retrying. Read polling retains its broader retry policy.
     """
     monotonic, sleep, rng = (
         monotonic or time.monotonic,
@@ -140,7 +148,7 @@ def submit_with_retry(
         try:
             return call()
         except Exception as exc:  # noqa: BLE001 - classified below, re-raised typed
-            if not retry_safe and is_retryable(exc):
+            if not retry_safe and is_retryable(exc) and not is_safe_write_retry(exc):
                 unknown = WriteOutcomeUnknown(
                     "Add outcome is unconfirmed. The memory may have been saved. "
                     "Check search or list before retrying to avoid a duplicate. "
@@ -149,7 +157,7 @@ def submit_with_retry(
                     detail=getattr(exc, "detail", None),
                 )
                 raise _annotate(unknown, key, attempt) from exc
-            if not is_retryable(exc) or attempt == MAX_ATTEMPTS:
+            if not is_safe_write_retry(exc) or attempt == MAX_ATTEMPTS:
                 annotated = _annotate(exc, key, attempt)
                 if annotated is exc:
                     raise

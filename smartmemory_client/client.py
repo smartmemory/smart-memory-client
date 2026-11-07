@@ -688,10 +688,10 @@ class SmartMemoryClient:
                 the service answers 400 for the combination rather than silently
                 ignoring it, because the ingestion pipeline has no per-item
                 override.
-            idempotency_key: The retry identity of this logical save. Omit it and the SDK mints one
-                (``sm2_`` plus a UUID v4). Pass the key of an earlier failed call (with the same content) to
-                retry it explicitly; the SDK itself retries transport loss and HTTP 408/429/500/502/503/504 at
-                most four attempts in total with that one key, and never retries 400/401/403/404/409/422.
+            idempotency_key: Request identity (``sm2_`` plus a UUID v4 when omitted).
+                Automatic retries only follow 429 or proven connect-phase failures, up to four attempts.
+                Hosted 2.0.0 does not replay request keys yet (SVC-2.0-SAVE-KEY-REPLAY-1).
+                Check the write outcome before an explicit retry after a lost response, 408 or 5xx.
 
         Note:
             Provenance like `retrieved_context_ids` travels in `metadata` — the
@@ -869,8 +869,8 @@ class SmartMemoryClient:
 
         One key (the caller's, or a freshly minted ``sm2_`` UUID v4) rides in the body of every attempt, and the
         body is built once, so a retry is byte-identical. A 409 becomes the typed ``SaveConflictError``.
-        The add route makes one attempt because it does not admit retry keys. Ambiguous failures
-        raise ``WriteOutcomeUnknown`` so the caller can check existing records before retrying.
+        Only 429 or a proven connect failure may retry. No hosted replay guarantee is assumed.
+        Ambiguous add failures raise ``WriteOutcomeUnknown`` so the caller can check existing records.
         """
         key = (
             _transport.validate_key(idempotency_key)
@@ -6423,7 +6423,7 @@ class SmartMemoryClient:
                 retry_after_s=_retry_after_s(getattr(e, "response", None)),
             ) from e
         except httpx.TransportError as e:
-            # No HTTP answer at all: the one non-status class the save retry policy (ST14) retries.
+            # Preserve the concrete cause so save retries can distinguish connect from post-send failures.
             raise SmartMemoryTransportError(f"Request failed: {str(e)}") from e
         except Exception as e:
             raise SmartMemoryClientError(f"Request failed: {str(e)}") from e
