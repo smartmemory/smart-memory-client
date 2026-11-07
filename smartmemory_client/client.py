@@ -56,7 +56,6 @@ from smartmemory_client.errors import (  # noqa: F401  (re-exported: the classes
     SmartMemoryTransportError,
     SmartMemoryValidationError,
     StageChainError,
-    SubmitScopeChangedError,
 )
 
 logger = logging.getLogger(__name__)
@@ -689,10 +688,10 @@ class SmartMemoryClient:
                 the service answers 400 for the combination rather than silently
                 ignoring it, because the ingestion pipeline has no per-item
                 override.
-            idempotency_key: Request identity (``sm2_`` plus a UUID v4 when omitted).
-                Automatic retries only follow 429 or proven connect-phase failures, up to four attempts.
-                Hosted 2.0.0 does not replay request keys yet (SVC-2.0-SAVE-KEY-REPLAY-1).
-                Check the write outcome before an explicit retry after a lost response, 408 or 5xx.
+            idempotency_key: The retry identity of this logical save. Omit it and the SDK mints one
+                (``sm2_`` plus a UUID v4). Pass the key of an earlier failed call (with the same content) to
+                retry it explicitly; the SDK itself retries transport loss and HTTP 408/429/500/502/503/504 at
+                most four attempts in total with that one key, and never retries 400/401/403/404/409/422.
 
         Note:
             Provenance like `retrieved_context_ids` travels in `metadata` — the
@@ -870,9 +869,8 @@ class SmartMemoryClient:
 
         One key (the caller's, or a freshly minted ``sm2_`` UUID v4) rides in the body of every attempt, and the
         body is built once, so a retry is byte-identical. A 409 becomes the typed ``SaveConflictError``.
-        Only 429 or a proven connect failure may retry. A changed workspace, credential or base URL
-        refuses the retry with ``SubmitScopeChangedError``. No hosted replay guarantee is assumed.
-        Ambiguous add failures raise ``WriteOutcomeUnknown`` so the caller can check existing records.
+        Add and conversation routes make one attempt because they do not admit retry keys. Ambiguous failures
+        raise ``WriteOutcomeUnknown`` so the caller can check existing records before retrying.
         """
         key = (
             _transport.validate_key(idempotency_key)
@@ -880,21 +878,11 @@ class SmartMemoryClient:
             else _transport.mint_key()
         )
         sent = {**body, "idempotency_key": key}
-        scope = (self.base_url, self.workspace_id, self.api_key)
-
-        def check_scope() -> None:
-            if (self.base_url, self.workspace_id, self.api_key) != scope:
-                raise SubmitScopeChangedError(
-                    "Save retry refused: workspace, credential or base URL changed. "
-                    "Restore the original scope and check the outcome before retrying."
-                )
-
         try:
             wire = _transport.submit_with_retry(
-                lambda: self._request("POST", endpoint, json_body=sent, _submission_scope=scope),
+                lambda: self._request("POST", endpoint, json_body=sent),
                 key=key,
                 deadline_s=self.save_retry_deadline_s,
-                before_retry=check_scope,
                 retry_safe=endpoint not in {"/memory/add", "/memory/ingest/conversation"},
             )
         except SmartMemoryClientError as exc:
@@ -6408,21 +6396,15 @@ class SmartMemoryClient:
         headers: Optional[Dict[str, str]] = None,
         files: Optional[Dict[str, Any]] = None,
         return_response: bool = False,
-        _submission_scope: Optional[tuple[str, str, Optional[str]]] = None,
     ) -> Any:
         """Internal helper for making HTTP requests."""
-        # Save attempts use the captured identity even if the client changes during request construction.
-        base_url, workspace_id, credential = (
-            _submission_scope if _submission_scope is not None
-            else (self.base_url, self.workspace_id, self.api_key)
-        )
-        url = f"{base_url}{endpoint}"
-        req_headers = {"X-Workspace-Id": workspace_id}
+        url = f"{self.base_url}{endpoint}"
+        req_headers = {"X-Workspace-Id": self.workspace_id}
         if headers:
             req_headers.update(headers)
 
-        if credential:
-            req_headers["Authorization"] = f"Bearer {credential}"
+        if self.api_key:
+            req_headers["Authorization"] = f"Bearer {self.api_key}"
 
         try:
             request_kwargs: Dict[str, Any] = {
@@ -6456,7 +6438,7 @@ class SmartMemoryClient:
                 retry_after_s=_retry_after_s(getattr(e, "response", None)),
             ) from e
         except httpx.TransportError as e:
-            # Preserve the concrete cause so save retries can distinguish connect from post-send failures.
+            # No HTTP answer at all: the one non-status class the save retry policy (ST14) retries.
             raise SmartMemoryTransportError(f"Request failed: {str(e)}") from e
         except Exception as e:
             raise SmartMemoryClientError(f"Request failed: {str(e)}") from e

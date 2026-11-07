@@ -20,8 +20,8 @@ class SmartMemoryClientError(Exception):
 
     Every error also carries three optional fields the save path fills in:
         retry_after_s (float | None): the server's ``Retry-After``, in seconds.
-        idempotency_key (str | None): the key of the save that failed. Hosted 2.0.0 does not
-            guarantee replay, so check the outcome before explicitly retrying.
+        idempotency_key (str | None): the key of the save that failed, so an explicit
+            later retry can send the same key and the same body.
         attempts (int | None): how many automatic attempts were made.
 
     Catching ``SmartMemoryClientError`` continues to handle every typed
@@ -76,14 +76,8 @@ class SmartMemoryServerError(SmartMemoryClientError):
 class SmartMemoryTransportError(SmartMemoryClientError):
     """Raised when the request never got an HTTP answer (connection lost, timeout).
 
-    Only a concrete connect-phase cause permits an automatic write retry.
+    This is the "transport loss" the save retry policy (ST14) retries with the same key.
     """
-
-
-class SubmitScopeChangedError(SmartMemoryClientError):
-    """A save retry was refused because its workspace, credential or destination changed."""
-
-    code = "submit_scope_changed"
 
 
 class WriteOutcomeUnknown(SmartMemoryClientError):

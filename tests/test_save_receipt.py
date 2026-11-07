@@ -341,13 +341,13 @@ def test_ingest_omits_wait_when_unset_and_refuses_an_unknown_wait_before_sending
 # ---- ST14 retry policy ------------------------------------------------------------------------------------------
 
 OTHER_STATUS_REFUSED = (400, 401, 403, 404, 422)
-RETRYABLE = (429,)
+RETRYABLE = (408, 429, 500, 502, 503, 504)
 
 
-def test_three_connect_failures_then_success_is_four_identical_requests(
+def test_three_transport_losses_then_success_is_four_identical_requests(
     client, monkeypatch, clock
 ):
-    fake = wired(client, monkeypatch, httpx.ConnectError("refused"), httpx.ConnectTimeout("connect"), httpx.ConnectError("refused"), PENDING)
+    fake = wired(client, monkeypatch, lost(), lost(), lost(), PENDING)
     assert client.ingest("x").run_id == "run_1"
     assert len(fake.calls) == 4
     keys = {c[3]["idempotency_key"] for c in fake.calls}
@@ -363,7 +363,7 @@ def test_three_connect_failures_then_success_is_four_identical_requests(
 def test_a_fake_that_always_fails_gets_exactly_four_attempts_then_the_typed_error_with_the_key(
     client, monkeypatch, clock
 ):
-    rows = [("connect", httpx.ConnectError("refused"))] + [(f"HTTP {s}", http(s)) for s in RETRYABLE]
+    rows = [("lost", lost())] + [(f"HTTP {s}", http(s)) for s in RETRYABLE]
     for name, failure in rows:
         fake = wired(client, monkeypatch, failure)
         with pytest.raises(SmartMemoryClientError) as exc:
@@ -387,7 +387,7 @@ def test_statuses_outside_the_retry_list_are_one_request_and_never_a_new_key(
 def test_a_retry_after_is_a_minimum_delay_and_one_that_cannot_fit_stops_the_retries(
     client, monkeypatch, clock
 ):
-    fake = wired(client, monkeypatch, http(429, retry_after=2.0), PENDING)
+    fake = wired(client, monkeypatch, http(503, retry_after=2.0), PENDING)
     client.ingest("x")
     assert (len(fake.calls), clock.sleeps) == (2, [2.0])
     fake = wired(client, monkeypatch, http(429, retry_after=120.0), PENDING)
@@ -411,8 +411,7 @@ def test_a_raw_connection_error_is_transport_loss_and_comes_back_typed(
         fake = wired(client, monkeypatch, failure)
         with pytest.raises(SmartMemoryTransportError) as exc:
             client.ingest("x")
-        assert len(fake.calls) == (4 if isinstance(failure, httpx.ConnectError) else 1)
-        assert isinstance(exc.value.__cause__, type(failure))
+        assert len(fake.calls) == 4 and isinstance(exc.value.__cause__, type(failure))
 
 
 def test_a_status_less_error_with_no_transport_cause_is_not_retried(
