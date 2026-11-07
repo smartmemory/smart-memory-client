@@ -1,5 +1,9 @@
 # Changelog
 
+## SVC-2.0-SAVE-KEY-REPLAY-1
+
+- Document hosted save-key replay across add, ingest, document and conversation routes, scoped conflicts, 30-day retention and current-authority checks.
+
 - SDK-2.0-RETRY-SAFETY-1: Raise WriteOutcomeUnknown after one ambiguous add attempt instead of duplicating a possibly committed write.
 All notable changes to this project will be documented in this file.
 

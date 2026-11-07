@@ -688,7 +688,12 @@ class SmartMemoryClient:
                 the service answers 400 for the combination rather than silently
                 ignoring it, because the ingestion pipeline has no per-item
                 override.
-            idempotency_key: The retry identity of this logical save. Omit it and the SDK mints one
+            idempotency_key: Hosted add, ingest, document and conversation saves replay the original
+                receipt for a same-key, same-body retry in the same tenant, workspace, user and route.
+                A changed body returns 409 idempotency_conflict. Bindings last 30 days, after which
+                retry_key_expired requires explicit new-save consent and a new key. Current authority
+                and saved-subject visibility are checked on every replay.
+                The retry identity of this logical save. Omit it and the SDK mints one
                 (``sm2_`` plus a UUID v4). Pass the key of an earlier failed call (with the same content) to
                 retry it explicitly; the SDK itself retries transport loss and HTTP 408/429/500/502/503/504 at
                 most four attempts in total with that one key, and never retries 400/401/403/404/409/422.
