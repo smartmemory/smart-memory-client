@@ -1,67 +1,69 @@
-"""SDK-2.0-RETRY-SAFETY-1: real HTTP commit followed by a lost response."""
-
+"""SDKJS-2.0-STAGE-RETRY-NO-REPLAY-1: count real client/httpx transport sends offline."""
 import json
 import socket
-import sqlite3
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 
+import httpx
 import pytest
 
 from smartmemory_client import SmartMemoryClient, SmartMemoryClientError
+from smartmemory_client import _save_transport as transport
 
 
-@pytest.mark.parametrize("failure", ["disconnect", 408, 429, 500, 502, 503, 504])
-def test_add_does_not_duplicate_an_unconfirmed_commit(tmp_path, failure):
-    db_path = tmp_path / "test_sdk_retry.sqlite"
-    with sqlite3.connect(db_path) as db:
-        db.execute("CREATE TABLE items (body TEXT)")
+@pytest.fixture(autouse=True)
+def offline(monkeypatch):
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("test_retry: network forbidden")
+    monkeypatch.setattr(socket.socket, "connect", refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse)
+    monkeypatch.setattr(transport.time, "sleep", lambda _: None)
 
-    class Handler(BaseHTTPRequestHandler):
-        def log_message(self, *_args):
-            pass
 
-        def do_POST(self):
-            body = self.rfile.read(int(self.headers["Content-Length"]))
-            with sqlite3.connect(db_path) as db:
-                db.execute("INSERT INTO items VALUES (?)", (body.decode(),))
-            if failure == "disconnect":
-                self.connection.shutdown(socket.SHUT_RDWR)
-                self.connection.close()
-            else:
-                self.send_response(failure)
-                self.end_headers()
-                self.wfile.write(b"{}")
+CALLS = [
+    ("add", lambda c: c.add("test_retry note", idempotency_key="test_retry_key")),
+    ("ingest", lambda c: c.ingest("test_retry note", idempotency_key="test_retry_key")),
+    ("document", lambda c: c.ingest_document("https://example.test/a.pdf", idempotency_key="test_retry_key")),
+]
+FIXTURE = json.loads((Path(__file__).parent / "data/save_receipt_fixtures.json").read_text())["pending_save"]
 
-    server = HTTPServer(("127.0.0.1", 19086), Handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        with SmartMemoryClient(
-            base_url="http://127.0.0.1:19086",
-            api_key="test_sdk_retry",
-            team_id="test_sdk_retry",
-        ) as client:
-            with pytest.raises(SmartMemoryClientError) as caught:
-                client.add(
-                    "test_sdk_retry note",
-                    use_pipeline=False,
-                    embed=False,
-                    idempotency_key="test_sdk_retry_key",
-                )
-        with sqlite3.connect(db_path) as db:
-            rows = db.execute("SELECT body FROM items").fetchall()
-        assert len(rows) == 1, "one logical add must commit at most once"
-        error = caught.value
-        assert type(error).__name__ == "WriteOutcomeUnknown"
-        assert error.code == "write_outcome_unknown"
-        assert error.attempts == 1
-        assert error.idempotency_key == "test_sdk_retry_key"
-        assert error.status_code == (None if failure == "disconnect" else failure)
-        assert json.loads(rows[0][0])["embed"] is False
-        assert "Check" in str(error)
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join()
-        db_path.unlink()
+
+@pytest.mark.parametrize("name,call", CALLS, ids=[r[0] for r in CALLS])
+@pytest.mark.parametrize("failure", ["read_timeout", 408, 500, 502, 503, 504])
+def test_ambiguous_write_is_never_repeated(name, call, failure):
+    committed = []
+    def send(request):
+        committed.append(request.content)
+        if failure == "read_timeout":
+            raise httpx.ReadTimeout("test_retry: committed then response dropped", request=request)
+        return httpx.Response(failure, json={}, request=request)
+    with SmartMemoryClient(base_url="https://service.test", api_key="test_retry_key") as client:
+        client._client.close()
+        client._client = httpx.Client(transport=httpx.MockTransport(send))
+        with pytest.raises(SmartMemoryClientError) as caught:
+            call(client)
+    assert len(committed) == 1
+    assert caught.value.attempts == 1
+    assert caught.value.idempotency_key == "test_retry_key"
+    assert caught.value.status_code == (None if failure == "read_timeout" else failure)
+
+
+@pytest.mark.parametrize("name,call", CALLS, ids=[r[0] for r in CALLS])
+@pytest.mark.parametrize("failure", [429, "connect_error", "connect_timeout"])
+def test_pre_send_refusal_retries_identical_bytes(name, call, failure):
+    sent = []
+    def send(request):
+        sent.append(request.content)
+        if len(sent) == 1:
+            if failure == "connect_error":
+                raise httpx.ConnectError("test_retry: refused", request=request)
+            if failure == "connect_timeout":
+                raise httpx.ConnectTimeout("test_retry: connect timeout", request=request)
+            return httpx.Response(429, json={}, request=request)
+        return httpx.Response(200, json=FIXTURE, request=request)
+    with SmartMemoryClient(base_url="https://service.test", api_key="test_retry_key") as client:
+        client._client.close()
+        client._client = httpx.Client(transport=httpx.MockTransport(send))
+        assert call(client).run_id == "run_1"
+    assert len(sent) == 2
+    assert sent[0] == sent[1]
+    assert json.loads(sent[0])["idempotency_key"] == "test_retry_key"
