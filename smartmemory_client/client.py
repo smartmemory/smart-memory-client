@@ -3216,8 +3216,8 @@ class SmartMemoryClient:
         """Declare an ontology class (CORE-MEMTYPE-DECLARE-1).
 
         ``kind="record"`` declares a concrete record type: items may then be
-        written with ``memory_type=name`` through ``add()`` and
-        ``ingest_structured()``, schema-checked against ``properties_schema``
+        written with ``memory_type=name`` through ``add()``, schema-checked
+        against ``properties_schema``
         (STRICT by default — violations are refused with a structured 400;
         ``SMARTMEMORY_STRICT_SCHEMA_VALIDATION=false`` on the server is the
         WARNING-mode kill-switch). Field names/enums are pinned by

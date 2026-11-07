@@ -3,6 +3,10 @@
 ## Unreleased - RECALL-CONFLICT-FLAG-1 continuation
 
 - Preserve recall conflict evidence and expose strict read options with typed RecallConflictError.
+## Unreleased - REL-CALLERS-SERVICE-1-FU-404-VIEWER-ROW-1 (2026-11-06)
+
+- Correct record declaration documentation to name the supported add() client method.
+
 
 - SDK-2.0-RETRY-SAFETY-1: Raise WriteOutcomeUnknown after one ambiguous add attempt instead of duplicating a possibly committed write.
 All notable changes to this project will be documented in this file.
