@@ -870,5 +870,5756 @@ class SmartMemoryClient:
 
         One key (the caller's, or a freshly minted ``sm2_`` UUID v4) rides in the body of every attempt, and the
         body is built once, so a retry is byte-identical. A 409 becomes the typed ``SaveConflictError``.
+        Only 429 or a proven connect failure may retry. A changed workspace, credential or base URL
+        refuses the retry with ``SubmitScopeChangedError``. No hosted replay guarantee is assumed.
+        Ambiguous add failures raise ``WriteOutcomeUnknown`` so the caller can check existing records.
+        """
+        key = (
+            _transport.validate_key(idempotency_key)
+            if idempotency_key is not None
+            else _transport.mint_key()
+        )
+        sent = {**body, "idempotency_key": key}
+        scope = (self.base_url, self.workspace_id, self.api_key)
+
+        def check_scope() -> None:
+            if (self.base_url, self.workspace_id, self.api_key) != scope:
+                raise SubmitScopeChangedError(
+                    "Save retry refused: workspace, credential or base URL changed. "
+                    "Restore the original scope and check the outcome before retrying."
+                )
+
+        try:
+            wire = _transport.submit_with_retry(
+                lambda: self._request("POST", endpoint, json_body=sent, _submission_scope=scope),
+                key=key,
+                deadline_s=self.save_retry_deadline_s,
                 before_retry=check_scope,
-                retry_safe=endpoint != "/memory/add",
+                retry_safe=endpoint not in {"/memory/add", "/memory/ingest/conversation"},
+            )
+        except SmartMemoryClientError as exc:
+            conflict = _transport.conflict_from(exc)
+            if conflict is None:
+                raise
+            conflict.idempotency_key, conflict.attempts = key, exc.attempts
+            raise conflict from exc
+        if not wire:
+            raise SmartMemoryClientError(
+                f"Failed to save: {endpoint} returned an empty body (key {key})"
+            )
+        return parse_receipt(wire, legacy_bridge=legacy_bridge)
+
+    def await_receipt(
+        self,
+        receipt: Receipt,
+        timeout: float = _transport.AWAIT_TIMEOUT_S,
+        *,
+        target: str = "terminal",
+    ) -> Receipt:
+        """Poll a receipt's scoped status until ``target`` (stored | extracted | terminal) or ``timeout`` seconds (G53).
+
+        Returns at once when the receipt already satisfies the target. On timeout it returns the latest
+        pending receipt with ``client_timed_out=True``; it does not raise and does not drop the handle, and a
+        timeout says nothing about the server run. Status reads that fail with transport loss, 408, 429 or 5xx
+        back off 250 ms to 5 s and try again inside the same deadline; 404 and unreadable receipts raise.
+        """
+        return _transport.await_receipt(
+            lambda path, params: self._request("GET", path, params=params),
+            receipt,
+            timeout=timeout,
+            target=target,
+        )
+
+    def explain(self, memory_id: str) -> Dict[str, Any]:
+        """
+        Get the complete audit answer for one memory (PLAT-AUDITABLE-MEMORY-1).
+
+        Returns the explain-contract dict: identity + origin tier, every
+        belief the system held over time (with chain hashes), supersession in
+        both directions, lineage roots, decision provenance, and chain
+        verification. ``chain_verified`` of ``None`` means nothing to verify
+        (legacy or unversioned) — it is NOT a tamper warning.
+
+        Args:
+            memory_id: Memory item ID.
+
+        Returns:
+            Explain response dict (see
+            docs/features/PLAT-AUDITABLE-MEMORY-1/explain-contract.json).
+
+        Raises:
+            SmartMemoryNotFoundError: 404 — no accessible item with that ID.
+        """
+        response = self._request("GET", f"/memory/{memory_id}/explain")
+        if response is None:
+            raise SmartMemoryNotFoundError(
+                f"Request failed: empty body for /memory/{memory_id}/explain",
+                status_code=204,
+            )
+        return response
+
+    def get(self, item_id: str) -> MemoryItem:
+        """
+        Retrieve a memory item by ID.
+
+        Args:
+            item_id: Memory item ID
+
+        Returns:
+            MemoryItem object.
+
+        Raises:
+            SmartMemoryNotFoundError: 404 — no item with that ID.
+            SmartMemoryPermissionError: 401/403 — caller cannot read it.
+            SmartMemoryServerError: 5xx — server failure.
+            SmartMemoryClientError: any other transport or unexpected failure.
+
+        Example:
+            ```python
+            try:
+                memory = client.get("item_123")
+                print(memory.content)
+            except SmartMemoryNotFoundError:
+                print("not found")
+            ```
+        """
+        response = self._request("GET", f"/memory/{item_id}")
+        if response is None:
+            raise SmartMemoryNotFoundError(
+                f"Request failed: empty 204 body for /memory/{item_id}",
+                status_code=204,
+            )
+        return MemoryItem.from_dict(response)
+
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        memory_type: Optional[str] = None,
+        use_ssg: Optional[bool] = None,
+        enable_hybrid: Optional[bool] = True,
+        channel_weights: Optional[Dict[str, float]] = None,
+        multi_hop: bool = False,
+        max_hops: int = 3,
+        budget_ms: int = 1500,
+        expertise: bool = False,
+        cite: bool = False,
+        include_consolidated: bool = False,
+        consolidation_first: bool = False,
+        decompose: bool = False,
+        semantic_hops: bool = False,
+        include_reference: bool = False,
+        as_of_date: Optional[Union[str, datetime]] = None,
+        as_of_strict: bool = False,
+        include_superseded: bool = False,
+        include_retracted: bool = False,
+        include_archived: bool = False,
+        exclude_speculative: bool = False,
+        since: Optional[Union[str, datetime]] = None,
+        until: Optional[Union[str, datetime]] = None,
+        hop_strategy: Optional[str] = None,
+        reranker: Optional[str] = None,
+        metadata_filter: Optional[Dict[str, Any]] = None,
+        *,
+        business_scope: Optional[Dict[str, Any]] = None,
+        valid_at: Optional[Union[str, datetime]] = None,
+    ):
+        """
+        Search for memory items using semantic matching.
+
+        ``business_scope={"site": "A"}`` selects an exact business site, with
+        sponsor fallback. ``valid_at`` selects business time independently of
+        transaction time. Unset options are omitted and datetimes use UTC.
+
+        Args:
+            query: Search query
+            hop_strategy: consensus follows entities several top results agree on; relevance
+                follows best-result entities, including one-off bridges; semantic asks an LLM.
+                None preserves the core default (consensus unless semantic hops are enabled).
+            since: Inclusive created_at lower bound; ISO-8601 or datetime (naive means UTC).
+            until: Exclusive created_at upper bound, independent of as_of_date.
+            metadata_filter: Narrow the ranked results to items whose stored properties
+                match, e.g. ``{"customer_id": "cus_8812"}`` or ``{"priority": {"gte": 2}}``
+                (operators: gte, gt, lte, lt). It can only narrow your workspace's
+                results: keys naming tenant, workspace or user scope are refused (422).
+                The filter runs on a wider candidate pool than ``top_k``; when that pool
+                still missed matches, ``last_search_coverage`` carries
+                ``metadata_filter_incomplete: True``. Not supported with ``expertise``.
+            top_k: Maximum number of results
+            memory_type: Type of memory to search (optional)
+            use_ssg: Use Similarity Graph Traversal for better multi-hop reasoning (optional)
+                    If None, uses config default. If True, uses SSG. If False, uses basic vector search.
+            enable_hybrid: Enable hybrid retrieval (vector + keyword search with RRF fusion).
+                          Default: True. False selects sequential retrieval, not vector-only.
+            channel_weights: Per-channel weight multipliers for RRF fusion (CORE-SEARCH-2a).
+                           Keys: entity-graph, ssg-traversal, semantic, regex-text, lexical,
+                           spreading-activation, facts, structural-semantic.
+                           Values: float multipliers (default varies by channel).
+            reranker: Optional reranker policy override (for example, ``"none"``).
+            expertise: When True (CORE-EXPERTISE-1 Phase 4a), returns a typed dict
+                      keyed by expertise type instead of a flat list.
+            include_consolidated: When True (CORE-CONSOLIDATE-1), include consolidated
+                      source memories (normally hidden) in results.
+            consolidation_first: When True (NEURO-1d), surface a consolidated summary above
+                      the scattered source memories it consolidates — best for synthesis
+                      queries ("what is known about X?"). Opt-in; implies include_consolidated.
+            decompose: When True, the server decomposes a compound query into sub-queries
+                      and fuses their results (SearchRequest.decompose).
+            semantic_hops: When True with multi_hop, use LLM-driven hop planning
+                      (CORE-MULTIHOP-2 / SearchRequest.semantic_hops).
+            include_reference: When True, include reference data on returned items
+                      (CORE-PROPS-1 Phase 6 / SearchRequest.include_reference).
+            include_superseded: When True (CORE-SUPERSEDE-1), include superseded items —
+                      beliefs that were replaced by a newer version.
+            include_retracted: When True (CORE-RETRACTED-RECALL-1), include retracted items —
+                      beliefs that were withdrawn outright, with no replacement. A separate
+                      knob from include_superseded, not covered by it. Both are inert when
+                      as_of_date is set, which retains those rows regardless.
+            include_archived: When True (CORE-ARCHIVED-RECALL-1), include archived items —
+                      memories the decay/prune evolvers retired, or the source an
+                      episodic→semantic promotion replaced. Third sibling of the two above:
+                      an archived item has no replacement and no version chain either, so it
+                      gets its own knob. Also inert under as_of_date. Note the default here
+                      changed behaviour rather than preserving it — until CORE-ARCHIVED-RECALL-1
+                      the server read `archived` on no search path at all, so archived items
+                      were returned ranked like live ones.
+            exclude_speculative: When True, drop origin tier-3 speculative derived items;
+                      tier 4 is never returned and legacy origin=unknown is kept.
+                      PLAT-MCP-HOSTED-1 / CORE-ORIGIN-1.
+
+        Returns:
+            By default, ``List[MemoryItem]``.
+            When ``expertise=True``, returns a ``Dict[str, List[MemoryItem]]`` keyed
+            by expertise type (``decision``, ``constraint``, ``learned``, ``opinion``,
+            ``reasoning``, ``observation``); each bucket holds up to ``top_k`` items.
+
+        Example:
+            ```python
+            # Simple search (hybrid enabled by default)
+            results = client.search("AI concepts", top_k=10)
+
+            # Search with SSG for better multi-hop reasoning
+            results = client.search("AI concepts", top_k=10, use_ssg=True)
+
+            # Sequential retrieval (disable hybrid)
+            results = client.search("AI concepts", enable_hybrid=False)
+
+            # Search specific memory type
+            results = client.search("conversation", memory_type="episodic")
+
+            # Only one end customer's memories, still ranked by relevance
+            results = client.search("billing plan", metadata_filter={"customer_id": "cus_8812"})
+
+            for item in results:
+                print(f"{item.item_id}: {item.content}")
+            ```
+
+        Note:
+            user_id is automatically determined from the JWT token.
+            No need to pass it as a parameter.
+        """
+        # since/until filter created_at in [since, until), independently of as_of_date.
+        # The FastAPI route expects a top-level SearchRequest body
+        body_dict: Dict[str, Any] = {
+            "query": query,
+            "top_k": top_k,
+            "enable_hybrid": enable_hybrid,
+        }
+        body_dict.update(
+            _scoped_options(business_scope=business_scope, valid_at=valid_at)
+        )
+        for key, value in (("since", since), ("until", until)):
+            if value is not None:
+                body_dict[key] = (
+                    value.isoformat() if isinstance(value, datetime) else value
+                )
+        if memory_type is not None:
+            body_dict["memory_type"] = memory_type
+        if use_ssg is not None:
+            body_dict["use_ssg"] = use_ssg
+        if channel_weights is not None:
+            accepted = {
+                "entity-graph",
+                "ssg-traversal",
+                "semantic",
+                "regex-text",
+                "lexical",
+                "spreading-activation",
+                "facts",
+                "structural-semantic",
+            }
+            for channel in channel_weights:
+                if channel in {"contains", "keyword-bm25"}:
+                    raise ValueError(f"Channel {channel} was removed; use lexical.")
+                if channel not in accepted:
+                    raise ValueError(
+                        f"Unknown search channel {channel!r}. Accepted: {sorted(accepted)}"
+                    )
+            body_dict["channel_weights"] = channel_weights
+        if reranker is not None:
+            body_dict["reranker"] = reranker
+        if hop_strategy is not None:
+            body_dict["hop_strategy"] = hop_strategy
+        if multi_hop:
+            body_dict["multi_hop"] = True
+            body_dict["max_hops"] = max_hops
+            body_dict["budget_ms"] = budget_ms
+        if expertise:
+            body_dict["expertise"] = True
+        if cite:
+            body_dict["cite"] = True  # RECALL-CITATIONS-1
+        if include_consolidated:
+            body_dict["include_consolidated"] = True  # CORE-CONSOLIDATE-1
+        if consolidation_first:
+            body_dict["consolidation_first"] = True  # NEURO-1d
+        if decompose:
+            body_dict["decompose"] = True
+        if semantic_hops:
+            body_dict["semantic_hops"] = True  # CORE-MULTIHOP-2
+        if include_reference:
+            body_dict["include_reference"] = True  # CORE-PROPS-1 Phase 6
+        if as_of_strict:
+            # PLAT-AUDITABLE-MEMORY-1 gap #2: refuse a partial history (422)
+            # rather than return results that could not be resolved.
+            body_dict["as_of_strict"] = True
+        if as_of_date is not None:
+            # PLAT-AUDITABLE-MEMORY-1: transaction-time travel (ISO precedent:
+            # search_during_range)
+            body_dict["as_of_date"] = (
+                as_of_date.isoformat()
+                if isinstance(as_of_date, datetime)
+                else as_of_date
+            )
+        if include_superseded:
+            body_dict["include_superseded"] = True  # PLAT-AUDITABLE-MEMORY-1
+        if include_retracted:
+            body_dict["include_retracted"] = True  # CORE-RETRACTED-RECALL-1
+        if include_archived:
+            body_dict["include_archived"] = True  # CORE-ARCHIVED-RECALL-1
+        if exclude_speculative:
+            body_dict["exclude_speculative"] = True  # PLAT-MCP-HOSTED-1 / CORE-ORIGIN-1
+        if metadata_filter is not None:
+            # DEV-ONBOARD-FU-SCOPED-SEARCH-1: the service validates the grammar and refuses scope keys.
+            if not isinstance(metadata_filter, dict):
+                raise ValueError(
+                    f"metadata_filter must be a dict, got {type(metadata_filter).__name__}"
+                )
+            if metadata_filter:
+                body_dict["metadata_filter"] = metadata_filter
+
+        # SELF-IMPROVE-6: use _request_raw to capture X-Search-Session-Id header
+        url = f"{self.base_url}/memory/search"
+        req_headers = {"X-Workspace-Id": self.workspace_id}
+        if self.api_key:
+            req_headers["Authorization"] = f"Bearer {self.api_key}"
+
+        try:
+            response = self._client.request(
+                "POST",
+                url,
+                json=body_dict,
+                headers=req_headers,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            self._last_search_session_id = response.headers.get("X-Search-Session-Id")
+            response_data = response.json()
+        except httpx.HTTPStatusError as e:
+            # Mirror _request: surface a typed subclass carrying status_code/detail
+            # so callers can branch on SmartMemoryNotFoundError/PermissionError/etc.
+            status = e.response.status_code if hasattr(e, "response") else 0
+            error_detail = e.response.text if hasattr(e, "response") else str(e)
+            if status in (400, 503):
+                try:
+                    body = e.response.json()
+                except ValueError:
+                    body = None
+                if isinstance(body, dict) and isinstance(body.get("detail"), str):
+                    error_detail = body["detail"]
+            exc_cls = _exception_for_status(status)
+            raise exc_cls(
+                error_detail,
+                status_code=status,
+                detail=error_detail,
+            ) from e
+        except Exception as e:
+            raise SmartMemoryClientError(f"Request failed: {str(e)}") from e
+
+        # CORE-RECALL-LINEAGE-1 — `/memory/search` now always returns a
+        # SearchResponse envelope: `{results, group_roots, citations?}`. Unwrap
+        # the envelope ONCE to recover the bucket/list-shaped results, and stash
+        # `group_roots` + `citations` on the client for `last_*` accessors.
+        # RECALL-CITATIONS-1: cite=True attaches `citations` as a sibling key
+        # (no longer double-wraps as it did pre-LINEAGE-1).
+        self._last_inert_parameters = {}
+        self._last_search_coverage = {}
+        self._last_citations: List[Dict[str, Any]] = []
+        self._last_group_roots: Dict[str, Dict[str, Any]] = {}
+        # PLAT-AUDITABLE-MEMORY-1 gap #2: keep the temporal verdict. Unwrapping
+        # the envelope and discarding this would throw away the only signal
+        # that an as-of answer contains present-day content.
+        self._last_as_of_diagnostics: Optional[Dict[str, Any]] = None
+        if isinstance(response_data, dict) and "results" in response_data:
+            self._last_inert_parameters = dict(
+                response_data.get("inert_parameters") or {}
+            )
+            self._last_search_coverage = dict(response_data.get("coverage") or {})
+            self._last_group_roots = dict(response_data.get("group_roots") or {})
+            self._last_as_of_diagnostics = response_data.get("as_of_diagnostics")
+            if cite:
+                self._last_citations = list(response_data.get("citations") or [])
+            response_data = response_data.get("results")
+
+        if not response_data:
+            return {} if expertise else []
+
+        # CORE-EXPERTISE-1 Phase 4a: dict-of-lists shape when expertise=True.
+        if expertise:
+            # After envelope unwrap, response_data IS the bucket map directly.
+            inner = response_data if isinstance(response_data, dict) else {}
+            buckets: Dict[str, List[MemoryItem]] = {}
+            for bucket_name, items in inner.items():
+                buckets[bucket_name] = [
+                    MemoryItem.from_dict(item)
+                    for item in items
+                    if isinstance(item, dict)
+                ]
+            return buckets
+
+        # Convert response to MemoryItem objects
+        results: List[MemoryItem] = []
+        response_list = (
+            response_data if isinstance(response_data, list) else [response_data]
+        )
+
+        for item_data in response_list:
+            if hasattr(item_data, "to_dict"):
+                item_dict = item_data.to_dict()
+            elif isinstance(item_data, dict):
+                item_dict = item_data
+            else:
+                continue
+
+            # Use factory method for consistent parsing
+            results.append(MemoryItem.from_dict(item_dict))
+
+        return results
+
+    @property
+    def last_search_session_id(self) -> Optional[str]:
+        """Return the search_session_id from the most recent search() call.
+
+        Use this with submit_result_feedback() to report which results were used.
+        """
+        return getattr(self, "_last_search_session_id", None)
+
+    @property
+    def last_citations(self) -> List[Dict[str, Any]]:
+        """Citations array from the most recent ``search(cite=True)`` call.
+
+        Each entry has shape ``{n, item_id, item_type, preview, score, footnote_marker}``
+        per the RECALL-CITATIONS-1 contract. Empty list when no citations were
+        requested or no results were returned.
+        """
+        return list(getattr(self, "_last_citations", []) or [])
+
+    @property
+    def last_inert_parameters(self) -> Dict[str, Any]:
+        """Parameters the service labelled inert on the last search."""
+        return getattr(self, "_last_inert_parameters", {})
+
+    @property
+    def last_search_coverage(self) -> Dict[str, Any]:
+        """Creation-time accuracy caveat from the last search, including empty results."""
+        return getattr(self, "_last_search_coverage", {})
+
+    @property
+    def last_as_of_diagnostics(self) -> Optional[Dict[str, Any]]:
+        """Temporal resolution summary for the last as_of_date search, or None.
+
+        PLAT-AUDITABLE-MEMORY-1 gap #2. Shape: {as_of, policy, unresolved_count,
+        unresolved_item_ids, note}. A non-zero ``unresolved_count`` means some
+        returned results carry PRESENT-DAY content and must not be read as
+        historical beliefs. Note it describes the delivered page, not
+        query-wide resolver health.
+        """
+        return getattr(self, "_last_as_of_diagnostics", None)
+
+    @property
+    def last_group_roots(self) -> Dict[str, Dict[str, Any]]:
+        """CORE-RECALL-LINEAGE-1 — `group_roots` map from the most recent
+        ``search()`` call.
+
+        Keys are lineage root item_ids that appear in some result's
+        ``lineage_roots`` but are not themselves in the result list. Each value
+        is a ``GroupRootStub`` dict: ``{item_id, accessible, content_preview?,
+        memory_type?, origin?}``. Empty dict when no out-of-result roots exist
+        (the common case for queries that match canonicals directly).
+        """
+        return dict(getattr(self, "_last_group_roots", {}) or {})
+
+    def get_working_context(
+        self,
+        session_id: str,
+        query: str,
+        k: int = 20,
+        max_tokens: Optional[int] = None,
+        strategy: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Request a surfacing response from ``POST /memory/context``.
+
+        Replacement for the legacy ``memory_recall`` surface (CORE-MEMORY-DYNAMICS-1 M1a).
+        Response shape matches ``context-api-contract.json``.
+
+        Args:
+            session_id: Session scope for anchor resolution.
+            query: Natural-language query for the surfacing turn.
+            k: Item-count cap on returned items (1-100).
+            max_tokens: Token budget cap; None disables.
+            strategy: Override surfacing strategy; None lets the router decide.
+
+        Returns:
+            Dict with ``decision_id``, ``items``, ``drift_warnings``,
+            ``strategy_used``, ``tokens_used``, ``tokens_budget``,
+            ``deprecation`` keys (see contract).
+
+        Raises:
+            SmartMemoryClientError: Server returned 4xx/5xx (including
+                ``budget_too_small``) or a transport error occurred.
+        """
+        body: Dict[str, Any] = {
+            "session_id": session_id,
+            "query": query,
+            "k": k,
+        }
+        if max_tokens is not None:
+            body["max_tokens"] = max_tokens
+        if strategy is not None:
+            body["strategy"] = strategy
+        return self._request("POST", "/memory/context", json_body=body)
+
+    def search_advanced(
+        self,
+        query: str,
+        algorithm: str = "query_traversal",
+        max_results: int = 15,
+        use_ssg: bool = True,
+    ) -> List[MemoryItem]:
+        """
+        Advanced search using Similarity Graph Traversal (SSG) algorithms.
+
+        SSG provides superior multi-hop reasoning and contextual retrieval compared to basic vector search.
+
+        Args:
+            query: Search query
+            algorithm: SSG algorithm to use:
+                      - "query_traversal": Best for general queries (100% test pass, 0.91 precision/recall)
+                      - "triangulation_fulldim": Best for high precision (highest faithfulness)
+            max_results: Maximum number of results to return
+            use_ssg: Enable SSG traversal (vs basic vector search)
+
+        Returns:
+            List of MemoryItem objects
+
+        Example:
+            ```python
+            # Best for general queries
+            results = client.search_advanced("AI concepts", algorithm="query_traversal")
+
+            # Best for high precision factual queries
+            results = client.search_advanced("specific fact", algorithm="triangulation_fulldim")
+
+            # Disable SSG (fallback to basic search)
+            results = client.search_advanced("query", use_ssg=False)
+
+            for item in results:
+                print(f"{item.item_id}: {item.content}")
+            ```
+
+        Note:
+            Based on research: github.com/glacier-creative-git/similarity-graph-traversal-semantic-rag-research
+        """
+        payload = {
+            "query": query,
+            "algorithm": algorithm,
+            "max_results": max_results,
+            "use_ssg": use_ssg,
+        }
+
+        data = self._request("POST", "/memory/search/advanced", json_body=payload)
+
+        # Parse response using factory method
+        results = []
+        for item_dict in data.get("results", []):
+            results.append(MemoryItem.from_dict(item_dict))
+
+        return results
+
+    def code_search(
+        self,
+        query: str,
+        entity_type: Optional[str] = None,
+        repo: Optional[str] = None,
+        limit: int = 20,
+        semantic: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Search for code entities (classes, functions, routes, tests).
+
+        Args:
+            query: Search string (partial name match, or natural language when semantic=True)
+            entity_type: Filter by type: module, class, function, route, test
+            repo: Filter by repository name
+            limit: Maximum results (default 20)
+            semantic: Use vector similarity instead of name substring match
+
+        Returns:
+            List of code entity dicts with item_id, name, entity_type,
+            file_path, line_number, docstring, repo, score (when semantic=True).
+
+        Example:
+            ```python
+            # Name substring search (default)
+            results = client.code_search("auth", entity_type="class")
+
+            # Semantic search — natural language
+            results = client.code_search("functions that handle payments", semantic=True)
+            ```
+        """
+        params: Dict[str, Any] = {"query": query, "limit": limit, "semantic": semantic}
+        if entity_type:
+            params["entity_type"] = entity_type
+        if repo:
+            params["repo"] = repo
+        return self._request("GET", "/memory/code/search", params=params)
+
+    def code_index(
+        self,
+        repo: str,
+        entities: list[dict],
+        relations: Optional[list[dict]] = None,
+        commit_hash: Optional[str] = None,
+        repo_identity: Optional[str] = None,
+    ) -> dict:
+        """Upload already-parsed code entities and relations for a repository.
+
+        The caller parses files locally (as the MCP and CLI do) before upload.
+        Returns the service's entity, edge and embedding counts
+        (``embeddings_generated``), commit hash, and replaced flag.
+
+        Args:
+            repo_identity: Optional checkout identity (``remote:<normalized remote>``
+                or ``path:<sha256>``, CODE-INDEXER-HARDEN-1). When sent, the service
+                refuses (HTTP 422, ``SmartMemoryValidationError``) a repo name that
+                already belongs to a different checkout instead of overwriting it.
+        """
+        if not isinstance(repo, str) or not repo.strip():
+            raise ValueError("repo must be a non-empty string")
+        if not isinstance(entities, list):
+            raise ValueError("entities must be a list")
+        body: Dict[str, Any] = {
+            "repo": repo,
+            "entities": entities,
+            "relations": relations if relations is not None else [],
+            "commit_hash": commit_hash,
+        }
+        if repo_identity is not None:
+            body["repo_identity"] = repo_identity
+        return self._request("POST", "/memory/code/index", json_body=body)
+
+    @staticmethod
+    def _code_root_params(
+        entity_name: str,
+        repo: Optional[str],
+        file_path: Optional[str],
+        item_id: Optional[str],
+    ) -> Dict[str, Any]:
+        params: Dict[str, Any] = {"entity_name": entity_name}
+        if repo:
+            params["repo"] = repo
+        if file_path:
+            params["file_path"] = file_path
+        if item_id:
+            params["item_id"] = item_id
+        return params
+
+    def code_context(
+        self,
+        entity_name: str,
+        repo: Optional[str] = None,
+        file_path: Optional[str] = None,
+        item_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Get rich context for a code entity.
+
+        ``entity_name`` matches a stored name or qualified name exactly or as a
+        dotted suffix (``run`` finds ``Svc.run``). When several entities match,
+        the service answers 409 and this raises ``SmartMemoryValidationError``
+        whose ``detail`` (JSON text) holds ``detail.candidates``; pass
+        ``file_path`` or ``item_id`` from a candidate to choose one.
+        """
+        params = self._code_root_params(entity_name, repo, file_path, item_id)
+        return self._request("GET", "/memory/code/context", params=params)
+
+    def code_dead_code(
+        self,
+        repo: str,
+        include_exported: bool = False,
+        production_only: bool = False,
+    ) -> Dict[str, Any]:
+        """Find unreferenced code entities in a repository.
+
+        Args:
+            repo: Repository to scan.
+            include_exported: Also report exported functions with no counted caller
+                (CODE-INDEXER-HARDEN-1 U6, opt-in).
+            production_only: Count only callers in non-test files as liveness
+                (CODE-INDEXER-HARDEN-1 U6, opt-in).
+
+        The flags are independent: include_exported reports exported functions with no counted caller, and
+        test callers count unless production_only is on, so an exported function used only by tests is
+        reported only when BOTH flags are on.
+
+        Options are sent only when set, so a default call is unchanged. The response
+        echoes the effective options under ``options``.
+        """
+        params: Dict[str, Any] = {"repo": repo}
+        if include_exported:
+            params["include_exported"] = "true"
+        if production_only:
+            params["production_only"] = "true"
+        return self._request("GET", "/memory/code/dead-code", params=params)
+
+    def code_dependencies(
+        self,
+        entity_name: str,
+        direction: str = "both",
+        repo: Optional[str] = None,
+        file_path: Optional[str] = None,
+        item_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Trace dependencies for a code entity.
+
+        Name matching and the 409 ambiguity response are the same as
+        :meth:`code_context`; ``file_path`` / ``item_id`` choose one candidate.
+        """
+        params = self._code_root_params(entity_name, repo, file_path, item_id)
+        params["direction"] = direction
+        return self._request("GET", "/memory/code/dependencies", params=params)
+
+    def get_plan(self, plan_id: str) -> Dict[str, Any]:
+        """Get a plan container with all its tasks."""
+        return self._request("GET", f"/memory/plans/{plan_id}")
+
+    def update_plan_task(
+        self, plan_id: str, task_id: str, status: str
+    ) -> Dict[str, Any]:
+        """Update a task's status within a plan.
+
+        Args:
+            status: One of "pending", "in_progress", "complete", "blocked".
+        """
+        return self._request(
+            "PATCH",
+            f"/memory/plans/{plan_id}/task",
+            json_body={"task_id": task_id, "status": status},
+        )
+
+    def complete_plan(self, plan_id: str, graduate: bool = False) -> Dict[str, Any]:
+        """Mark a plan as completed. If graduate=True, also create a decision record."""
+        return self._request(
+            "POST",
+            f"/memory/plans/{plan_id}/complete",
+            json_body={"graduate": graduate},
+        )
+
+    def fail_plan(self, plan_id: str, reason: str) -> Dict[str, Any]:
+        """Mark a plan as failed."""
+        return self._request(
+            "POST", f"/memory/plans/{plan_id}/fail", json_body={"reason": reason}
+        )
+
+    def update(
+        self,
+        item_id: str,
+        content: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        properties: Optional[Dict[str, Any]] = None,
+        write_mode: Optional[str] = None,
+        expected_revision: Optional[Union[int, str]] = None,
+    ) -> Optional[Receipt]:
+        """
+        Update a memory item (CORE-CRUD-UPDATE-1 contract).
+
+        Args:
+            item_id: Memory item ID
+            content: Convenience — folded into properties["content"]
+            metadata: Convenience — deep-merged with existing metadata
+            properties: Advanced — direct node-property dict. Takes precedence
+                over content/metadata when provided.
+            write_mode: "merge" (default) or "replace"
+            expected_revision: The item revision this edit was made against (G131). Hosted 2.0.0
+                refuses this option before writing with HTTP 422 ``expected_revision_unsupported``
+                until hosted CAS is available. A server supporting CAS can answer 409 on a stale revision.
+
+        Returns:
+            The edit :class:`Receipt` when the service admitted the edit as a run, else ``None``. A call that
+            sent ``expected_revision`` and got no receipt back logs one WARNING: the precondition may not have
+            been enforced.
+
+        Raises:
+            RevisionConflictError: 409 with ``expected_revision`` and ``current_revision`` (a
+                ``SaveConflictError``, so also ``SmartMemoryValidationError``).
+            SmartMemoryNotFoundError: 404 — no item with that ID.
+            SmartMemoryPermissionError: 401/403 — caller cannot modify it.
+            SmartMemoryValidationError: 400/422 — body rejected.
+            SmartMemoryServerError: 5xx — server failure.
+            SmartMemoryClientError: any other transport or unexpected failure.
+
+        Examples:
+            ```python
+            client.update("item_123", content="Updated content")
+            client.update("item_123", metadata={"updated": True})
+            client.update("item_123",
+                          properties={"importance_score": 0.9, "tags": ["v2"]})
+            client.update("item_123",
+                          properties={"content": "fresh"},
+                          write_mode="replace")
+            ```
+        """
+        body: Dict[str, Any] = {}
+        if content is not None:
+            body["content"] = content
+        if metadata is not None:
+            body["metadata"] = metadata
+        if properties is not None:
+            body["properties"] = properties
+        if write_mode is not None:
+            body["write_mode"] = write_mode
+        if expected_revision is not None:
+            body["expected_revision"] = expected_revision
+
+        try:
+            result = self._request("PATCH", f"/memory/{item_id}", json_body=body)
+        except SmartMemoryClientError as exc:
+            conflict = _transport.conflict_from(exc)
+            if conflict is None:
+                raise
+            raise conflict from exc
+        if isinstance(result, dict) and "schema_version" in result:
+            return parse_receipt(result)
+        if expected_revision is not None:
+            logger.warning(
+                "update(%s) sent expected_revision=%r but the service returned no edit receipt; "
+                "the revision precondition may not have been enforced",
+                item_id,
+                expected_revision,
+            )
+        return None
+
+    def supersede(
+        self,
+        item_id: str,
+        *,
+        content: str,
+        memory_type: str,
+        reason: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        valid_from: Optional[Union[str, datetime]] = None,
+        scope_go_lives: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Append a replacement while retaining the prior item's history.
+
+        ``scope_go_lives`` schedules site activation without globally closing the
+        predecessor. ``valid_from`` sets global validity and cannot accompany a
+        schedule. Unset options are omitted. Datetimes are serialized in UTC.
+        """
+        return self._request(
+            "POST",
+            f"/memory/{item_id}/supersede",
+            json_body={
+                "content": content,
+                "memory_type": memory_type,
+                "metadata": metadata or {},
+                "reason": reason,
+                **_scoped_options(valid_from=valid_from, scope_go_lives=scope_go_lives),
+            },
+        )
+
+    def supersede_link(
+        self,
+        item_id: str,
+        new_item_id: str,
+        reason: Optional[str] = None,
+        *,
+        valid_from: Optional[Union[str, datetime]] = None,
+        scope_go_lives: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Link two ALREADY-STORED items as a supersession (SVC-SUPERSEDE-LINK-1).
+
+        Use this when both records exist. Use :meth:`supersede` instead when the
+        replacement still has to be created from content.
+
+        An unscoped write stamps the OLD record with ``superseded``, ``superseded_by`` and
+        ``superseded_at``. Detect supersession by reading those off a recalled
+        record — the newer record carries no marker, so never scan for inbound
+        links.
+
+        ``scope_go_lives`` carries a schedule of ``{scope, valid_from}`` entries.
+        Site-only activation keeps the predecessor available to other sites.
+        Datetimes use UTC. Unset options are omitted and invalid schedules retain
+        the service's typed validation errors.
+
+        Args:
+            item_id: The OLD item (the one being superseded).
+            new_item_id: The NEW item; must already exist and be in scope.
+            reason: Optional human-readable reason.
+
+        Returns:
+            ``{"status", "old_item_id", "new_item_id", "superseded_at", ...}``
+
+        Raises:
+            SmartMemoryValidationError: 400 when ``new_item_id == item_id``;
+                409 when the store declined the supersession.
+            SmartMemoryNotFoundError: 404 when either item is missing *or* out of
+                scope — the two are deliberately indistinguishable, so a caller
+                cannot probe for items in other workspaces.
+        """
+        return self._request(
+            "POST",
+            f"/memory/{item_id}/supersede-link",
+            json_body={
+                "new_item_id": new_item_id,
+                "reason": reason,
+                **_scoped_options(valid_from=valid_from, scope_go_lives=scope_go_lives),
+            },
+        )
+
+    def delete(self, item_id: str) -> None:
+        """
+        Delete a memory item.
+
+        Args:
+            item_id: Memory item ID
+
+        Raises:
+            SmartMemoryNotFoundError: 404 — no item with that ID.
+            SmartMemoryPermissionError: 401/403 — caller cannot delete it.
+            SmartMemoryServerError: 5xx — server failure.
+            SmartMemoryClientError: any other transport or unexpected failure.
+
+        Example:
+            ```python
+            client.delete("item_123")
+            ```
+        """
+        self._request("DELETE", f"/memory/{item_id}")
+
+    def ingest(
+        self,
+        content: str,
+        extractor_name: str = "llm",
+        context: Optional[Dict[str, Any]] = None,
+        wait: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> Receipt:
+        """
+        Ingest content with full extraction and enrichment pipeline.
+
+        Args:
+            content: Content to ingest
+            extractor_name: Name of the extractor to use (default: "llm")
+            context: Additional context information
+            wait: Unsupported on hosted 2.0.0. Any non-None value raises
+                ``SmartMemoryValidationError`` before sending until SVC-INGEST-WAIT-STATUS-1
+                provides hosted wait/status support. Omit this option to submit ingestion.
+            idempotency_key: See :meth:`add`.
+
+        Returns:
+            A :class:`Receipt` (2.0.0: no longer a result dict). ``receipt.item_id`` is the saved item.
+            WS-ROUTING-2 servers also put ``workspace_id``, ``workspace_name``, ``routed_by`` and
+            ``notices`` in ``receipt.raw`` (``SmartMemoryClient.routing_echo(receipt)``).
+
+        Raises:
+            SmartMemoryValidationError: A wait option was supplied, or the service rejected the input.
+
+        Example:
+            ```python
+            # Ingest conversation
+            receipt = client.ingest(
+                content="User: Hello\nAssistant: Hi there!",
+                extractor_name="llm",
+                context={"conversation_id": "123", "timestamp": "2025-11-07"}
+            )
+
+            print(f"Ingested: {receipt.item_id}")
+            ```
+
+        Note:
+            user_id is automatically determined from the JWT token.
+        """
+        if wait is not None:
+            raise SmartMemoryValidationError(
+                "ingest(wait=...) is unsupported on hosted 2.0.0 until "
+                "SVC-INGEST-WAIT-STATUS-1 provides wait/status support"
+            )
+        body_dict: Dict[str, Any] = {
+            "content": content,
+            "extractor_name": extractor_name,
+            "context": context or {},
+        }
+        return self._save("/memory/ingest", body_dict, idempotency_key=idempotency_key)
+
+    def ingest_document(
+        self,
+        source: str,
+        source_type: Optional[str] = None,
+        chunk_size: Optional[int] = None,
+        chunk_strategy: Optional[str] = None,
+        reference: Optional[bool] = None,
+        context: Optional[Dict[str, Any]] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> Receipt:
+        """
+        Ingest a document from a public HTTP(S) URL (``POST /memory/ingest/document``).
+
+        The service fetches the URL; it does not accept document text or a title on this route.
+
+        Args:
+            source: Public ``http://`` or ``https://`` document URL.
+            source_type: Hosted 2.0.0 supports ``html`` or ``auto`` for HTML URLs.
+                Other explicit types are refused with HTTP 422 before fetching.
+            chunk_size: Maximum characters per chunk (100-50000).
+            chunk_strategy: ``paragraph`` | ``sentence`` | ``markdown`` | ``recursive``.
+            reference: Mark nodes as reference material.
+            context: Ingestion context.
+            idempotency_key: See :meth:`add`.
+
+        Returns:
+            A :class:`Receipt` with ``subject.kind`` ``document_save`` and the document handle
+            in ``receipt.document_id``. ``receipt.item_id`` is absent unless supplied by the subject.
+            Decoded strictly: a body without ``schema_version`` (a 1.x body) raises ``ReceiptError``, there
+            is no legacy bridge on this method.
+
+        Raises:
+            ValueError: ``source`` is not an ``http://`` or ``https://`` URL (nothing is sent).
+            SmartMemoryValidationError: 4xx from the route (for example 422 for a non-public address).
+
+        Example:
+            ```python
+            receipt = client.ingest_document("https://example.com/article.html", source_type="html")
+            print(receipt.document_id)
+            ```
+        """
+        if not isinstance(source, str) or not source.lower().startswith(
+            ("http://", "https://")
+        ):
+            raise ValueError(
+                "ingest_document source must be an http:// or https:// URL string"
+            )
+        body_dict: Dict[str, Any] = {"source": source}
+        if source_type is not None:
+            body_dict["source_type"] = source_type
+        if chunk_size is not None:
+            body_dict["chunk_size"] = chunk_size
+        if chunk_strategy is not None:
+            body_dict["chunk_strategy"] = chunk_strategy
+        if reference is not None:
+            body_dict["reference"] = reference
+        if context is not None:
+            body_dict["context"] = context
+        return self._save(
+            "/memory/ingest/document",
+            body_dict,
+            idempotency_key=idempotency_key,
+            legacy_bridge=False,
+        )
+
+    def ingest_conversation(
+        self,
+        turns: List[Dict[str, str]],
+        session_boundaries: Optional[List[int]] = None,
+        conversation_id: Optional[str] = None,
+        session_dates: Optional[List[str]] = None,
+        turns_per_chunk: int = 15,
+        max_chunk_chars: int = 12000,
+        max_concurrent: int = 4,
+        context: Optional[Dict[str, Any]] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> Receipt:
+        """Ingest a conversation as session chunks through the full pipeline (RLM-1g).
+
+        Args:
+            turns: List of turn dicts with "role"/"speaker" and "content" keys.
+            session_boundaries: Turn indices where sessions start (e.g. [0, 50, 120]).
+            conversation_id: User-supplied ID (auto-generated if None).
+            session_dates: ISO date per session for metadata.
+            turns_per_chunk: Max turns per auto-chunk (default 15).
+            max_chunk_chars: Safety split for oversized chunks (default 12000).
+            max_concurrent: Semaphore limit for parallel chunk ingestion (default 4).
+            context: Ingestion context.
+            idempotency_key: See :meth:`add`.
+
+        Returns:
+            A :class:`Receipt` with ``subject.kind`` ``document_save`` and the conversation
+            container handle in ``receipt.document_id``. Hosted additive fields remain in ``receipt.raw``.
+            This replaces the pre-2.0 raw dict return.
+
+        Raises:
+            SmartMemoryValidationError: 400/422 for rejected conversation input.
+            SmartMemoryPermissionError: 401/403 for denied access.
+            SmartMemoryNotFoundError: 404 for a missing resource.
+            WriteOutcomeUnknown: Transport loss or retryable HTTP failure after one attempt.
+                Check existing records before retrying. Hosted conversation keys do not deduplicate.
+            SmartMemoryServerError: Other 5xx server failures.
+            ReceiptError: The answer is not a supported receipt.
+        """
+        body_dict: Dict[str, Any] = {"turns": turns}
+        if session_boundaries is not None:
+            body_dict["session_boundaries"] = session_boundaries
+        if conversation_id is not None:
+            body_dict["conversation_id"] = conversation_id
+        if session_dates is not None:
+            body_dict["session_dates"] = session_dates
+        if turns_per_chunk != 15:
+            body_dict["turns_per_chunk"] = turns_per_chunk
+        if max_chunk_chars != 12000:
+            body_dict["max_chunk_chars"] = max_chunk_chars
+        if max_concurrent != 4:
+            body_dict["max_concurrent"] = max_concurrent
+
+        if context is not None:
+            body_dict["context"] = context
+
+        return self._save(
+            "/memory/ingest/conversation",
+            body_dict,
+            idempotency_key=idempotency_key,
+            legacy_bridge=False,
+        )
+
+    def link(self, source_id: str, target_id: str, link_type: str = "RELATED") -> bool:
+        """
+        Create a link between two memory items.
+
+        Args:
+            source_id: Source memory item ID
+            target_id: Target memory item ID
+            link_type: Type of link (RELATED, CAUSES, FOLLOWS, etc.)
+
+        Returns:
+            True if the link was created.
+
+        Raises:
+            SmartMemoryNotFoundError: 404 — source or target item does not exist.
+            SmartMemoryPermissionError: 401/403 — caller cannot write the link.
+            SmartMemoryValidationError: 400/409/422 — invalid link request.
+            SmartMemoryServerError: 5xx — the link write failed server-side.
+            SmartMemoryClientError: any other transport or unexpected failure.
+
+        Example:
+            ```python
+            # Create relationship
+            client.link("concept_1", "concept_2", link_type="RELATED")
+            client.link("cause_id", "effect_id", link_type="CAUSES")
+            ```
+        """
+        body_dict = {
+            "source_id": source_id,
+            "target_id": target_id,
+            "link_type": link_type,
+        }
+
+        # Let _request's typed exceptions propagate (matching get/update/delete as of
+        # 0.6.0). Previously every failure — 404, auth, 5xx, network — was collapsed
+        # into a silent ``return False`` logged only at DEBUG, hiding real errors.
+        self._request("POST", "/memory/link", json_body=body_dict)
+        return True
+
+    def add_edge(
+        self,
+        source_id: str,
+        target_id: str,
+        relation_type: str,
+        properties: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Add a direct edge between two nodes in the graph.
+
+        This is a lower-level operation than link() - it creates a raw edge
+        with custom properties. Use link() for standard memory linking.
+
+        Args:
+            source_id: Source node ID
+            target_id: Target node ID
+            relation_type: Type of relation/edge
+            properties: Optional edge properties
+
+        Returns:
+            Dict with edge creation result
+
+        Example:
+            ```python
+            result = client.add_edge(
+                source_id="node_1",
+                target_id="node_2",
+                relation_type="INFLUENCES",
+                properties={"weight": 0.8, "confidence": 0.95}
+            )
+            ```
+        """
+        body = {
+            "source_id": source_id,
+            "target_id": target_id,
+            "relation_type": relation_type,
+            "properties": properties or {},
+        }
+        return self._request("POST", "/memory/edge", json_body=body)
+
+    def get_neighbors(self, item_id: str) -> List[Dict[str, Any]]:
+        """
+        Get neighboring memory items (linked items).
+
+        Args:
+            item_id: Memory item ID
+
+        Returns:
+            List of neighbor information with item and link_type
+
+        Example:
+            ```python
+            neighbors = client.get_neighbors("item_123")
+            for neighbor in neighbors:
+                print(f"{neighbor['item_id']}: {neighbor['link_type']}")
+            ```
+        """
+        result = self._request("GET", f"/memory/{item_id}/neighbors")
+        return result.get("neighbors", [])
+
+    def get_edges_bulk(
+        self, node_ids: List[str], include_properties: bool = False
+    ) -> Dict[str, Any]:
+        """Get all graph edges whose endpoints are in ``node_ids``.
+
+        Args:
+            node_ids: Node IDs to query (the service accepts up to 5,000).
+            include_properties: Whether to include each edge's properties.
+
+        Returns:
+            Dict with ``edges`` and ``count``.
+        """
+        return self._request(
+            "POST",
+            "/memory/graph/edges",
+            params={"include_properties": include_properties},
+            json_body={"node_ids": node_ids},
+        )
+
+    def bulk_graph_upsert(
+        self,
+        nodes: Optional[List[Dict[str, Any]]] = None,
+        edges: Optional[List[Dict[str, Any]]] = None,
+        delete_prefix: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Bulk upsert graph nodes and edges, optionally replacing a prefix.
+
+        Args:
+            nodes: Node dicts with ``item_id``, optional ``label``, and optional
+                ``properties``.
+            edges: Edge dicts with ``source_id``, ``target_id``, ``edge_type``,
+                and optional ``properties``.
+            delete_prefix: Delete scoped nodes with this ID prefix before writing.
+
+        Returns:
+            Dict with ``nodes_upserted``, ``edges_upserted``, and ``nodes_deleted``.
+        """
+        body: Dict[str, Any] = {"nodes": nodes or [], "edges": edges or []}
+        if delete_prefix is not None:
+            body["delete_prefix"] = delete_prefix
+        return self._request("POST", "/memory/graph/bulk", json_body=body)
+
+    def get_graph_path(
+        self, start_id: str, end_id: str, max_hops: int = 5
+    ) -> Dict[str, Any]:
+        """Find the shortest graph path between two nodes.
+
+        Args:
+            start_id: Starting node ID.
+            end_id: Destination node ID.
+            max_hops: Maximum traversal depth (1-10).
+
+        Returns:
+            Dict with ``path_found``, ``hops``, and ``path``.
+        """
+        return self._request(
+            "GET",
+            "/memory/graph/path",
+            params={"start_id": start_id, "end_id": end_id, "max_hops": max_hops},
+        )
+
+    def get_graph_full(self, limit: Optional[int] = None) -> Dict[str, Any]:
+        """Get the workspace graph nodes and edges for visualization.
+
+        Args:
+            limit: Optional node limit; the service clamps it to its safety cap.
+
+        Returns:
+            Dict with ``nodes``, ``edges``, ``node_count``, and ``edge_count``.
+        """
+        params = {"limit": limit} if limit is not None else None
+        return self._request("GET", "/memory/graph/full", params=params)
+
+    # ------------------------------------------------------------------
+    # Vector visibility (WEB-VECTOR-SEARCH-TAB-1, contract: vector-contract.json)
+    # ------------------------------------------------------------------
+
+    def _vector_request(
+        self,
+        method: str,
+        endpoint: str,
+        params: Optional[Dict[str, Any]] = None,
+        json_body: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        """``_request`` that types 501 and 503 for the vector routes.
+
+        Every other status keeps the shared mapping (404 not found, 400 validation,
+        401/403 permission, other 5xx server). 501 and 503 are re-raised as
+        subclasses of ``SmartMemoryServerError``, so ``except SmartMemoryServerError``
+        still catches them.
+        """
+        try:
+            return self._request(method, endpoint, params=params, json_body=json_body)
+        except SmartMemoryServerError as e:
+            typed = {
+                501: SmartMemoryUnsupportedError,
+                503: SmartMemorySubstrateError,
+            }.get(e.status_code or 0)
+            if typed is None or isinstance(e, typed):
+                raise
+            raise typed(str(e), status_code=e.status_code, detail=e.detail) from e
+
+    def vector_query(
+        self,
+        text: Optional[str] = None,
+        embedding: Optional[List[float]] = None,
+        top_k: int = 10,
+        memory_type: Optional[str] = None,
+        origin_prefix: Optional[str] = None,
+        collection: str = "memory",
+        include_embedding: bool = False,
+    ) -> Dict[str, Any]:
+        """Nearest-neighbour query over the vector index (read-only).
+
+        ``POST /memory/vector/query``. Pass exactly one of ``text`` (embedded
+        server-side) or ``embedding`` (a raw query vector whose length must match
+        the collection's dimension). ``top_k`` is sent as given: the server clamps
+        it to 50, it never rejects.
+
+        Args:
+            text: Query text.
+            embedding: Raw query vector.
+            top_k: Hits wanted (server max 50).
+            memory_type: Equality filter on ``hit.memory_type``.
+            origin_prefix: Prefix filter on ``hit.origin``.
+            collection: A name from ``vector_stats()["collections"]``.
+            include_embedding: Each hit carries ``embedding_preview`` (first 16
+                floats). The full vector is never returned.
+
+        Returns:
+            Dict with ``query`` (``mode``, ``dimension``, ``space``), ``hits``
+            (``item_id``, ``score`` in [0, 1] desc, ``memory_type``, ``origin``,
+            ``title``, ``snippet``, ``created_at``, ``space``, ``has_graph_node``),
+            ``truncated`` (None when the store's scope filters do not pin the
+            caller, so the figure is withheld) and ``timing_ms`` (``embed``,
+            ``search``).
+
+        Raises:
+            SmartMemoryValidationError: neither or both of text/embedding, or an
+                embedding whose dimension differs from the index (400).
+            SmartMemoryPermissionError: scope error (403).
+            SmartMemoryNotFoundError: unknown collection (404).
+            SmartMemoryUnsupportedError: backend lacks the capability (501).
+            SmartMemorySubstrateError: backend substrate error (503).
+        """
+        body: Dict[str, Any] = {
+            "top_k": top_k,
+            "collection": collection,
+            "include_embedding": include_embedding,
+        }
+        if text is not None:
+            body["text"] = text
+        if embedding is not None:
+            body["embedding"] = embedding
+        if memory_type is not None:
+            body["memory_type"] = memory_type
+        if origin_prefix is not None:
+            body["origin_prefix"] = origin_prefix
+        return self._vector_request("POST", "/memory/vector/query", json_body=body)
+
+    def vector_stats(self) -> Dict[str, Any]:
+        """Backend, embedder, per-collection counts, capabilities and warnings.
+
+        ``GET /memory/vector/stats``. ``backend`` is an opaque string. Counts are
+        in the caller's scope; ``collections[].index_count`` is present only when
+        ``single_tenant`` is true. ``collections[].count`` and ``missing_count``
+        are None when the backend cannot count or the store's scope filters do
+        not pin the caller.
+
+        Returns:
+            Dict with ``backend``, ``single_tenant``, ``capabilities``
+            (``scope_pushdown``, ``scoped_exact``, ``missing_list``), ``embedder``
+            (``model_id``, ``dimension``), ``collections``, ``scope`` and ``warnings``.
+
+        Raises:
+            SmartMemoryPermissionError: scope error (403).
+            SmartMemoryUnsupportedError: backend lacks the capability (501).
+            SmartMemorySubstrateError: backend substrate error (503).
+        """
+        return self._vector_request("GET", "/memory/vector/stats")
+
+    def vector_inspect(
+        self,
+        item_id: str,
+        top_k: int = 10,
+        collection: str = "memory",
+        include_embedding: bool = False,
+    ) -> Dict[str, Any]:
+        """One item's vector facts plus its nearest neighbours.
+
+        ``GET /memory/vector/items/{item_id}``. ``top_k`` is sent as given: the
+        server clamps it to 20.
+
+        Args:
+            item_id: Memory item id.
+            top_k: Neighbours wanted (server max 20).
+            collection: A name from ``vector_stats()["collections"]``.
+            include_embedding: ``item.vector`` and neighbours carry
+                ``embedding_preview`` (first 16 floats), never the full vector.
+
+        Returns:
+            Dict with ``item``, ``neighbours`` (the item itself excluded, score
+            desc) and ``space``.
+
+        Raises:
+            SmartMemoryNotFoundError: item not visible, unknown collection, or no
+                vector row (``detail`` contains ``no_vector`` when the memory exists
+                but has no embedding) (404).
+            SmartMemoryPermissionError: scope error (403).
+            SmartMemoryUnsupportedError: backend lacks the capability (501).
+            SmartMemorySubstrateError: backend substrate error (503).
+        """
+        return self._vector_request(
+            "GET",
+            f"/memory/vector/items/{quote(item_id, safe='')}",
+            params={
+                "top_k": top_k,
+                "collection": collection,
+                "include_embedding": include_embedding,
+            },
+        )
+
+    def vector_missing(
+        self,
+        limit: int = 50,
+        cursor: Optional[str] = None,
+        collection: str = "memory",
+    ) -> Dict[str, Any]:
+        """One page of in-scope memories that have no usable vector.
+
+        ``GET /memory/vector/missing``. ``limit`` is sent as given (server max 200)
+        and ``cursor`` is the opaque ``next_cursor`` of the previous page.
+
+        Returns:
+            Dict with ``items`` (``item_id``, ``memory_type``, ``origin``,
+            ``created_at``, ``reason``), ``next_cursor`` (None on the last page) and
+            ``total`` (None when the backend cannot count cheaply or the store's
+            scope filters do not pin the caller).
+
+        Raises:
+            SmartMemoryNotFoundError: unknown collection (404).
+            SmartMemoryPermissionError: scope error (403).
+            SmartMemoryUnsupportedError: the backend has no missing list, see
+                ``vector_stats()["capabilities"]["missing_list"]`` (501).
+            SmartMemorySubstrateError: backend substrate error (503).
+        """
+        params: Dict[str, Any] = {"limit": limit, "collection": collection}
+        if cursor is not None:
+            params["cursor"] = cursor
+        return self._vector_request("GET", "/memory/vector/missing", params=params)
+
+    def vector_projection(
+        self,
+        dims: int = 3,
+        method: str = "pca",
+        limit: Optional[int] = None,
+        collection: str = "memory",
+    ) -> Dict[str, Any]:
+        """The caller's in-scope vectors projected to 2D/3D coordinates (map view).
+
+        ``GET /memory/vector/projection``. ``limit`` is sent as given: the server
+        clamps it to 2000 and samples larger scopes deterministically.
+
+        Args:
+            dims: 2 or 3.
+            method: ``"pca"`` (default, deterministic) or ``"umap"`` where the
+                server enables it.
+            limit: Points wanted (server default and max 2000).
+            collection: A name from ``vector_stats()["collections"]``.
+
+        Returns:
+            Dict with ``points`` (``item_id``, ``coords``, ``memory_type``,
+            ``title``, ``has_graph_node``; ordered by ``item_id``), ``total``
+            (None when withheld), ``sampled`` (None when ``total`` is withheld), ``limit``, ``explained_variance``, ``space``,
+            ``warnings`` and ``cached``. Never an embedding.
+
+        Raises:
+            SmartMemoryValidationError: dims not 2/3, unknown method, bad limit (400).
+            SmartMemoryNotFoundError: unknown collection (404).
+            SmartMemoryUnsupportedError: umap not enabled, or the backend cannot
+                sample vectors (501).
+            SmartMemorySubstrateError: backend substrate error (503).
+        """
+        params: Dict[str, Any] = {
+            "dims": dims,
+            "method": method,
+            "collection": collection,
+        }
+        if limit is not None:
+            params["limit"] = limit
+        return self._vector_request("GET", "/memory/vector/projection", params=params)
+
+    def get_lineage(self, item_id: str) -> Dict[str, Any]:
+        """Get the supersession lineage chain for a memory item."""
+        return self._request("GET", f"/memory/{item_id}/lineage")
+
+    def get_links(self, item_id: str) -> Dict[str, Any]:
+        """Get all edges (links) for a memory item."""
+        return self._request("GET", f"/memory/{item_id}/links")
+
+    def list_memories(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        order: str = "asc",
+        metadata_key: Optional[str] = None,
+        metadata_value: Optional[str] = None,
+        memory_type: Optional[str] = None,
+        include_grounding: Optional[bool] = None,
+        exclude_node_category: Optional[Union[str, Sequence[str]]] = None,
+        q: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """List memory items, optionally filtered by an exact metadata match.
+
+        GRAPH-API-1l. Supersedes :meth:`search_by_metadata` for metadata lookups:
+        same filter, but with pagination and an exact ``total``.
+
+        Args:
+            limit: Maximum items in the page.
+            offset: Items to skip.
+            order: ``"asc"`` or ``"desc"`` on creation time.
+            metadata_key: Metadata key to filter on. Nested keys use dot syntax
+                (``"profile.tier"``). Must be supplied with ``metadata_value``.
+            metadata_value: Value the key must equal.
+            memory_type: Exact type filter, applied before pagination and counting.
+            include_grounding: Include grounding nodes. None inherits the workspace
+                default, then env (OFF unless configured); False is sent explicitly.
+            exclude_node_category: SVC-LIST-EXCLUDE-ENTITY-1. Stored ``node_category``
+                values to leave out (for example ``["entity"]``), sent as a repeated
+                ``exclude_node_category`` param. A bare string is one value, an empty
+                list sends nothing. Applied before pagination, so ``total`` counts the
+                filtered set.
+            q: Case-insensitive substring match over content, applied before
+                pagination.
+
+        Returns:
+            ``{"items": [...], "total": int, "limit": int, "offset": int}``, where
+            ``total`` counts the filtered set and so can drive pagination directly.
+            Also retains ``policy: {include_grounding: bool, source: str}``, the
+            resolved choice and its request/workspace/env source, and the skip
+            counts ``skipped_rows: int`` (the caller's own rows the server could
+            not read) and ``unattributable_skipped_rows: int`` (unreadable rows
+            whose owner could not be read either), both left out of ``items`` and
+            ``total`` (SVC-2.0-LIST-SKIPPED-ROWS-EXPOSE-TWIN-1). A destructive
+            caller must not treat the listing as complete while either is above 0.
+            The envelope is returned as sent: an older server omits both keys, so
+            read them with ``.get()`` and treat ``None`` as "unknown", not 0.
+
+        Raises:
+            APIError: 422 if only one half of the metadata pair is supplied, if the
+                key is not a valid identifier, if the value is empty, if more than
+                20 ``exclude_node_category`` values are sent, or if ``q`` is longer
+                than 200 characters. Over-limit input is passed through untouched so
+                the service rejects it, never truncated here.
+        """
+        params: Dict[str, Any] = {
+            "limit": limit,
+            "offset": offset,
+            "order": order,
+        }
+        # Sent only when present — the route validates them as a both-or-neither
+        # pair, so passing one as an explicit None would be a 422.
+        if metadata_key is not None:
+            params["metadata_key"] = metadata_key
+        if metadata_value is not None:
+            params["metadata_value"] = metadata_value
+        if memory_type is not None:
+            params["memory_type"] = memory_type
+        if include_grounding is not None:
+            params["include_grounding"] = include_grounding
+        if exclude_node_category is not None:
+            categories = (
+                [exclude_node_category]
+                if isinstance(exclude_node_category, str)
+                else list(exclude_node_category)
+            )
+            # httpx encodes a list value as a repeated query param.
+            if categories:
+                params["exclude_node_category"] = categories
+        if q is not None:
+            params["q"] = q
+        return self._request("GET", "/memory/list", params=params)
+
+    def search_by_metadata(
+        self,
+        metadata_key: str,
+        metadata_value: str,
+        memory_type: Optional[str] = None,
+        limit: int = 25,
+        since: Optional[Union[str, datetime]] = None,
+        until: Optional[Union[str, datetime]] = None,
+    ) -> Dict[str, Any]:
+        """Search for a memory item by exact metadata key-value match.
+
+        .. deprecated:: GRAPH-API-1l
+            Use :meth:`list_memories` with ``metadata_key`` / ``metadata_value``
+            instead — it applies the same filter but adds pagination and an exact
+            ``total``. This method still works and its behaviour is unchanged; the
+            two endpoints return slightly different item shapes, so migrate
+            deliberately rather than by find-and-replace.
+        """
+        params: Dict[str, Any] = {
+            "metadata_key": metadata_key,
+            "metadata_value": metadata_value,
+            "limit": limit,
+        }
+        for key, value in (("since", since), ("until", until)):
+            if value is not None:
+                params[key] = (
+                    value.isoformat() if isinstance(value, datetime) else value
+                )
+        if memory_type:
+            params["memory_type"] = memory_type
+        return self._request("GET", "/memory/by-metadata", params=params)
+
+    def get_recall_profile(self, agent_id: str) -> Dict[str, Any]:
+        """Get an agent's recall profile for personality-aware retrieval."""
+        return self._request("GET", f"/memory/agents/{agent_id}/recall-profile")
+
+    def set_recall_profile(
+        self, agent_id: str, recall_profile: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Set an agent's recall profile. Send {} to clear."""
+        return self._request(
+            "PUT",
+            f"/memory/agents/{agent_id}/recall-profile",
+            json_body={"recall_profile": recall_profile},
+        )
+
+    def get_evaluation(
+        self,
+        agent_id: str,
+        dimension: str,
+        domain: str,
+    ) -> Dict[str, Any]:
+        """Get the current evaluation for an agent on a given (dimension, domain) slot.
+
+        CORE-AGENT-2 S03-T10. Returns ``{evaluation: dict | null}``.
+        ``null`` means no evaluation has been written yet (cold-start) — not an error.
+
+        Args:
+            agent_id: Agent identifier.
+            dimension: Performance dimension (e.g. ``"decision_volume"``).
+            domain: Domain string (e.g. ``"python"``).
+
+        Returns:
+            Response dict with ``evaluation`` key containing the current evaluation
+            dict or ``None`` on cold-start.
+
+        Raises:
+            SmartMemoryNotFoundError: if ``agent_id`` is not found in the current tenant.
+            SmartMemoryClientError: on any other HTTP error.
+        """
+        return self._request(
+            "GET",
+            f"/memory/agents/{agent_id}/evaluation",
+            params={"dimension": dimension, "domain": domain},
+        )
+
+    def list_evaluation_history(
+        self,
+        agent_id: str,
+        dimension: str,
+        domain: str,
+        limit: int = 20,
+    ) -> Dict[str, Any]:
+        """Get evaluation history for an agent on a given (dimension, domain) slot.
+
+        CORE-AGENT-2 S03-T10. Returns ``{history: [dict, ...]}`` sorted most-recent-first.
+        No ``include_history`` flag — use this method when history is needed.
+
+        Args:
+            agent_id: Agent identifier.
+            dimension: Performance dimension.
+            domain: Domain string.
+            limit: Maximum records (default 20).
+
+        Returns:
+            Response dict with ``history`` key containing a list of evaluation dicts.
+
+        Raises:
+            SmartMemoryNotFoundError: if ``agent_id`` is not found in the current tenant.
+            SmartMemoryClientError: on any other HTTP error.
+        """
+        return self._request(
+            "GET",
+            f"/memory/agents/{agent_id}/evaluation/history",
+            params={"dimension": dimension, "domain": domain, "limit": limit},
+        )
+
+    def summary(self) -> Dict[str, Any]:
+        """Get summary statistics about the memory system."""
+        return self._request("GET", "/memory/summary")
+
+    def enrich(
+        self, item_id: str, routines: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Enrich a memory item with additional processing.
+
+        Args:
+            item_id: Memory item ID
+            routines: List of enrichment routines to run
+
+        Returns:
+            Enrichment result
+
+        Example:
+            ```python
+            result = client.enrich("item_123", routines=["sentiment", "keywords"])
+            ```
+        """
+        body = {"item_id": item_id, "routines": routines or []}
+        return self._request("POST", f"/memory/{item_id}/enrich", json_body=body)
+
+    def personalize(
+        self,
+        traits: Optional[Dict[str, Any]] = None,
+        preferences: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Request personalization for the authenticated user.
+
+        The endpoint currently returns HTTP 501 because
+        CORE-PERSONALIZATION-CONTRACT-1 is not implemented.
+
+        Args:
+            traits: User traits
+            preferences: User preferences
+
+        Returns:
+            Error response (HTTP 501)
+
+        Example:
+            ```python
+            result = client.personalize(
+                traits={"learning_style": "visual"},
+                preferences={"language": "en", "complexity": "advanced"}
+            )
+            ```
+
+        Note:
+            user_id is automatically determined from the JWT token.
+        """
+        body = {"traits": traits or {}, "preferences": preferences or {}}
+        return self._request("POST", "/memory/personalize", json_body=body)
+
+    def cluster(
+        self, distance_threshold: float = 0.1, dry_run: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Run entity clustering/deduplication for the workspace.
+
+        Args:
+            distance_threshold: Similarity threshold (0.0-1.0, default 0.1)
+            dry_run: If true, preview clusters without merging
+
+        Returns:
+            Clustering results (merged_count, clusters_found, etc.)
+        """
+        params = {"distance_threshold": distance_threshold, "dry_run": dry_run}
+        return self._request("POST", "/memory/clustering/run", params=params)
+
+    def get_clustering_stats(self) -> Dict[str, Any]:
+        """
+        Get clustering statistics for the workspace.
+
+        Returns:
+            Clustering statistics
+        """
+        return self._request("GET", "/memory/clustering/stats")
+
+    def resolve_aliases(
+        self, dry_run: bool = False, disambiguate: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Merge fragmented single-token entity aliases into their canonical.
+
+        Resolves unambiguous single-token entity surfaces (e.g. "Hudson") into
+        their multi-token canonical (e.g. "Rock Hudson") over the caller's
+        workspace graph, abstaining on collisions (>=2 candidates).
+
+        Args:
+            dry_run: If true, compute the resolve/abstain plan and report counts
+                without mutating the graph.
+            disambiguate: Opt-in (CORE-GRAPH-ALIAS-DISAMBIG-1, default False). Also
+                recover colliding surfaces by structural typed-neighbor overlap —
+                merge only on a confident, clear winner, else keep abstaining (never
+                mis-merge). Extractor-dependent; helps LLM-extracted graphs.
+
+        Returns:
+            Resolve results (resolved, abstained, redirected_edges, ambiguous,
+            disambiguated, dry_run, workspace_id, user_id).
+        """
+        params = {"dry_run": dry_run, "disambiguate": disambiguate}
+        return self._request("POST", "/memory/graph/resolve-aliases", params=params)
+
+    def dedup_entities(
+        self, dry_run: bool = False, require_structural_confirmation: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Dedup cross-extractor fragmented entity nodes (CORE-GRAPH-CANONICAL-DEDUP-1).
+
+        Collapses same-name entity-node fragments (the same entity split across >1
+        node because two extractors disagreed on its type -> divergent canonical_key
+        -> the write-time dedup missed them) into one node, precision-first, over the
+        caller's workspace graph. Unblocks ensemble alias disambiguation. Opt-in,
+        default-off. Recommended ensemble sequence: dedup_entities() then
+        resolve_aliases(disambiguate=True).
+
+        Args:
+            dry_run: If true, compute the dedup plan and report counts without
+                mutating the graph.
+            require_structural_confirmation: If true (default), a same-name pair
+                merges only on T0 (same Wikidata QID), T1 (same canonical_key), or
+                T2 (>= tau_min shared typed entity-neighbors). If false, exact
+                same-name clusters merge on name alone once T0/T1 fail (riskier
+                disjoint-edge-tail recovery).
+
+        Returns:
+            Dedup results (merged_clusters, merged_nodes, redirected_edges,
+            abstained_clusters, dry_run, workspace_id, user_id).
+        """
+        params = {
+            "dry_run": dry_run,
+            "require_structural_confirmation": require_structural_confirmation,
+        }
+        return self._request("POST", "/memory/graph/dedup-entities", params=params)
+
+    def ground(
+        self, item_id: str, source_url: str, validation: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Request grounding for a memory item.
+
+        The endpoint currently returns HTTP 501 because
+        CORE-GROUND-ROUTE-CONTRACT-1 is not implemented.
+
+        Args:
+            item_id: Memory item ID
+            source_url: URL of the source
+            validation: Optional validation data
+
+        Returns:
+            Error response (HTTP 501)
+        """
+        body = {"item_id": item_id, "source_url": source_url, "validation": validation}
+        return self._request("POST", f"/memory/{item_id}/ground", json_body=body)
+
+    def get_summarize_prompt(self, item_id: str) -> Dict[str, Any]:
+        """
+        Generate a prompt template for summarizing a memory item.
+
+        Args:
+            item_id: Memory item ID
+
+        Returns:
+            Prompt template and metadata
+        """
+        return self._request("GET", f"/memory/{item_id}/prompt/summarize")
+
+    def get_analyze_prompt(self, item_id: str) -> Dict[str, Any]:
+        """
+        Generate a prompt template for analyzing memory connections.
+
+        Args:
+            item_id: Memory item ID
+
+        Returns:
+            Prompt template and metadata
+        """
+        return self._request("GET", f"/memory/{item_id}/prompt/analyze")
+
+    # ============================================================================
+    # Admin & Monitoring
+    # ============================================================================
+
+    def orphaned_notes(self) -> Dict[str, Any]:
+        """Find orphaned notes (notes with no connections)."""
+        return self._request("GET", "/memory/admin/orphaned-notes")
+
+    def prune(
+        self, strategy: str = "old", days: int = 365, dry_run: bool = True
+    ) -> Dict[str, Any]:
+        """Prune old or unused memories."""
+        params = {"strategy": strategy, "days": days, "dry_run": dry_run}
+        return self._request("POST", "/memory/admin/prune", params=params)
+
+    def find_old_notes(self, days: int = 365) -> Dict[str, Any]:
+        """Find notes older than N days."""
+        return self._request("GET", "/memory/admin/old-notes", params={"days": days})
+
+    def self_monitor(self) -> Dict[str, Any]:
+        """Get self-monitoring metrics."""
+        return self._request("GET", "/memory/admin/self-monitor")
+
+    def get_system_stats(self) -> Dict[str, Any]:
+        """Get comprehensive system statistics."""
+        return self._request("GET", "/memory/admin/stats")
+
+    def reflect(self, top_k: int = 5) -> Dict[str, Any]:
+        """
+        Reflect on memory patterns and insights.
+
+        Analyzes memory content to identify patterns, themes,
+        and potential connections.
+
+        Args:
+            top_k: Number of top items to reflect on
+
+        Returns:
+            Dict with reflection results including themes, patterns, suggestions
+
+        Example:
+            ```python
+            reflection = client.reflect(top_k=10)
+            print(reflection["reflection"]["themes"])
+            ```
+        """
+        return self._request("GET", "/memory/admin/reflect", params={"top_k": top_k})
+
+    def summarize(self, max_items: int = 10) -> Dict[str, Any]:
+        """
+        Generate a summary of memory contents.
+
+        Creates a high-level overview of stored memories,
+        including key topics, recent additions, and knowledge distribution.
+
+        Args:
+            max_items: Maximum items to include in summary
+
+        Returns:
+            Dict with summary including topic distribution, memory type breakdown
+
+        Example:
+            ```python
+            summary = client.summarize(max_items=20)
+            print(summary["summary"]["topic_distribution"])
+            ```
+        """
+        return self._request(
+            "GET", "/memory/admin/summarize", params={"max_items": max_items}
+        )
+
+    # ============================================================================
+    # Agents
+    # ============================================================================
+
+    def create_agent(
+        self,
+        name: str,
+        description: Optional[str] = None,
+        agent_config: Optional[Dict[str, Any]] = None,
+        roles: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Create a new AI agent."""
+        body = {
+            "name": name,
+            "description": description,
+            "agent_config": agent_config or {},
+            "roles": roles or ["user"],
+        }
+        return self._request("POST", "/memory/agents", json_body=body)
+
+    def list_agents(self) -> List[Dict[str, Any]]:
+        """List all agents in the current tenant."""
+        return self._request("GET", "/memory/agents")
+
+    def get_agent(self, agent_id: str) -> Dict[str, Any]:
+        """Get details of a specific agent."""
+        return self._request("GET", f"/memory/agents/{agent_id}")
+
+    def delete_agent(self, agent_id: str) -> None:
+        """Delete (deactivate) an agent."""
+        self._request("DELETE", f"/memory/agents/{agent_id}")
+
+    # ============================================================================
+    # Analytics
+    # ============================================================================
+
+    def get_analytics_status(self) -> Dict[str, Any]:
+        """Return analytics feature status."""
+        return self._request("GET", "/memory/analytics/status")
+
+    def detect_drift(self, time_window_days: int = 30) -> Dict[str, Any]:
+        """Run concept drift detection."""
+        return self._request(
+            "GET",
+            "/memory/analytics/drift",
+            params={"time_window_days": time_window_days},
+        )
+
+    def detect_bias(
+        self,
+        protected_attributes: Optional[List[str]] = None,
+        sentiment_analysis: Optional[bool] = None,
+        topic_analysis: Optional[bool] = None,
+    ) -> Dict[str, Any]:
+        """Run bias detection."""
+        body = {
+            "protected_attributes": protected_attributes,
+            "sentiment_analysis": sentiment_analysis,
+            "topic_analysis": topic_analysis,
+        }
+        return self._request("POST", "/memory/analytics/bias", json_body=body)
+
+    # ============================================================================
+    # API Keys
+    # ============================================================================
+
+    def create_api_key(
+        self,
+        name: str,
+        scopes: Optional[List[str]] = None,
+        expires_in_days: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Create a new API key."""
+        body = {
+            "name": name,
+            "scopes": scopes or ["read:memories"],
+            "expires_in_days": expires_in_days,
+        }
+        return self._request("POST", "/memory/api-keys", json_body=body)
+
+    def list_api_keys(self) -> List[Dict[str, Any]]:
+        """List all API keys."""
+        return self._request("GET", "/memory/api-keys")
+
+    def revoke_api_key(self, key_id: str) -> None:
+        """Revoke (delete) an API key."""
+        self._request("DELETE", f"/memory/api-keys/{key_id}")
+
+    # ============================================================================
+    # Auth
+    # ============================================================================
+
+    def get_me(self) -> SessionResponse:
+        """Get current authenticated user info."""
+        return normalize_session_response(self._request("GET", "/auth/me"))
+
+    def logout_all(self) -> None:
+        """Logout from all devices."""
+        self._request("POST", "/auth/logout-all")
+        self._token = None
+        self._refresh_token = None
+        self._api_key = None
+
+    def update_llm_keys(
+        self,
+        openai_key: Optional[str] = None,
+        anthropic_key: Optional[str] = None,
+        groq_key: Optional[str] = None,
+        gemini_key: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Update user's LLM provider API keys."""
+        body = {
+            "openai_key": openai_key,
+            "anthropic_key": anthropic_key,
+            "groq_key": groq_key,
+            "gemini_key": gemini_key,
+        }
+        return self._request("PATCH", "/auth/llm-keys", json_body=body)
+
+    def get_llm_keys(self) -> Dict[str, Any]:
+        """Get user's LLM provider API keys (masked)."""
+        return self._request("GET", "/auth/llm-keys")
+
+    # ============================================================================
+    # Evolve
+    # ============================================================================
+
+    def trigger_evolution(self) -> Dict[str, Any]:
+        """Manually trigger memory evolution processes."""
+        return self._request("POST", "/memory/evolution/trigger")
+
+    def run_dream_phase(self) -> Dict[str, Any]:
+        """Run a 'dream' phase: promote working memory to episodic/procedural."""
+        return self._request("POST", "/memory/evolution/dream")
+
+    def get_evolution_status(self) -> Dict[str, Any]:
+        """Get status of memory evolution processes."""
+        return self._request("GET", "/memory/evolution/status")
+
+    # ============================================================================
+    # Governance
+    # ============================================================================
+
+    def run_governance_analysis(
+        self,
+        query: str = "*",
+        top_k: int = 100,
+        memory_items: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Run governance analysis."""
+        body = {"query": query, "top_k": top_k, "memory_items": memory_items or []}
+        return self._request("POST", "/memory/governance/run-analysis", json_body=body)
+
+    def list_violations(
+        self, severity: Optional[str] = None, auto_fixable_only: bool = False
+    ) -> Dict[str, Any]:
+        """List violations available for review."""
+        params = {"severity": severity, "auto_fixable_only": auto_fixable_only}
+        return self._request("GET", "/memory/governance/violations", params=params)
+
+    def get_violation(self, violation_id: str) -> Dict[str, Any]:
+        """Get a specific violation by ID."""
+        return self._request("GET", f"/memory/governance/violations/{violation_id}")
+
+    def apply_governance_decision(
+        self,
+        violation_id: str,
+        action: str = "approve",
+        rationale: str = "",
+        decided_by: str = "human",
+    ) -> Dict[str, Any]:
+        """Apply a governance decision for a violation."""
+        body = {
+            "violation_id": violation_id,
+            "action": action,
+            "rationale": rationale,
+            "decided_by": decided_by,
+        }
+        return self._request(
+            "POST", "/memory/governance/apply-decision", json_body=body
+        )
+
+    def auto_fix_violations(self, confidence_threshold: float = 0.8) -> Dict[str, Any]:
+        """Run auto-fix for high-confidence violations."""
+        body = {"confidence_threshold": confidence_threshold}
+        return self._request("POST", "/memory/governance/auto-fix", json_body=body)
+
+    def get_governance_summary(self) -> Dict[str, Any]:
+        """Get a summary of governance state."""
+        return self._request("GET", "/memory/governance/summary")
+
+    # ============================================================================
+    # Ontology
+    # ============================================================================
+
+    def run_inference(
+        self,
+        raw_chunks: List[Dict[str, str]],
+        registry_id: str = "default",
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Run ontology inference over provided raw text chunks."""
+        body = {
+            "registry_id": registry_id,
+            "raw_chunks": raw_chunks,
+            "params": params or {},
+        }
+        return self._request("POST", "/memory/ontology/inference/run", json_body=body)
+
+    def list_registries(self) -> Dict[str, Any]:
+        """List all ontology registries."""
+        return self._request("GET", "/memory/ontology/registries")
+
+    def create_registry(
+        self, name: str, description: str = "", domain: str = "general"
+    ) -> Dict[str, Any]:
+        """Create a new ontology registry."""
+        body = {"name": name, "description": description, "domain": domain}
+        return self._request("POST", "/memory/ontology/registries", json_body=body)
+
+    def get_registry_snapshot(
+        self, registry_id: str, version: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Get a snapshot of a registry (current or specific version)."""
+        params = {"version": version} if version else None
+        return self._request(
+            "GET", f"/memory/ontology/registry/{registry_id}/snapshot", params=params
+        )
+
+    def apply_changeset(
+        self,
+        registry_id: str,
+        changeset: Dict[str, Any],
+        base_version: str = "",
+        message: str = "",
+    ) -> Dict[str, Any]:
+        """Apply a changeset to create a new version of the registry."""
+        body = {
+            "base_version": base_version,
+            "changeset": changeset,
+            "message": message,
+        }
+        return self._request(
+            "POST", f"/memory/ontology/registry/{registry_id}/apply", json_body=body
+        )
+
+    def list_registry_snapshots(
+        self, registry_id: str, limit: int = 50
+    ) -> Dict[str, Any]:
+        """List snapshots for a registry."""
+        return self._request(
+            "GET",
+            f"/memory/ontology/registry/{registry_id}/snapshots",
+            params={"limit": limit},
+        )
+
+    def get_registry_changelog(
+        self, registry_id: str, limit: int = 50
+    ) -> Dict[str, Any]:
+        """Get change history for a registry."""
+        return self._request(
+            "GET",
+            f"/memory/ontology/registry/{registry_id}/changelog",
+            params={"limit": limit},
+        )
+
+    def rollback_registry(
+        self, registry_id: str, target_version: str = "", message: str = ""
+    ) -> Dict[str, Any]:
+        """Rollback registry to a previous version."""
+        body = {"target_version": target_version, "message": message}
+        return self._request(
+            "POST", f"/memory/ontology/registry/{registry_id}/rollback", json_body=body
+        )
+
+    def list_ontology_hitl(
+        self,
+        status: str = "open",
+        kind: Optional[str] = None,
+        limit: int = 50,
+    ) -> Dict[str, Any]:
+        """List ontology HITL queue items for the caller's workspace (ONTO-HITL-CONSUMER-1).
+
+        Args:
+            status: Filter by status (``open`` or ``resolved``).
+            kind: Optional kind filter (``missing_in_graph`` / ``missing_in_registry``
+                / ``name_conflict_unresolvable``).
+            limit: Max rows (1-500).
+
+        Returns:
+            Dict with ``items``, ``count``, ``open_count``.
+        """
+        params: Dict[str, Any] = {"status": status, "limit": limit}
+        if kind is not None:
+            params["kind"] = kind
+        return self._request("GET", "/memory/ontology/hitl", params=params)
+
+    def resolve_ontology_hitl(
+        self, item_id: str, action: str, note: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Resolve one ontology HITL queue item (ONTO-HITL-CONSUMER-1).
+
+        Args:
+            item_id: The HITL item id.
+            action: One of ``accepted`` / ``dismissed`` / ``deferred``.
+            note: Optional free-text note.
+
+        Returns:
+            Dict with the updated ``item``.
+
+        Raises:
+            SmartMemoryNotFoundError: if the id is not in the caller's workspace (404).
+            SmartMemoryValidationError: if ``action`` is invalid (422).
+        """
+        body: Dict[str, Any] = {"action": action, "note": note}
+        return self._request(
+            "POST", f"/memory/ontology/hitl/{item_id}/resolve", json_body=body
+        )
+
+    # --- ONTO-CRUD-1 read / audit / migration surface ---
+
+    def list_ontology_types(
+        self,
+        tier: Optional[str] = None,
+        layer: Optional[str] = None,
+        pack_id: Optional[str] = None,
+        has_iri: Optional[bool] = None,
+        kind: Optional[str] = None,
+        limit: int = 100,
+        cursor: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """List ontology types, keyset-paginated (ONTO-CRUD-1).
+
+        Args:
+            tier: Filter by tier (``working``/``proposed``/``confirmed``/``retired``).
+            layer: Filter by layer (``public``/``domain``/``private``).
+            pack_id: Filter by originating pack id.
+            has_iri: Only types with (or without) an IRI.
+            kind: Filter by class kind (``entity`` / ``record``,
+                CORE-MEMTYPE-DECLARE-1).
+            limit: Page size (clamped to [1, 500]).
+            cursor: Opaque keyset continuation token from a prior page.
+
+        Returns:
+            Dict with ``items`` and ``next_cursor``.
+
+        Raises:
+            SmartMemoryValidationError: if ``cursor`` is malformed (400).
+        """
+        params: Dict[str, Any] = {"limit": limit}
+        if tier is not None:
+            params["tier"] = tier
+        if layer is not None:
+            params["layer"] = layer
+        if pack_id is not None:
+            params["pack_id"] = pack_id
+        if has_iri is not None:
+            params["has_iri"] = has_iri
+        if kind is not None:
+            params["kind"] = kind
+        if cursor is not None:
+            params["cursor"] = cursor
+        return self._request("GET", "/memory/ontology/types", params=params)
+
+    def declare_type(
+        self,
+        name: str,
+        *,
+        kind: str = "entity",
+        properties_schema: Optional[Dict[str, Any]] = None,
+        required_properties: Optional[List[str]] = None,
+        storage_strategy: Optional[str] = None,
+        storage_searchable: Optional[bool] = None,
+        iri: Optional[str] = None,
+        wikidata_qid: Optional[str] = None,
+        display_name: Optional[str] = None,
+        definition: Optional[str] = None,
+        description: Optional[str] = None,
+        aliases: Optional[List[str]] = None,
+        examples: Optional[List[str]] = None,
+        parent_types: Optional[List[str]] = None,
+        tier: str = "confirmed",
+    ) -> Dict[str, Any]:
+        """Declare an ontology class (CORE-MEMTYPE-DECLARE-1).
+
+        ``kind="record"`` declares a concrete record type: items may then be
+        written with ``memory_type=name`` through ``add()``, schema-checked
+        against ``properties_schema``
+        (STRICT by default — violations are refused with a structured 400;
+        ``SMARTMEMORY_STRICT_SCHEMA_VALIDATION=false`` on the server is the
+        WARNING-mode kill-switch). Field names/enums are pinned by
+        ``memory-type-contract.json``.
+
+        Args:
+            name: Class name — for ``kind="record"`` this IS the item
+                ``memory_type``.
+            kind: ``"entity"`` (extraction vocabulary) or ``"record"``.
+            properties_schema: field name -> field spec
+                (``{type, of?, default?, indexed?, append_only?}``).
+            required_properties: Names that must be present on item writes.
+            storage_strategy: ``full`` | ``indexed`` | ``append``
+                (record classes only).
+            storage_searchable: Embedding default (record classes only).
+            tier: Governance tier; ``"working"`` routes through review.
+
+        Returns:
+            The created type projection (includes ``kind`` and storage facet).
+
+        Raises:
+            SmartMemoryValidationError: 400 (invalid schema/tier/kind/strategy)
+                or 409 (name shadows a registered memory type, or the iri/qid
+                identity slot is already bound).
+        """
+        body: Dict[str, Any] = {"name": name, "kind": kind, "tier": tier}
+        if properties_schema is not None:
+            body["properties_schema"] = properties_schema
+        if required_properties is not None:
+            body["required_properties"] = required_properties
+        if storage_strategy is not None:
+            body["storage_strategy"] = storage_strategy
+        if storage_searchable is not None:
+            body["storage_searchable"] = storage_searchable
+        if iri is not None:
+            body["iri"] = iri
+        if wikidata_qid is not None:
+            body["wikidata_qid"] = wikidata_qid
+        if display_name is not None:
+            body["display_name"] = display_name
+        if definition is not None:
+            body["definition"] = definition
+        if description is not None:
+            body["description"] = description
+        if aliases is not None:
+            body["aliases"] = aliases
+        if examples is not None:
+            body["examples"] = examples
+        if parent_types is not None:
+            body["parent_types"] = parent_types
+        return self._request("POST", "/memory/ontology/types", json_body=body)
+
+    def declare_relation(
+        self,
+        name: str,
+        *,
+        iri: Optional[str] = None,
+        wikidata_pid: Optional[str] = None,
+        display_name: Optional[str] = None,
+        definition: Optional[str] = None,
+        description: Optional[str] = None,
+        aliases: Optional[List[str]] = None,
+        examples: Optional[List[str]] = None,
+        domain: Optional[List[str]] = None,
+        range: Optional[List[str]] = None,
+        inverse_of: Optional[str] = None,
+        cardinality: Optional[str] = None,
+        temporal: Optional[bool] = None,
+        properties_schema: Optional[Dict[str, Any]] = None,
+        transitive: Optional[bool] = None,
+        symmetric: Optional[bool] = None,
+        reflexive: Optional[bool] = None,
+        parent_relations: Optional[List[str]] = None,
+        tier: str = "confirmed",
+    ) -> Dict[str, Any]:
+        """Declare an ontology relation (CORE-MEMTYPE-DECLARE-1; declare-only in P1).
+
+        Record links are relations whose ``domain``/``range`` name record
+        classes. Edge writes are not validated against domain/range/cardinality
+        yet (P3).
+
+        Returns:
+            The created relation projection.
+
+        Raises:
+            SmartMemoryValidationError: 400 on an invalid tier, 409 on an
+                identity-slot conflict.
+        """
+        body: Dict[str, Any] = {"name": name, "tier": tier}
+        optional = {
+            "iri": iri,
+            "wikidata_pid": wikidata_pid,
+            "display_name": display_name,
+            "definition": definition,
+            "description": description,
+            "aliases": aliases,
+            "examples": examples,
+            "domain": domain,
+            "range": range,
+            "inverse_of": inverse_of,
+            "cardinality": cardinality,
+            "temporal": temporal,
+            "properties_schema": properties_schema,
+            "transitive": transitive,
+            "symmetric": symmetric,
+            "reflexive": reflexive,
+            "parent_relations": parent_relations,
+        }
+        body.update({k: v for k, v in optional.items() if v is not None})
+        return self._request("POST", "/memory/ontology/relations", json_body=body)
+
+    def list_ontology_relations(
+        self,
+        tier: Optional[str] = None,
+        layer: Optional[str] = None,
+        pack_id: Optional[str] = None,
+        has_iri: Optional[bool] = None,
+        limit: int = 100,
+        cursor: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """List ontology relation types, keyset-paginated (ONTO-CRUD-1). Mirror of ``list_ontology_types``.
+
+        Args:
+            tier: Filter by tier (``working``/``proposed``/``confirmed``/``retired``).
+            layer: Filter by layer (``public``/``domain``/``private``).
+            pack_id: Filter by originating pack id.
+            has_iri: Only relations with (or without) an IRI.
+            limit: Page size (clamped to [1, 500]).
+            cursor: Opaque keyset continuation token from a prior page.
+
+        Returns:
+            Dict with ``items`` and ``next_cursor``.
+        """
+        params: Dict[str, Any] = {"limit": limit}
+        if tier is not None:
+            params["tier"] = tier
+        if layer is not None:
+            params["layer"] = layer
+        if pack_id is not None:
+            params["pack_id"] = pack_id
+        if has_iri is not None:
+            params["has_iri"] = has_iri
+        if cursor is not None:
+            params["cursor"] = cursor
+        return self._request("GET", "/memory/ontology/relations", params=params)
+
+    def get_ontology_type(self, type_id: str) -> Dict[str, Any]:
+        """Resolve a single ontology type by iri/qid/name (ONTO-CRUD-1).
+
+        Args:
+            type_id: The type identifier (iri, qid, or name).
+
+        Returns:
+            Dict projection of the ontology type.
+
+        Raises:
+            SmartMemoryNotFoundError: if the type is not found (404).
+        """
+        return self._request("GET", f"/memory/ontology/types/{type_id}")
+
+    def get_ontology_relation(self, relation_id: str) -> Dict[str, Any]:
+        """Resolve a single ontology relation type by its identity (ONTO-CRUD-1).
+
+        Args:
+            relation_id: The relation identifier (iri, pid, or name).
+
+        Returns:
+            Dict projection of the ontology relation.
+
+        Raises:
+            SmartMemoryNotFoundError: if the relation is not found (404).
+        """
+        return self._request("GET", f"/memory/ontology/relations/{relation_id}")
+
+    def list_ontology_audit(
+        self,
+        actor: Optional[str] = None,
+        action: Optional[str] = None,
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+        limit: int = 200,
+    ) -> Dict[str, Any]:
+        """Cross-entity, newest-first ontology audit feed (ONTO-CRUD-1).
+
+        Args:
+            actor: Filter by actor.
+            action: Filter by action (e.g. ``migrate``, ``retire``).
+            since: Full ISO-8601 lower bound (inclusive).
+            until: Full ISO-8601 upper bound (inclusive).
+            limit: Most-recent-N cap (clamped to [1, 1000]).
+
+        Returns:
+            Dict with ``items``.
+
+        Raises:
+            SmartMemoryValidationError: if ``since``/``until`` are malformed (400).
+        """
+        params: Dict[str, Any] = {"limit": limit}
+        if actor is not None:
+            params["actor"] = actor
+        if action is not None:
+            params["action"] = action
+        if since is not None:
+            params["since"] = since
+        if until is not None:
+            params["until"] = until
+        return self._request("GET", "/memory/ontology/audit", params=params)
+
+    def get_ontology_type_audit(self, type_id: str) -> Dict[str, Any]:
+        """Full append-only audit trail for one ontology type (oldest-first) (ONTO-CRUD-1).
+
+        Args:
+            type_id: The type identifier.
+
+        Returns:
+            Dict with ``items``.
+        """
+        return self._request("GET", f"/memory/ontology/types/{type_id}/audit")
+
+    def get_ontology_relation_audit(self, relation_id: str) -> Dict[str, Any]:
+        """Full append-only audit trail for one ontology relation (oldest-first) (ONTO-CRUD-1).
+
+        Args:
+            relation_id: The relation identifier.
+
+        Returns:
+            Dict with ``items``.
+        """
+        return self._request("GET", f"/memory/ontology/relations/{relation_id}/audit")
+
+    def get_ontology_pack_audit(
+        self, pack_id: str, pack_version: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Full append-only audit trail for a pack (oldest-first) (ONTO-CRUD-1).
+
+        Args:
+            pack_id: The pack identifier.
+            pack_version: Scope to one installed version; omit for all.
+
+        Returns:
+            Dict with ``items``.
+        """
+        params: Dict[str, Any] = {}
+        if pack_version is not None:
+            params["pack_version"] = pack_version
+        return self._request(
+            "GET", f"/memory/ontology/packs/{pack_id}/audit", params=params
+        )
+
+    def migrate_ontology_type_instances(
+        self,
+        from_id: str,
+        to_id: str,
+        reason: str,
+        batch_size: int = 500,
+        on_violation: str = "refuse",
+    ) -> Dict[str, Any]:
+        """Reclassify every instance of ``from_id`` onto ``to_id`` (ONTO-CRUD-1). Both types stay live.
+
+        Args:
+            from_id: The source type identifier.
+            to_id: The destination type identifier.
+            reason: Why the migration is being performed (audit evidence).
+            batch_size: Instance edges rewritten per chunk (clamped to [1, 10000]).
+            on_violation: Record migrations only: ``"refuse"`` (default) preflights
+                all source items; ``"skip"`` moves conforming items and reports
+                invalid item ids. Entity migrations ignore this setting.
+
+        Returns:
+            Dict with ``from_name``, ``into_name``, ``instances_migrated``, ``batches``,
+            ``notes``, ``moved_item_ids``, ``skipped_items``,
+            ``vector_metadata_updated``, ``vector_metadata_missing``,
+            ``vector_metadata_failed``, and ``searchable_mismatch_count``. The six
+            record fields are ALWAYS present — an entity migration returns them
+            empty/zero rather than omitting them, so callers never have to branch
+            on kind to read a response.
+
+        Raises:
+            SmartMemoryValidationError: on a self-migration, a mixed-kind migration,
+                or a strict-preflight schema refusal (400). A preflight refusal's
+                detail carries per-item violations under ``violations``.
+            SmartMemoryNotFoundError: if either type is not found (404).
+            SmartMemoryServerError: if the record-lifecycle backend is unavailable
+                (500) — a deployment fault, not a bad request.
+        """
+        body: Dict[str, Any] = {"reason": reason, "batch_size": batch_size}
+        # Preserve the established entity-migration request bytes; the server
+        # defaults this field to ``refuse``. Only record callers selecting the
+        # non-default behavior need it on the wire.
+        if on_violation != "refuse":
+            body["on_violation"] = on_violation
+        return self._request(
+            "POST",
+            f"/memory/ontology/types/{from_id}/migrate-to/{to_id}",
+            json_body=body,
+        )
+
+    def retire_ontology_type(self, type_id: str, reason: str) -> Dict[str, Any]:
+        """Retire an active ontology type, including a confirmed private record class.
+
+        Args:
+            type_id: The ontology type identifier.
+            reason: Audit evidence for the retirement.
+
+        Returns:
+            Dict with ``ok``.
+
+        Raises:
+            SmartMemoryNotFoundError: If the type is unresolved in the workspace (404).
+            SmartMemoryValidationError: If the request is invalid (400).
+        """
+        return self._request(
+            "POST",
+            f"/memory/ontology/types/{quote(type_id, safe='')}/retire",
+            json_body={"reason": reason},
+        )
+
+    def export_registry(
+        self,
+        registry_id: str,
+        version: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Export a registry snapshot."""
+        params = {}
+        if version:
+            params["version"] = version
+        if user_id:
+            params["user_id"] = user_id
+        return self._request(
+            "GET", f"/memory/ontology/registry/{registry_id}/export", params=params
+        )
+
+    def import_registry(
+        self, registry_id: str, data: Dict[str, Any], message: str = ""
+    ) -> Dict[str, Any]:
+        """Import data into a registry."""
+        body = {"data": data, "message": message}
+        return self._request(
+            "POST", f"/memory/ontology/registry/{registry_id}/import", json_body=body
+        )
+
+    def list_enrichment_providers(self) -> Dict[str, Any]:
+        """List available enrichment providers."""
+        return self._request("GET", "/memory/ontology/enrichment/providers")
+
+    def run_enrichment(
+        self,
+        entities: List[str],
+        provider: str = "wikipedia",
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Run enrichment operation using specified provider."""
+        body = {"provider": provider, "entities": entities, "user_id": user_id}
+        return self._request("POST", "/memory/ontology/enrichment/run", json_body=body)
+
+    def run_grounding_ontology(
+        self,
+        item_id: str,
+        candidates: List[str],
+        grounder: str = "wikipedia",
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Run grounding operation using specified grounder."""
+        body = {
+            "grounder": grounder,
+            "item_id": item_id,
+            "candidates": candidates,
+            "user_id": user_id,
+        }
+        return self._request("POST", "/memory/ontology/grounding/run", json_body=body)
+
+    # --- ONTO-HITL-CURATE-1 curation queue surface ---
+
+    def list_ontology_review_queue(
+        self,
+        tier: Optional[str] = None,
+        assignee: Optional[str] = None,
+        source: Optional[str] = None,
+        limit: int = 100,
+        cursor: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """List ontology review queue items, keyset-paginated (ONTO-HITL-CURATE-1).
+
+        Args:
+            tier: Filter by reviewable tier (``working``/``proposed``).
+            assignee: Filter by review assignee.
+            source: Filter by source string.
+            limit: Page size (clamped to [1, 500]).
+            cursor: Opaque keyset continuation token from a prior page.
+
+        Returns:
+            Dict with ``items`` and ``next_cursor``.
+
+        Raises:
+            SmartMemoryValidationError: if query parameters are invalid (400/422).
+        """
+        params: Dict[str, Any] = {"limit": limit}
+        if tier is not None:
+            params["tier"] = tier
+        if assignee is not None:
+            params["assignee"] = assignee
+        if source is not None:
+            params["source"] = source
+        if cursor is not None:
+            params["cursor"] = cursor
+        return self._request("GET", "/memory/ontology/queue", params=params)
+
+    def approve_ontology_type(
+        self, type_id: str, expected_tier: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Approve one ontology review type.
+
+        Args:
+            type_id: Private-layer ontology type name.
+            expected_tier: Optional optimistic tier precondition (``working``/``proposed``).
+
+        Returns:
+            Dict with ``ok``.
+
+        Raises:
+            SmartMemoryNotFoundError: if the type is not found or is cross-tenant (404).
+            SmartMemoryValidationError: if ``expected_tier`` mismatches current state (409).
+        """
+        body: Dict[str, Any] = {}
+        if expected_tier is not None:
+            body["expected_tier"] = expected_tier
+        encoded_type_id = quote(type_id, safe="")
+        return self._request(
+            "POST",
+            f"/memory/ontology/queue/{encoded_type_id}/approve",
+            json_body=body,
+        )
+
+    def reject_ontology_type(
+        self, type_id: str, expected_tier: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Reject one ontology review type.
+
+        Args:
+            type_id: Private-layer ontology type name.
+            expected_tier: Optional optimistic tier precondition (``working``/``proposed``).
+
+        Returns:
+            Dict with ``ok``.
+
+        Raises:
+            SmartMemoryNotFoundError: if the type is not found or is cross-tenant (404).
+            SmartMemoryValidationError: if ``expected_tier`` mismatches current state (409).
+        """
+        body: Dict[str, Any] = {}
+        if expected_tier is not None:
+            body["expected_tier"] = expected_tier
+        encoded_type_id = quote(type_id, safe="")
+        return self._request(
+            "POST",
+            f"/memory/ontology/queue/{encoded_type_id}/reject",
+            json_body=body,
+        )
+
+    def merge_ontology_review_type(
+        self, type_id: str, into_id: str, expected_tier: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Merge one ontology review type into another type.
+
+        Args:
+            type_id: Private-layer ontology type name being reviewed.
+            into_id: Destination type identifier.
+            expected_tier: Optional optimistic tier precondition (``working``/``proposed``).
+
+        Returns:
+            Dict with ``ok``.
+
+        Raises:
+            SmartMemoryValidationError: if this is a self-merge (400) or tier mismatch (409).
+            SmartMemoryNotFoundError: if either type is not found or is cross-tenant (404).
+        """
+        body: Dict[str, Any] = {"into_id": into_id}
+        if expected_tier is not None:
+            body["expected_tier"] = expected_tier
+        encoded_type_id = quote(type_id, safe="")
+        return self._request(
+            "POST",
+            f"/memory/ontology/queue/{encoded_type_id}/merge",
+            json_body=body,
+        )
+
+    def edit_promote_ontology_type(
+        self, type_id: str, edits: Dict[str, Any], expected_tier: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Edit and promote one ontology review type.
+
+        Args:
+            type_id: Private-layer ontology type name being reviewed.
+            edits: Edit payload accepted by the service.
+            expected_tier: Optional optimistic tier precondition (``working``/``proposed``).
+
+        Returns:
+            Dict with ``ok``.
+
+        Raises:
+            SmartMemoryValidationError: if edits are invalid (400) or tier mismatches (409).
+            SmartMemoryNotFoundError: if the type is not found or is cross-tenant (404).
+        """
+        body: Dict[str, Any] = {"edits": edits}
+        if expected_tier is not None:
+            body["expected_tier"] = expected_tier
+        encoded_type_id = quote(type_id, safe="")
+        return self._request(
+            "POST",
+            f"/memory/ontology/queue/{encoded_type_id}/edit-promote",
+            json_body=body,
+        )
+
+    def assign_ontology_review(
+        self, type_id: str, assignee: Optional[str]
+    ) -> Dict[str, Any]:
+        """Assign or clear the reviewer for one ontology review type.
+
+        Args:
+            type_id: Private-layer ontology type name being reviewed.
+            assignee: Reviewer identifier, or ``None`` to clear assignment.
+
+        Returns:
+            Dict with ``ok``.
+
+        Raises:
+            SmartMemoryNotFoundError: if the type is not found or is cross-tenant (404).
+        """
+        encoded_type_id = quote(type_id, safe="")
+        return self._request(
+            "POST",
+            f"/memory/ontology/queue/{encoded_type_id}/assign",
+            json_body={"assignee": assignee},
+        )
+
+    def bulk_ontology_review_action(
+        self,
+        action: str,
+        ids: List[str],
+        params: Optional[Dict[str, Any]] = None,
+        expected_tier: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Apply a curation action to many ontology review types.
+
+        Args:
+            action: Bulk action (``approve``/``reject``/``merge``/``edit_promote``/``assign``).
+            ids: Private-layer ontology type names to process.
+            params: Action-specific params (``into_id``, ``edits``, or ``assignee``).
+            expected_tier: Optional optimistic tier precondition (``working``/``proposed``).
+
+        Returns:
+            Dict with per-item ``results`` entries containing ``id``, ``ok``, and optional ``error``.
+        """
+        body: Dict[str, Any] = {"action": action, "ids": ids, "params": params or {}}
+        if expected_tier is not None:
+            body["expected_tier"] = expected_tier
+        return self._request("POST", "/memory/ontology/queue/bulk", json_body=body)
+
+    # ============================================================================
+    # Pipeline
+    # ============================================================================
+
+    def _stage(self, stage: str, body: Dict[str, Any]) -> Receipt:
+        """POST one public stage call and return its ``stage_job`` receipt (ST33, G169).
+
+        An ST33 refusal code in the body becomes ``StageChainError``; a receipt of an unknown major becomes
+        ``StageChainError(unsupported_receipt_version)`` that still carries the run id.
+        """
+        try:
+            wire = self._request("POST", f"/memory/pipeline/{stage}", json_body=body)
+        except SmartMemoryClientError as exc:
+            chain = _transport.stage_chain_from(exc)
+            if chain is None:
+                raise
+            raise chain from exc
+        try:
+            receipt = parse_receipt(wire)
+        except ReceiptError as exc:
+            if exc.code == "unsupported_version":
+                raise StageChainError(
+                    str(exc),
+                    code="unsupported_receipt_version",
+                    run_id=getattr(exc, "run_id", None),
+                ) from exc
+            raise
+        self._stage_receipt_runs.add(receipt.run_id)
+        return receipt
+
+    def run_extraction_stage(
+        self, content: str, extractor_name: str = "llm"
+    ) -> Receipt:
+        """Run the extraction stage. Returns the ``stage_job`` receipt (2.0.0: no longer the stage result).
+
+        ``client.await_receipt(receipt)`` it, then chain with ``receipt.result.pipeline_state_run_id``.
+        """
+        body = {"content": content, "extractor_name": extractor_name}
+        return self._stage("extraction", body)
+
+    def run_storage_stage(
+        self,
+        predecessor: Union[Receipt, str],
+        storage_strategy: Optional[str] = None,
+    ) -> Receipt:
+        """Run the storage stage from the awaited extraction receipt (or its ``pipeline_state_run_id``).
+
+        ``storage_strategy`` is one of ``dual_node|single_node|memory_only``; ``None`` (default) omits the
+        key so the server default (``dual_node``) applies.
+
+        Raises ``StageChainError`` (``stage_result_pending|stage_result_expired|stage_result_unavailable|
+        stage_chain_invalid``) when the predecessor cannot be chained. Returns the ``stage_job`` receipt.
+        """
+        run_id = _transport.chain_run_id(predecessor, self._stage_receipt_runs)
+        body: Dict[str, Any] = {"run_id": run_id}
+        if storage_strategy is not None:
+            body["storage_strategy"] = storage_strategy
+        return self._stage("storage", body)
+
+    def run_linking_stage(
+        self, predecessor: Union[Receipt, str], linking_algorithm: str = "exact"
+    ) -> Receipt:
+        """Run the linking stage from the awaited storage receipt. See :meth:`run_storage_stage`."""
+        run_id = _transport.chain_run_id(predecessor, self._stage_receipt_runs)
+        return self._stage(
+            "linking", {"run_id": run_id, "linking_algorithm": linking_algorithm}
+        )
+
+    def run_enrichment_stage(
+        self,
+        predecessor: Union[Receipt, str],
+        enrichment_types: Optional[List[str]] = None,
+    ) -> Receipt:
+        """Run the enrichment stage from the awaited linking receipt. See :meth:`run_storage_stage`."""
+        run_id = _transport.chain_run_id(predecessor, self._stage_receipt_runs)
+        body = {
+            "run_id": run_id,
+            "enrichment_types": enrichment_types or ["sentiment", "topics"],
+        }
+        return self._stage("enrichment", body)
+
+    def run_grounding_stage(
+        self,
+        predecessor: Union[Receipt, str],
+        grounding_sources: Optional[List[str]] = None,
+    ) -> Receipt:
+        """Run the grounding stage from the awaited enrichment receipt. See :meth:`run_storage_stage`."""
+        run_id = _transport.chain_run_id(predecessor, self._stage_receipt_runs)
+        body = {
+            "run_id": run_id,
+            "grounding_sources": grounding_sources or ["wikipedia"],
+        }
+        return self._stage("grounding", body)
+
+    def get_pipeline_state(
+        self, pipeline_id: str, run_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Get pipeline state for a specific pipeline and run."""
+        params = {"run_id": run_id} if run_id else None
+        return self._request(
+            "GET", f"/memory/pipeline/{pipeline_id}/state", params=params
+        )
+
+    def reset_pipeline(self, pipeline_id: str) -> Dict[str, Any]:
+        """Reset a pipeline, clearing its state."""
+        return self._request("DELETE", f"/memory/pipeline/{pipeline_id}")
+
+    def clear_run_state(self, pipeline_id: str, run_id: str) -> Dict[str, Any]:
+        """Clear all stage states for a specific pipeline run."""
+        return self._request("DELETE", f"/memory/pipeline/{pipeline_id}/run/{run_id}")
+
+    # ============================================================================
+    # Subscription
+    # ============================================================================
+
+    def create_checkout_session(
+        self,
+        tier: str,
+        billing_period: str = "monthly",
+    ) -> Dict[str, Any]:
+        """Create a Stripe Checkout session for subscription upgrade. The server sets any trial; a caller cannot."""
+        body = {
+            "tier": tier,
+            "billing_period": billing_period,
+        }
+        return self._request("POST", "/subscription/checkout", json_body=body)
+
+    def upgrade_subscription(
+        self,
+        tier: str,
+        billing_period: str = "monthly",
+        payment_method_id: Optional[str] = None,
+        use_checkout: bool = False,
+    ) -> Dict[str, Any]:
+        """Upgrade subscription tier."""
+        body = {
+            "tier": tier,
+            "billing_period": billing_period,
+            "payment_method_id": payment_method_id,
+            "use_checkout": use_checkout,
+        }
+        return self._request("POST", "/subscription/upgrade", json_body=body)
+
+    def get_subscription(self) -> Dict[str, Any]:
+        """Get current subscription details.
+
+        The result includes ``can_manage_billing`` (bool): whether the caller may change the plan.
+        It is false for every caller of an internal comp tenant, whose billing a superadmin manages.
+        ``billing_refusal`` says why it is false: ``""`` (the caller can manage billing), ``"api_key"``,
+        ``"not_admin"`` or ``"comp"``. The body is returned as the service sent it.
+        """
+        return self._request("GET", "/subscription/current")
+
+    def grant_billing_manager(self, user_id: str) -> Dict[str, Any]:
+        """Let a member of your organization manage billing (organization admins only).
+
+        Returns ``{"user_id": ..., "listed": True}``: ``listed`` is the explicit list entry, not the
+        effective permission (an admin can manage billing either way, see ``get_subscription``).
+        Idempotent. Grants no workspace access.
+        """
+        return self._request(
+            "PUT", f"/subscription/billing-managers/{quote(user_id, safe='')}"
+        )
+
+    def revoke_billing_manager(self, user_id: str) -> Dict[str, Any]:
+        """Take billing management back from a member (organization admins only).
+
+        Returns ``{"user_id": ..., "listed": False}``. Idempotent.
+        """
+        return self._request(
+            "DELETE", f"/subscription/billing-managers/{quote(user_id, safe='')}"
+        )
+
+    def list_billing_managers(self) -> Dict[str, Any]:
+        """List the members an organization admin let manage billing.
+
+        Returns ``{"user_ids": [...]}``, current members of your organization only. Any signed-in
+        member may read it. Raises ``SmartMemoryPermissionError`` for an API key.
+
+        An organization admin also gets ``"members"``: one ``{"user_id", "email", "name", "is_admin",
+        "listed"}`` entry per current member, ``listed`` being the explicit list entry. Everyone else
+        gets no ``"members"`` key at all, so check for the key rather than assuming an empty list.
+        """
+        return self._request("GET", "/subscription/billing-managers")
+
+    def cancel_subscription(self, immediately: bool = False) -> Dict[str, Any]:
+        """Cancel subscription."""
+        return self._request(
+            "POST", "/subscription/cancel", params={"immediately": immediately}
+        )
+
+    # ============================================================================
+    # Upgrade nudges (UPGRADE-NUDGES-9)
+    # ============================================================================
+
+    def get_next_upgrade_nudge(self, surface: str = "web") -> Dict[str, Any]:
+        """The upgrade banner to show now, or no banner.
+
+        ``GET /upgrade-nudges/next?surface=`` (contract ``smart-memory-docs``
+        ``docs/features/UPGRADE-NUDGES-1/upgrade-nudges-contract.json``, section ``endpoint``).
+        Writes nothing. The server decides the audience, the caps and the copy from the signed-in
+        caller. The body is returned as the service sent it.
+
+        Returns ``{"nudge": None}`` for every ineligible caller, the server's kill switch and every
+        server-side failure (a 200, never an error): render nothing then. Otherwise ``{"nudge": {...}}``
+        with ``nudge_key``, ``kind`` (``"banner"``), ``surface``, ``target_tier`` (``"team"`` or
+        ``"enterprise"``), ``audience`` (``"billing_manager"``), ``anchor`` (``cap-<capability_key>``, link
+        "Compare plans" to ``/pricing#<anchor>``), ``copy`` (render exactly as returned) and ``actions``
+        (``{"compare": ..., "dismiss": ...}`` button labels).
+
+        Args:
+            surface: Only ``"web"`` is accepted by the service.
+
+        Raises:
+            SmartMemoryValidationError: ``surface`` is not ``"web"`` (422 ``validation_error``).
+        """
+        return self._request("GET", "/upgrade-nudges/next", params={"surface": surface})
+
+    def _record_upgrade_nudge(self, nudge_key: str, event: str) -> Dict[str, Any]:
+        if not isinstance(nudge_key, str) or not nudge_key:
+            raise ValueError("nudge_key must be a non-empty string")
+        return self._request(
+            "POST", f"/upgrade-nudges/{quote(nudge_key, safe='')}/{event}"
+        )
+
+    def record_upgrade_nudge_shown(self, nudge_key: str) -> Dict[str, Any]:
+        """The banner was rendered (``POST /upgrade-nudges/{nudge_key}/shown``).
+
+        Returns ``{"recorded": bool}``: ``False`` for an ineligible caller or the kill switch off,
+        not an error.
+
+        Raises:
+            ValueError: ``nudge_key`` is empty or not a string (raised before any request).
+            SmartMemoryNotFoundError: the key is not a registry banner key (404 ``unknown_nudge_key``).
+        """
+        return self._record_upgrade_nudge(nudge_key, "shown")
+
+    def record_upgrade_nudge_clicked(self, nudge_key: str) -> Dict[str, Any]:
+        """The "Compare plans" button was clicked (``POST /upgrade-nudges/{nudge_key}/clicked``).
+
+        Returns ``{"recorded": bool}``. Errors as ``record_upgrade_nudge_shown``.
+        """
+        return self._record_upgrade_nudge(nudge_key, "clicked")
+
+    def record_upgrade_nudge_dismissed(self, nudge_key: str) -> Dict[str, Any]:
+        """The "Not now" button was clicked (``POST /upgrade-nudges/{nudge_key}/dismissed``).
+
+        Returns ``{"recorded": bool}``. Errors as ``record_upgrade_nudge_shown``.
+        """
+        return self._record_upgrade_nudge(nudge_key, "dismissed")
+
+    # ============================================================================
+    # Workspaces
+    # ============================================================================
+
+    def list_workspaces(self, include_hidden: bool = False) -> Dict[str, Any]:
+        """List Workspaces visible in the active tenant.
+
+        ``include_hidden=True`` adds the hidden Workspaces still inside their restore
+        window that the caller may restore (``?include=hidden``). The response carries
+        ``capabilities`` (``"lifecycle.v1"`` when the API serves the lifecycle routes).
+        """
+        if include_hidden:
+            return self._request(
+                "GET", "/memory/workspaces", params={"include": "hidden"}
+            )
+        return self._request("GET", "/memory/workspaces")
+
+    def get_workspace(self, workspace_id: str) -> Dict[str, Any]:
+        """Read one Workspace (WorkspaceDetail: state, locked, restore_until, my_level, ...)."""
+        return self._request("GET", f"/memory/workspaces/{workspace_id}")
+
+    def update_workspace(
+        self,
+        workspace_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Rename a Workspace and/or change its description (sends only the fields passed).
+
+        Raises ``ValueError`` before any request when neither field is passed.
+        """
+        body: Dict[str, Any] = {}
+        if name is not None:
+            body["name"] = name
+        if description is not None:
+            body["description"] = description
+        if not body:
+            raise ValueError("update_workspace needs name and/or description")
+        return self._request(
+            "PATCH", f"/memory/workspaces/{workspace_id}", json_body=body
+        )
+
+    def delete_workspace(self, workspace_id: str) -> Dict[str, Any]:
+        """Hide a Workspace (202 ``{workspace_id, state: "hidden", restore_until}``)."""
+        return self._request("DELETE", f"/memory/workspaces/{workspace_id}")
+
+    def restore_workspace(self, workspace_id: str) -> Dict[str, Any]:
+        """Restore a hidden Workspace inside its restore window (returns WorkspaceDetail)."""
+        return self._request("POST", f"/memory/workspaces/{workspace_id}/restore")
+
+    def create_workspace(
+        self,
+        name: str,
+        team_id: str,
+        description: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create an independent Workspace with an initial Team grant."""
+        body = {
+            "name": name,
+            "description": description,
+            "team_id": team_id,
+        }
+        return self._request("POST", "/memory/workspaces", json_body=body)
+
+    def share_workspace(
+        self,
+        workspace_id: str,
+        team_id: str,
+        permission: str,
+    ) -> Dict[str, Any]:
+        """Add or replace a Team's permission on a Workspace."""
+        body = {"team_id": team_id, "permission": permission}
+        return self._request(
+            "POST", f"/memory/workspaces/{workspace_id}/share", json_body=body
+        )
+
+    def revoke_workspace_share(self, workspace_id: str, team_id: str) -> None:
+        """Revoke a Team's grant from a Workspace."""
+        self._request("DELETE", f"/memory/workspaces/{workspace_id}/share/{team_id}")
+
+    def get_workspace_access(self, workspace_id: str) -> Dict[str, Any]:
+        """Read a Workspace's Team grants and direct user grants.
+
+        ``GET /memory/workspaces/{workspace_id}/access`` (SVC-WORKSPACE-ACCESS-1).
+        Returns ``{workspace_id, teams: [{team_id, name, permission,
+        team_exists}], users: [{user_id, permission}]}``. A grant whose Team
+        was deleted is listed with ``team_exists`` False and ``name`` None.
+        Readable by whoever may share or revoke on that Workspace (a tenant
+        admin or a Workspace admin). Raises ``SmartMemoryPermissionError`` (403)
+        for anyone else in the tenant and ``SmartMemoryNotFoundError`` (404)
+        for another tenant's or an unknown Workspace id.
+        """
+        return self._request("GET", f"/memory/workspaces/{workspace_id}/access")
+
+    def set_session_workspace(
+        self,
+        workspace_id: str,
+        client_key: str,
+        context_key: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Select ``workspace_id`` for one client (and context): ``PUT /memory/routing/session`` (WS-ROUTING-4).
+
+        A write that names no workspace and carries ``X-SM-Client: <client_key>`` (and ``X-SM-Context`` when
+        ``context_key`` is set) then lands there until the pick goes idle (service ``ROUTING_SESSION_IDLE_TTL_S``,
+        default 24 h). ``client_key`` follows the contract grammar (``mcp:<name>``, ``app:<name>``, ...).
+        Returns the record: ``workspace_id``, ``client_key_digest``, ``context_key_digest``, ``set_at``,
+        ``set_via``, ``expires_at``, ``client_key``, ``context_key``, ``workspace_name``.
+        Raises ``SmartMemoryPermissionError`` (403) for a workspace the caller cannot use (same answer whether or
+        not it exists) and ``SmartMemoryValidationError`` for a workspace-bound API key (409) or a key outside the
+        grammar (422).
+        """
+        body: Dict[str, Any] = {"workspace_id": workspace_id, "client_key": client_key}
+        if context_key is not None:
+            body["context_key"] = context_key
+        return self._request("PUT", "/memory/routing/session", json_body=body)
+
+    def clear_session_workspace(
+        self, client_key: str, context_key: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Clear the caller's own pick for one client (and context): ``DELETE /memory/routing/session``.
+
+        Returns ``{deleted, client_key, context_key}``; clearing nothing is not an error (``deleted`` False).
+        """
+        params: Dict[str, Any] = {"client_key": client_key}
+        if context_key is not None:
+            params["context_key"] = context_key
+        return self._request("DELETE", "/memory/routing/session", params=params)
+
+    # ============================================================================
+    # Teams
+    # ============================================================================
+
+    def create_team(
+        self,
+        name: str,
+        description: Optional[str] = None,
+        data_classification: str = "internal",
+        cost_center: Optional[str] = None,
+        is_system: bool = False,
+    ) -> Dict[str, Any]:
+        """Create a new team."""
+        body = {
+            "name": name,
+            "description": description,
+            "data_classification": data_classification,
+            "cost_center": cost_center,
+        }
+        if is_system:
+            body["is_system"] = True
+        return self._request("POST", "/memory/teams", json_body=body)
+
+    def list_teams(self, include_system: bool = False) -> List[Dict[str, Any]]:
+        """List all teams the user has access to."""
+        if include_system:
+            return self._request(
+                "GET", "/memory/teams", params={"include_system": True}
+            )
+        return self._request("GET", "/memory/teams")
+
+    def get_team(self, team_id: str) -> Dict[str, Any]:
+        """Get details of a specific team."""
+        return self._request("GET", f"/memory/teams/{team_id}")
+
+    def update_team(
+        self,
+        team_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        data_classification: Optional[str] = None,
+        cost_center: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Update team details."""
+        body = {}
+        if name:
+            body["name"] = name
+        if description:
+            body["description"] = description
+        if data_classification:
+            body["data_classification"] = data_classification
+        if cost_center:
+            body["cost_center"] = cost_center
+        return self._request("PATCH", f"/memory/teams/{team_id}", json_body=body)
+
+    def delete_team(self, team_id: str) -> Dict[str, Any]:
+        """Delete a team."""
+        return self._request("DELETE", f"/memory/teams/{team_id}")
+
+    def list_team_members(self, team_id: str) -> Dict[str, Any]:
+        """List all members of a team."""
+        return self._request("GET", f"/memory/teams/{team_id}/members")
+
+    def add_team_member(
+        self, team_id: str, user_id: str, role: str = "member"
+    ) -> Dict[str, Any]:
+        """Add a user to a team."""
+        body = {"user_id": user_id, "role": role}
+        return self._request("POST", f"/memory/teams/{team_id}/members", json_body=body)
+
+    def update_team_member(
+        self, team_id: str, member_user_id: str, role: str
+    ) -> Dict[str, Any]:
+        """Update a team member's role."""
+        body = {"role": role}
+        return self._request(
+            "PATCH", f"/memory/teams/{team_id}/members/{member_user_id}", json_body=body
+        )
+
+    def remove_team_member(self, team_id: str, member_user_id: str) -> Dict[str, Any]:
+        """Remove a user from a team."""
+        return self._request(
+            "DELETE", f"/memory/teams/{team_id}/members/{member_user_id}"
+        )
+
+    def set_team_member_read_only(
+        self, team_id: str, member_user_id: str, read_only: bool
+    ) -> Dict[str, Any]:
+        """Set or clear another member's read-only flag.
+
+        A read-only member keeps their ``member`` role and can read, but every write is refused
+        with 403. Only an organization admin (or a superadmin) signed in with a session may call
+        this, never with an API key and never on their own membership; an admin target is 409.
+        ``list_team_members``, ``get_team`` and ``get_team_permissions`` report the flag as
+        ``read_only``.
+        """
+        return self._request(
+            "PUT",
+            f"/memory/teams/{team_id}/members/{member_user_id}/read-only",
+            json_body={"read_only": read_only},
+        )
+
+    def get_team_permissions(self, team_id: str) -> Dict[str, Any]:
+        """Get available permissions for a team."""
+        return self._request("GET", f"/memory/teams/{team_id}/permissions")
+
+    def list_team_workspaces(self, team_id: str) -> Dict[str, Any]:
+        """List visible Workspaces granted to a Team."""
+        return self._request("GET", f"/memory/teams/{team_id}/workspaces")
+
+    # ============================================================================
+    # Temporal
+    # ============================================================================
+
+    def get_history(
+        self,
+        item_id: str,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        limit: int = 100,
+    ) -> Dict[str, Any]:
+        """Get complete version history of a memory item."""
+        params = {"limit": limit}
+        if start_time:
+            params["start_time"] = start_time
+        if end_time:
+            params["end_time"] = end_time
+        return self._request(
+            "GET", f"/memory/temporal/{item_id}/history", params=params
+        )
+
+    def time_travel(
+        self, timestamp: str, query: Optional[str] = None, limit: int = 100
+    ) -> Dict[str, Any]:
+        """Time-travel query - get state at specific time."""
+        params = {"limit": limit}
+        if query:
+            params["query"] = query
+        return self._request("GET", f"/memory/temporal/at/{timestamp}", params=params)
+
+    def get_item_at_time(self, item_id: str, timestamp: str) -> Dict[str, Any]:
+        """Get specific item as it existed at timestamp."""
+        return self._request("GET", f"/memory/temporal/{item_id}/at/{timestamp}")
+
+    def get_changes(
+        self,
+        item_id: str,
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+        change_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Get all changes to an item in time range."""
+        params = {}
+        if since:
+            params["since"] = since
+        if until:
+            params["until"] = until
+        if change_type:
+            params["change_type"] = change_type
+        return self._request(
+            "GET", f"/memory/temporal/{item_id}/changes", params=params
+        )
+
+    def compare_versions(self, item_id: str, v1: int, v2: int) -> Dict[str, Any]:
+        """Compare two versions of an item."""
+        params = {"v1": v1, "v2": v2}
+        return self._request(
+            "POST", f"/memory/temporal/{item_id}/compare", params=params
+        )
+
+    def rollback(
+        self,
+        item_id: str,
+        to_version: Optional[int] = None,
+        to_time: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Rollback item to previous version."""
+        params = {}
+        if to_version:
+            params["to_version"] = to_version
+        if to_time:
+            params["to_time"] = to_time
+        return self._request(
+            "POST", f"/memory/temporal/{item_id}/rollback", params=params
+        )
+
+    def get_audit_trail(
+        self,
+        item_id: str,
+        change_type: Optional[str] = None,
+        user_id: Optional[str] = None,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Get complete audit trail for an item."""
+        params = {}
+        if change_type:
+            params["change_type"] = change_type
+        if user_id:
+            params["user_id"] = user_id
+        if start_time:
+            params["start_time"] = start_time
+        if end_time:
+            params["end_time"] = end_time
+        return self._request("GET", f"/memory/temporal/{item_id}/audit", params=params)
+
+    def search_during_range(
+        self, query: str, start_time: str, end_time: str, limit: int = 100
+    ) -> Dict[str, Any]:
+        """Search memories that existed during time range."""
+        params = {
+            "query": query,
+            "start_time": start_time,
+            "end_time": end_time,
+            "limit": limit,
+        }
+        return self._request("GET", "/memory/temporal/search/during", params=params)
+
+    def generate_compliance_report(
+        self,
+        start_date: str,
+        end_date: str,
+        report_type: str = "HIPAA",
+        item_ids: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Generate compliance report (HIPAA, GDPR, SOC2)."""
+        params = {
+            "start_date": start_date,
+            "end_date": end_date,
+            "report_type": report_type,
+        }
+        if item_ids:
+            params["item_ids"] = item_ids
+        return self._request("GET", "/memory/temporal/compliance/report", params=params)
+
+    def get_relationship_history(self, rel_id: str) -> Dict[str, Any]:
+        """Get history of a relationship."""
+        return self._request("GET", f"/memory/temporal/relationships/{rel_id}/history")
+
+    def get_relationships_at_time(
+        self, timestamp: str, limit: int = 100
+    ) -> Dict[str, Any]:
+        """Get all relationships that existed at specific time."""
+        params = {"limit": limit}
+        return self._request(
+            "GET", f"/memory/temporal/relationships/at/{timestamp}", params=params
+        )
+
+    def get_relationship_valid_periods(self, rel_id: str) -> Dict[str, Any]:
+        """Get valid time periods for a relationship."""
+        return self._request(
+            "GET", f"/memory/temporal/relationships/{rel_id}/valid-periods"
+        )
+
+    # ============================================================================
+    # Usage
+    # ============================================================================
+
+    def get_usage_dashboard(self) -> Dict[str, Any]:
+        """Get usage dashboard with current quotas and limits."""
+        return self._request("GET", "/usage/dashboard")
+
+    def get_usage_limits(self) -> Dict[str, Any]:
+        """Get quota limits for current subscription tier."""
+        return self._request("GET", "/usage/limits")
+
+    def get_current_usage(self) -> Dict[str, Any]:
+        """Get current usage statistics."""
+        return self._request("GET", "/usage/current")
+
+    def get_available_tiers(self) -> Dict[str, Any]:
+        """Get available subscription tiers."""
+        return self._request("GET", "/usage/tiers")
+
+    # ============================================================================
+    # Token Usage (CFS-1)
+    # ============================================================================
+
+    def get_token_usage(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        group_by: Optional[str] = None,
+        limit: int = 100,
+    ) -> Dict[str, Any]:
+        """Get aggregated token usage history for the current workspace.
+
+        Args:
+            start_date: ISO date string (inclusive), e.g. "2026-02-01"
+            end_date: ISO date string (inclusive), e.g. "2026-02-11"
+            group_by: Group results by "stage", "profile", or "day"
+            limit: Max records to return (1-1000, default 100)
+
+        Returns:
+            Dict with workspace_id, record_count, total_spent, total_avoided,
+            savings_pct, records list, and optional grouping data.
+        """
+        params: Dict[str, Any] = {"limit": limit}
+        if start_date:
+            params["start_date"] = start_date
+        if end_date:
+            params["end_date"] = end_date
+        if group_by:
+            params["group_by"] = group_by
+        return self._request("GET", "/memory/token-usage", params=params)
+
+    def get_token_usage_current(self) -> Dict[str, Any]:
+        """Get real-time token usage: cache stats + last 10 pipeline runs.
+
+        Returns:
+            Dict with workspace_id, cache_stats, and recent_runs list.
+        """
+        return self._request("GET", "/memory/token-usage/current")
+
+    # ============================================================================
+    # Procedure Matches (CFS-2)
+    # ============================================================================
+
+    def list_procedure_matches(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        procedure_id: Optional[str] = None,
+        feedback: Optional[str] = None,
+        limit: int = 100,
+    ) -> Dict[str, Any]:
+        """List procedure match history for the current workspace.
+
+        Args:
+            start_date: ISO date string (inclusive), e.g. "2026-02-01"
+            end_date: ISO date string (inclusive), e.g. "2026-02-12"
+            procedure_id: Filter by matched procedure ID
+            feedback: Filter by feedback value: "success", "failure", or "neutral"
+            limit: Max records to return (1-1000, default 100)
+
+        Returns:
+            Dict with workspace_id, record_count, and records list.
+        """
+        params: Dict[str, Any] = {"limit": limit}
+        if start_date:
+            params["start_date"] = start_date
+        if end_date:
+            params["end_date"] = end_date
+        if procedure_id:
+            params["procedure_id"] = procedure_id
+        if feedback:
+            params["feedback"] = feedback
+        return self._request("GET", "/memory/procedures/matches", params=params)
+
+    def submit_procedure_match_feedback(
+        self,
+        match_id: str,
+        feedback: str,
+        note: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Submit feedback for a procedure match.
+
+        Args:
+            match_id: The match ID (uuid) from ingest response or match list.
+            feedback: One of "success", "failure", "neutral".
+            note: Optional explanation (max 500 chars).
+
+        Returns:
+            Dict with status, match_id, and feedback.
+        """
+        body: Dict[str, Any] = {"feedback": feedback}
+        if note:
+            body["note"] = note
+        return self._request(
+            "POST", f"/memory/procedures/matches/{match_id}/feedback", json_body=body
+        )
+
+    def submit_result_feedback(
+        self,
+        session_id: str,
+        result_used: List[str],
+    ) -> Dict[str, Any]:
+        """Submit result-selection feedback for a completed search session (SELF-IMPROVE-6).
+
+        Call this after using results from ``search()`` to tell SmartMemory which
+        results were actually useful.  The ``session_id`` is available in the
+        ``X-Search-Session-Id`` response header from ``POST /memory/search``.
+
+        Args:
+            session_id: Server-generated session ID from the search response
+                (``X-Search-Session-Id`` header).
+            result_used: Item IDs from the search results that you incorporated.
+                Pass an empty list if none of the results were useful.
+
+        Returns:
+            Dict with ``status``, ``search_session_id``, ``result_used_count``,
+            ``result_shown_count``.
+
+        Raises:
+            HTTPError 404: Session not found or expired (> 1 hour since search).
+            HTTPError 400: result_used contains IDs not in the original result set.
+            HTTPError 409: Feedback already submitted for this session.
+        """
+        return self._request(
+            "POST",
+            "/memory/result-feedback",
+            json_body={"search_session_id": session_id, "result_used": result_used},
+        )
+
+    def get_procedure_match_stats(self) -> Dict[str, Any]:
+        """Get aggregated procedure match statistics for the current workspace.
+
+        Returns:
+            Dict with total_matches, successful, failed, neutral, no_feedback,
+            avg_confidence, and by_procedure breakdown.
+        """
+        return self._request("GET", "/memory/procedures/matches/stats")
+
+    # ============================================================================
+    # Procedure Catalog (CFS-3)
+    # ============================================================================
+
+    def list_procedures(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        sort_by: Optional[str] = None,
+        sort_order: str = "desc",
+    ) -> Dict[str, Any]:
+        """List all procedural memories with aggregated match statistics.
+
+        Args:
+            limit: Max procedures to return (1-200, default 50)
+            offset: Pagination offset (default 0)
+            sort_by: Sort field - "match_count", "success_rate", "created_at", or "name"
+            sort_order: Sort direction - "asc" or "desc" (default "desc")
+
+        Returns:
+            Dict with workspace_id, total_count, and procedures list.
+            Each procedure has id, name, description, created_at, metadata, and match_stats.
+        """
+        params: Dict[str, Any] = {
+            "limit": limit,
+            "offset": offset,
+            "sort_order": sort_order,
+        }
+        if sort_by:
+            params["sort_by"] = sort_by
+        return self._request("GET", "/memory/procedures", params=params)
+
+    def get_procedure(
+        self,
+        procedure_id: str,
+        include_matches: bool = True,
+        match_limit: int = 20,
+    ) -> Dict[str, Any]:
+        """Get full procedure detail with recent match history.
+
+        Args:
+            procedure_id: The procedure ID to retrieve.
+            include_matches: Whether to include recent match history (default True).
+            match_limit: Max matches to include (1-100, default 20).
+
+        Returns:
+            Dict with id, name, description, content, created_at, updated_at,
+            metadata, match_stats, and optionally recent_matches list.
+
+        Raises:
+            SmartMemoryClientError: If procedure not found (404).
+        """
+        params: Dict[str, Any] = {
+            "include_matches": include_matches,
+            "match_limit": match_limit,
+        }
+        return self._request("GET", f"/memory/procedures/{procedure_id}", params=params)
+
+    # ============================================================================
+    # Webhooks
+    # ============================================================================
+
+    def trigger_stripe_webhook(
+        self, payload: Dict[str, Any], signature: str
+    ) -> Dict[str, Any]:
+        """Trigger a Stripe webhook event (mostly for testing)."""
+        # Note: This sends raw body, but our _request helper assumes JSON or params.
+        # For webhooks, we might need to send raw bytes if we were simulating real Stripe calls.
+        # However, the client is typically used to INTERACT with the API, not send webhooks TO it.
+        # But if we need to simulate it:
+        headers = {"stripe-signature": signature}
+        # We'll use json_body for convenience, but real Stripe sends raw bytes.
+        # This method might be limited by _request implementation if strict raw body is needed.
+        return self._request(
+            "POST", "/webhooks/stripe", json_body=payload, headers=headers
+        )
+
+    # ============================================================================
+    # Zettelkasten
+    # ============================================================================
+
+    def get_backlinks(self, note_id: str) -> Dict[str, Any]:
+        """Get notes that link TO this note (backlinks)."""
+        return self._request("GET", f"/memory/zettel/{note_id}/backlinks")
+
+    def get_forward_links(self, note_id: str) -> Dict[str, Any]:
+        """Get notes this note links TO (forward links)."""
+        return self._request("GET", f"/memory/zettel/{note_id}/forward-links")
+
+    def get_connections(self, note_id: str) -> Dict[str, Any]:
+        """Get all connections (backlinks + forward links)."""
+        return self._request("GET", f"/memory/zettel/{note_id}/connections")
+
+    def get_clusters(
+        self, min_size: int = 3, algorithm: str = "louvain"
+    ) -> Dict[str, Any]:
+        """Detect knowledge clusters in your Zettelkasten."""
+        params = {"min_size": min_size, "algorithm": algorithm}
+        return self._request("GET", "/memory/zettel/clusters", params=params)
+
+    def get_hubs(self, min_connections: int = 5, limit: int = 20) -> Dict[str, Any]:
+        """Find hub notes (highly connected notes)."""
+        params = {"min_connections": min_connections, "limit": limit}
+        return self._request("GET", "/memory/zettel/hubs", params=params)
+
+    def get_bridges(self, limit: int = 20) -> Dict[str, Any]:
+        """Find bridge notes (notes connecting different clusters)."""
+        params = {"limit": limit}
+        return self._request("GET", "/memory/zettel/bridges", params=params)
+
+    def get_discoveries(
+        self, note_id: str, max_distance: int = 3, min_surprise: float = 0.5
+    ) -> Dict[str, Any]:
+        """Find unexpected connections (serendipitous discovery)."""
+        params = {"max_distance": max_distance, "min_surprise": min_surprise}
+        return self._request(
+            "GET", f"/memory/zettel/{note_id}/discoveries", params=params
+        )
+
+    def get_path(
+        self, note_id: str, target_id: str, max_paths: int = 5
+    ) -> Dict[str, Any]:
+        """Find paths between two notes."""
+        params = {"max_paths": max_paths}
+        return self._request(
+            "GET", f"/memory/zettel/{note_id}/path/{target_id}", params=params
+        )
+
+    def parse_wikilinks(self, content: str, auto_create: bool = True) -> Dict[str, Any]:
+        """Parse [[wikilinks]] in content."""
+        params = {"content": content, "auto_create": auto_create}
+        return self._request("POST", "/memory/zettel/wikilink/parse", params=params)
+
+    def resolve_wikilink(self, link: str) -> Dict[str, Any]:
+        """Resolve a wikilink to a note."""
+        params = {"link": link}
+        return self._request("GET", "/memory/zettel/wikilink/resolve", params=params)
+
+    def get_subgraph(
+        self, note_id: str, depth: int = 2, include_metadata: bool = True
+    ) -> Dict[str, Any]:
+        """Get subgraph around a note (for visualization)."""
+        params = {"depth": depth, "include_metadata": include_metadata}
+        return self._request("GET", f"/memory/zettel/{note_id}/graph", params=params)
+
+    def detect_concept_emergence(self, limit: int = 20) -> Dict[str, Any]:
+        """Detect emerging concepts from connection patterns."""
+        params = {"limit": limit}
+        return self._request("GET", "/memory/zettel/concept-emergence", params=params)
+
+    def suggest_related_notes(self, note_id: str, count: int = 5) -> Dict[str, Any]:
+        """Suggest related notes for serendipitous discovery."""
+        params = {"count": count}
+        return self._request(
+            "GET", f"/memory/zettel/{note_id}/suggestions", params=params
+        )
+
+    def random_walk_discovery(self, note_id: str, length: int = 5) -> Dict[str, Any]:
+        """Perform random walk for serendipitous discovery."""
+        params = {"length": length}
+        return self._request(
+            "GET", f"/memory/zettel/{note_id}/random-walk", params=params
+        )
+
+    def find_notes_by_tag(self, tag: str, limit: int = 100) -> Dict[str, Any]:
+        """Find notes by tag."""
+        params = {"limit": limit}
+        return self._request("GET", f"/memory/zettel/by-tag/{tag}", params=params)
+
+    def find_notes_by_property(
+        self, key: str, value: str, limit: int = 100
+    ) -> Dict[str, Any]:
+        """Find notes by property."""
+        params = {"key": key, "value": value, "limit": limit}
+        return self._request("GET", "/memory/zettel/by-property", params=params)
+
+    def find_notes_mentioning(self, entity_id: str, limit: int = 100) -> Dict[str, Any]:
+        """Find notes mentioning an entity."""
+        params = {"limit": limit}
+        return self._request(
+            "GET", f"/memory/zettel/mentioning/{entity_id}", params=params
+        )
+
+    def query_by_dynamic_relation(
+        self, source_id: str, relation_type: str, limit: int = 100
+    ) -> Dict[str, Any]:
+        """Query notes by dynamic relation type."""
+        params = {"limit": limit}
+        return self._request(
+            "GET",
+            f"/memory/zettel/by-relation/{source_id}/{relation_type}",
+            params=params,
+        )
+
+    # =========================================================================
+    # Reasoning / Assertion Challenging
+    # =========================================================================
+
+    def challenge(
+        self, assertion: str, memory_type: str = "semantic", use_llm: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Challenge an assertion against existing knowledge to detect contradictions.
+
+        Uses a multi-method detection cascade:
+        1. LLM-based (if enabled) - most accurate
+        2. Graph-based - structural analysis
+        3. Embedding-based - semantic similarity + polarity
+        4. Heuristic - pattern matching fallback
+
+        Args:
+            assertion: The assertion to challenge
+            memory_type: Type of memory to search (default: "semantic")
+            use_llm: Use LLM for deep contradiction analysis
+
+        Returns:
+            Challenge result with conflicts, confidence, etc.
+
+        Example:
+            ```python
+            result = client.challenge("Paris is the capital of Germany")
+            if result["has_conflicts"]:
+                for conflict in result["conflicts"]:
+                    print(f"Contradicts: {conflict['existing_fact']}")
+            ```
+        """
+        body = {"assertion": assertion, "memory_type": memory_type, "use_llm": use_llm}
+        return self._request("POST", "/memory/reasoning/challenge", json_body=body)
+
+    def resolve_conflict(
+        self,
+        existing_item_id: str,
+        new_fact: str,
+        auto_resolve: bool = True,
+        strategy: Optional[str] = None,
+        use_wikipedia: bool = True,
+        use_llm: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Resolve a conflict between assertions.
+
+        Auto-resolution cascade (if enabled):
+        1. Wikipedia lookup - verify against Wikipedia
+        2. LLM reasoning - ask GPT to fact-check
+        3. Grounding check - check existing provenance
+        4. Recency heuristic - prefer recent info for temporal conflicts
+
+        Args:
+            existing_item_id: ID of the existing memory item in conflict
+            new_fact: The new fact that conflicts
+            auto_resolve: Attempt auto-resolution before manual strategy
+            strategy: Manual resolution strategy if auto fails
+                     ("keep_existing", "accept_new", "keep_both", "defer")
+            use_wikipedia: Use Wikipedia for verification
+            use_llm: Use LLM for reasoning
+
+        Returns:
+            Resolution result with method, evidence, confidence
+
+        Example:
+            ```python
+            result = client.resolve_conflict(
+                existing_item_id="item_123",
+                new_fact="Paris is the capital of Germany",
+                auto_resolve=True
+            )
+            if result["auto_resolved"]:
+                print(f"Resolved via {result['method']}: {result['evidence']}")
+            ```
+        """
+        body = {
+            "existing_item_id": existing_item_id,
+            "new_fact": new_fact,
+            "auto_resolve": auto_resolve,
+            "strategy": strategy,
+            "use_wikipedia": use_wikipedia,
+            "use_llm": use_llm,
+        }
+        return self._request("POST", "/memory/reasoning/resolve", json_body=body)
+
+    def list_conflicts(
+        self, needs_review: bool = True, limit: int = 50
+    ) -> Dict[str, Any]:
+        """
+        List memory items that have unresolved conflicts.
+
+        Args:
+            needs_review: Filter to items needing review
+            limit: Maximum number of items to return
+
+        Returns:
+            List of conflicting items with details
+
+        Example:
+            ```python
+            conflicts = client.list_conflicts()
+            for item in conflicts["conflicts"]:
+                print(f"{item['item_id']}: {item['review_reason']}")
+            ```
+        """
+        params = {"needs_review": needs_review, "limit": limit}
+        return self._request("GET", "/memory/reasoning/conflicts", params=params)
+
+    def get_low_confidence_items(
+        self, threshold: float = 0.5, limit: int = 50
+    ) -> Dict[str, Any]:
+        """
+        Get items with confidence below threshold.
+
+        Useful for finding facts that have been challenged multiple times
+        and may need review or removal.
+
+        Args:
+            threshold: Confidence threshold (0.0-1.0)
+            limit: Maximum items to return
+
+        Returns:
+            Items sorted by confidence (lowest first)
+
+        Example:
+            ```python
+            low_conf = client.get_low_confidence_items(threshold=0.3)
+            for item in low_conf["items"]:
+                print(f"{item['item_id']}: {item['confidence']:.2f} ({item['challenge_count']} challenges)")
+            ```
+        """
+        params = {"threshold": threshold, "limit": limit}
+        return self._request("GET", "/memory/reasoning/low-confidence", params=params)
+
+    def get_confidence_history(self, item_id: str) -> Dict[str, Any]:
+        """
+        Get the confidence decay history for a specific item.
+
+        Args:
+            item_id: Memory item ID
+
+        Returns:
+            Confidence history with timestamps, reasons, and conflicting facts
+
+        Example:
+            ```python
+            history = client.get_confidence_history("item_123")
+            print(f"Current confidence: {history['current_confidence']}")
+            for event in history["history"]:
+                print(f"  {event['timestamp']}: {event['old_confidence']:.2f} -> {event['new_confidence']:.2f}")
+                print(f"    Reason: {event['reason']}")
+            ```
+        """
+        return self._request("GET", f"/memory/reasoning/confidence-history/{item_id}")
+
+    # =========================================================================
+    # Reasoning Traces (System 2 Memory)
+    # =========================================================================
+
+    def extract_reasoning(
+        self,
+        content: str,
+        min_steps: int = 2,
+        min_quality_score: float = 0.4,
+        use_llm_detection: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Extract reasoning traces from content.
+
+        Detects chain-of-thought reasoning patterns (Thought:/Action:/Observation:).
+
+        Args:
+            content: Content to extract reasoning from
+            min_steps: Minimum steps required for a valid trace
+            min_quality_score: Minimum quality score threshold
+            use_llm_detection: Use LLM for implicit reasoning detection
+
+        Returns:
+            Extraction result with trace, has_reasoning, quality_score, step_count
+
+        Example:
+            ```python
+            result = client.extract_reasoning('''
+                Thought: I need to analyze this bug.
+                Action: Let me search for the function.
+                Observation: Found the issue in line 42.
+                Conclusion: The fix is to add a null check.
+            ''')
+            if result['has_reasoning']:
+                print(f"Found {result['step_count']} reasoning steps")
+            ```
+        """
+        body = {
+            "content": content,
+            "min_steps": min_steps,
+            "min_quality_score": min_quality_score,
+            "use_llm_detection": use_llm_detection,
+        }
+        return self._request("POST", "/memory/reasoning/traces/extract", json_body=body)
+
+    def store_reasoning_trace(
+        self, trace: Dict[str, Any], artifact_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Store a reasoning trace as a memory item.
+
+        Creates a 'reasoning' type memory with CAUSES relations to artifacts.
+
+        Args:
+            trace: Reasoning trace dict with trace_id, steps, task_context
+            artifact_ids: IDs of artifacts this reasoning produced
+
+        Returns:
+            Storage result with trace_id, step_count, artifact_links
+
+        Example:
+            ```python
+            result = client.store_reasoning_trace(
+                trace={
+                    "trace_id": "trace_123",
+                    "steps": [
+                        {"type": "thought", "content": "Analyzing the problem"},
+                        {"type": "conclusion", "content": "Found the solution"},
+                    ],
+                    "task_context": {"goal": "Fix bug", "domain": "python"},
+                },
+                artifact_ids=["code_fix_456"]
+            )
+            ```
+        """
+        body = {
+            "trace": trace,
+            "artifact_ids": artifact_ids,
+        }
+        return self._request("POST", "/memory/reasoning/traces/store", json_body=body)
+
+    def query_reasoning(
+        self, query: str, artifact_id: Optional[str] = None, limit: int = 10
+    ) -> Dict[str, Any]:
+        """
+        Query reasoning traces.
+
+        Use cases:
+        - "Why did I choose Python?" → finds reasoning traces about Python decisions
+        - artifact_id → finds reasoning that led to this artifact
+
+        Args:
+            query: Query like "why did I choose X?"
+            artifact_id: Find reasoning that led to this artifact
+            limit: Maximum traces to return
+
+        Returns:
+            Query result with traces list and count
+
+        Example:
+            ```python
+            # Find reasoning about a decision
+            result = client.query_reasoning("why did I use async/await?")
+            for trace in result['traces']:
+                print(f"Trace {trace['trace_id']}: {trace['content'][:100]}...")
+
+            # Find reasoning that led to an artifact
+            result = client.query_reasoning("", artifact_id="code_123")
+            ```
+        """
+        body = {
+            "query": query,
+            "artifact_id": artifact_id,
+            "limit": limit,
+        }
+        return self._request("POST", "/memory/reasoning/traces/query", json_body=body)
+
+    def get_reasoning_trace(self, trace_id: str) -> Dict[str, Any]:
+        """
+        Get a specific reasoning trace by ID.
+
+        Args:
+            trace_id: Reasoning trace ID
+
+        Returns:
+            Full reasoning trace with steps, task_context, artifact_ids
+        """
+        return self._request("GET", f"/memory/reasoning/traces/{trace_id}")
+
+    # =========================================================================
+    # Synthesis Evolution (Opinions & Observations)
+    # =========================================================================
+
+    def synthesize_opinions(self) -> Dict[str, Any]:
+        """
+        Run opinion synthesis: detect patterns in episodic memories and form opinions.
+
+        Creates 'opinion' type memories with confidence scores based on recurring patterns.
+
+        Returns:
+            Synthesis result with status, message, timestamp
+
+        Example:
+            ```python
+            result = client.synthesize_opinions()
+            print(f"Status: {result['status']}")
+            ```
+        """
+        return self._request("POST", "/memory/evolution/synthesize/opinions")
+
+    def synthesize_observations(self) -> Dict[str, Any]:
+        """
+        Run observation synthesis: create entity summaries from scattered facts.
+
+        Creates 'observation' type memories that summarize what we know about entities.
+
+        Returns:
+            Synthesis result with status, message, timestamp
+
+        Example:
+            ```python
+            result = client.synthesize_observations()
+            print(f"Status: {result['status']}")
+            ```
+        """
+        return self._request("POST", "/memory/evolution/synthesize/observations")
+
+    def reinforce_opinions(self) -> Dict[str, Any]:
+        """
+        Run opinion reinforcement: update confidence scores based on new evidence.
+
+        Reinforces or contradicts existing opinions based on recent episodic memories.
+        Archives opinions that fall below confidence threshold.
+
+        Returns:
+            Reinforcement result with status, message, timestamp
+
+        Example:
+            ```python
+            result = client.reinforce_opinions()
+            print(f"Status: {result['status']}")
+            ```
+        """
+        return self._request("POST", "/memory/evolution/reinforce/opinions")
+
+    # =========================================================================
+    # Decision Memory
+    # =========================================================================
+
+    def create_decision(
+        self,
+        content: str,
+        decision_type: str = "inference",
+        confidence: float = 0.8,
+        evidence_ids: Optional[List[str]] = None,
+        domain: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        source_trace_id: Optional[str] = None,
+        source_session_id: Optional[str] = None,
+        rejected_alternatives: Optional[List[str]] = None,
+        rationale: Optional[str] = None,
+        constraints: Optional[List[str]] = None,
+        agent_id: Optional[str] = None,
+        *,
+        scope_go_lives: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Create a new decision with provenance tracking.
+
+        ``scope_go_lives`` carries a schedule of ``{scope, valid_from}`` entries.
+        Site-only activation keeps the predecessor available to other sites.
+        Datetimes use UTC. Unset options are omitted and invalid schedules retain
+        the service's typed validation errors.
+
+        Args:
+            content: The decision statement.
+            decision_type: One of inference, preference, classification, choice, belief, policy.
+            confidence: Initial confidence score (0.0-1.0).
+            evidence_ids: Memory IDs supporting this decision.
+            domain: Domain tag for filtered retrieval.
+            tags: Additional tags.
+            source_trace_id: ReasoningTrace ID that produced this decision.
+            source_session_id: Conversation session ID.
+            rejected_alternatives: Alternatives considered and dropped (CORE-EXPERTISE-1).
+            rationale: Why this decision over the alternatives (CORE-EXPERTISE-1).
+            constraints: Decision-scoped hard limits (CORE-EXPERTISE-1).
+
+        Returns:
+            Created decision dict with decision_id, content, confidence, status.
+        """
+        body: Dict[str, Any] = {
+            "content": content,
+            "decision_type": decision_type,
+            "confidence": confidence,
+        }
+        if evidence_ids:
+            body["evidence_ids"] = evidence_ids
+        if domain:
+            body["domain"] = domain
+        if tags:
+            body["tags"] = tags
+        if source_trace_id:
+            body["source_trace_id"] = source_trace_id
+        if source_session_id:
+            body["source_session_id"] = source_session_id
+        if rejected_alternatives:
+            body["rejected_alternatives"] = rejected_alternatives
+        if rationale is not None:
+            body["rationale"] = rationale
+        if constraints:
+            body["constraints"] = constraints
+        if agent_id is not None:
+            body["agent_id"] = agent_id
+        body.update(_scoped_options(scope_go_lives=scope_go_lives))
+        return self._request("POST", "/memory/decisions/create", json_body=body)
+
+    def create_opinion(
+        self,
+        content: str,
+        *,
+        confidence: Optional[float] = None,
+        subject: Optional[str] = None,
+        subject_type: Optional[str] = None,
+        disposition: Optional[Dict[str, Any]] = None,
+        formed_from: Optional[List[str]] = None,
+        domain: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create a new opinion with optional agent attribution.
+
+        Mirrors POST /memory/opinions/create. ``agent_id`` is auto-populated
+        server-side from the request scope when the caller is an agent-typed
+        user (CORE-AGENT-ATTRIBUTION-1); supply it explicitly to override.
+
+        Args:
+            content: Opinion content (required).
+            confidence: Initial confidence score (0.0-1.0).
+            subject: Subject the opinion is about.
+            subject_type: Type tag for the subject.
+            disposition: Disposition payload (dict).
+            formed_from: Source memory ids that contributed to the opinion.
+            domain: Domain tag for filtered retrieval.
+            agent_id: Producing agent id. If omitted and the caller's scope is
+                agent-typed, the server fills this from ``resolve_agent_id()``.
+
+        Returns:
+            Created opinion dict with opinion_id, content, subject, confidence,
+            agent_id, domain.
+        """
+        body: Dict[str, Any] = {"content": content}
+        if confidence is not None:
+            body["confidence"] = confidence
+        if subject is not None:
+            body["subject"] = subject
+        if subject_type is not None:
+            body["subject_type"] = subject_type
+        if disposition is not None:
+            body["disposition"] = disposition
+        if formed_from is not None:
+            body["formed_from"] = formed_from
+        if domain is not None:
+            body["domain"] = domain
+        if agent_id is not None:
+            body["agent_id"] = agent_id
+        return self._request("POST", "/memory/opinions/create", json_body=body)
+
+    def get_decision(
+        self,
+        decision_id: str,
+        as_of: Optional[str] = None,
+        *,
+        business_scope: Optional[Dict[str, Any]] = None,
+        valid_at: Optional[Union[str, datetime]] = None,
+    ) -> Dict[str, Any]:
+        """Retrieve a decision by ID.
+
+        ``business_scope={"site": "A"}`` selects an exact business site, with
+        sponsor fallback. ``valid_at`` selects business time independently of
+        transaction time. Unset options are omitted and datetimes use UTC.
+
+        Args:
+            decision_id: The decision ID to retrieve.
+            as_of: Optional ISO 8601 instant (SM-ASOF-DECISIONS-1). When set, the
+                server answers from the decision state as it stood at that instant:
+                the status, statement and version live then, never notes added later.
+                Omitted means now. An unparseable value is a 400 ``invalid_as_of``.
+
+        Returns:
+            Decision dict with all fields.
+
+            Each decision also carries three Dempster-Shafer belief reads derived
+            from its reinforce/contradict evidence (CORE-DECISION-BELIEF-SURFACE-1):
+            ``belief_hold`` (lower bound that the decision should stand),
+            ``plausibility_hold`` (upper bound), and ``ignorance`` (the width of that
+            interval, so 1.0 means no evidence has been recorded either way). They are
+            evidence-only and independent of the prior scalar ``confidence``, and they
+            separate "disputed" (high ``contest``) from "not yet known" (high
+            ``ignorance``) — a distinction ``stability`` cannot express, since it reads
+            0.5 for both.
+        """
+        return self._request(
+            "GET",
+            f"/memory/decisions/{decision_id}",
+            params={
+                **_as_of_params(as_of),
+                **_scoped_options(
+                    query=True, business_scope=business_scope, valid_at=valid_at
+                ),
+            }
+            or None,
+        )
+
+    def list_decisions(
+        self,
+        domain: Optional[str] = None,
+        decision_type: Optional[str] = None,
+        min_confidence: float = 0.0,
+        limit: int = 50,
+        provenance_memory_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        as_of: Optional[str] = None,
+        *,
+        business_scope: Optional[Dict[str, Any]] = None,
+        valid_at: Optional[Union[str, datetime]] = None,
+    ) -> List[Dict[str, Any]]:
+        """List active decisions with optional filters.
+
+        ``business_scope={"site": "A"}`` selects an exact business site, with
+        sponsor fallback. ``valid_at`` selects business time independently of
+        transaction time. Unset options are omitted and datetimes use UTC.
+
+        Args:
+            domain: Filter by domain.
+            decision_type: Filter by type (inference, preference, etc.).
+            min_confidence: Minimum confidence threshold.
+            limit: Maximum results.
+            provenance_memory_id: When set, returns only decisions whose provenance
+                subgraph contains this memory id (CORE-DECISION-PROVENANCE-LOOKUP-1).
+                Filters compose in-query so the response never silently truncates
+                below ``limit`` when more matches exist. Unknown or out-of-scope
+                memory ids return an empty list (never 404) to avoid existence leakage.
+            as_of: Optional ISO 8601 instant (SM-ASOF-DECISIONS-1). When set, the
+                server answers from the decision state as it stood at that instant:
+                the status, statement and version live then, never notes added later.
+                Omitted means now. An unparseable value is a 400 ``invalid_as_of``.
+                Does not combine with ``provenance_memory_id`` (the server answers 400).
+
+        Returns:
+            List of decision dicts.
+
+            Each decision also carries three Dempster-Shafer belief reads derived
+            from its reinforce/contradict evidence (CORE-DECISION-BELIEF-SURFACE-1):
+            ``belief_hold`` (lower bound that the decision should stand),
+            ``plausibility_hold`` (upper bound), and ``ignorance`` (the width of that
+            interval, so 1.0 means no evidence has been recorded either way). They are
+            evidence-only and independent of the prior scalar ``confidence``, and they
+            separate "disputed" (high ``contest``) from "not yet known" (high
+            ``ignorance``) — a distinction ``stability`` cannot express, since it reads
+            0.5 for both.
+        """
+        params: Dict[str, Any] = {"min_confidence": min_confidence, "limit": limit}
+        if domain:
+            params["domain"] = domain
+        if decision_type:
+            params["decision_type"] = decision_type
+        if provenance_memory_id is not None:
+            params["provenance_memory_id"] = provenance_memory_id
+        if agent_id is not None:
+            params["agent_id"] = agent_id
+        params.update(_as_of_params(as_of))
+        params.update(
+            _scoped_options(
+                query=True, business_scope=business_scope, valid_at=valid_at
+            )
+        )
+        result = self._request("GET", "/memory/decisions", params=params)
+        return result.get("decisions", [])
+
+    def policy_bundle(
+        self,
+        workflow: Optional[str] = None,
+        domain: Optional[str] = None,
+        statuses: tuple[str, ...] = ("active",),
+        as_of: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Compile active workspace decisions into a Stratum policy bundle.
+
+        ``statuses`` is sent as a list so httpx encodes repeatable ``status``
+        query parameters. P1 accepts only the default active selector; the
+        server returns a typed validation error for any unsupported value.
+
+        ``as_of`` (ISO 8601, SM-ASOF-DECISIONS-1) compiles the bundle from the
+        decisions that were active at that instant, each rule pinned to the
+        version live then; the bundle echoes it as ``as_of``. Omitted means now.
+        """
+        params: Dict[str, Any] = {"status": list(statuses)}
+        if workflow is not None:
+            params["workflow"] = workflow
+        if domain is not None:
+            params["domain"] = domain
+        params.update(_as_of_params(as_of))
+        return self._request("GET", "/memory/policy/bundle", params=params)
+
+    def record_enforcement_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """Record an idempotent Stratum enforcement event for this workspace."""
+        return self._request("POST", "/memory/policy/events", json_body=event)
+
+    def supersede_decision(
+        self,
+        decision_id: str,
+        new_content: str,
+        reason: str,
+        new_decision_type: str = "inference",
+        new_confidence: float = 0.8,
+        rejected_alternatives: Optional[List[str]] = None,
+        rationale: Optional[str] = None,
+        constraints: Optional[List[str]] = None,
+        *,
+        valid_from: Optional[Union[str, datetime]] = None,
+        scope_go_lives: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Replace a decision with a new one.
+
+        ``scope_go_lives`` carries a schedule of ``{scope, valid_from}`` entries.
+        Site-only activation keeps the predecessor available to other sites.
+        Datetimes use UTC. Unset options are omitted and invalid schedules retain
+        the service's typed validation errors.
+
+        Args:
+            decision_id: ID of the decision to supersede.
+            new_content: Content of the replacement decision.
+            reason: Why the old decision is being superseded.
+            new_decision_type: Type of the new decision.
+            new_confidence: Confidence of the new decision.
+            rejected_alternatives: Alternatives considered and dropped for the replacement.
+            rationale: Why the replacement was chosen.
+            constraints: Hard limits applying to the replacement.
+
+        Returns:
+            Dict with old_decision_id, new_decision_id, status.
+        """
+        body = {
+            "new_content": new_content,
+            "reason": reason,
+            "new_decision_type": new_decision_type,
+            "new_confidence": new_confidence,
+        }
+        if rejected_alternatives is not None:
+            body["rejected_alternatives"] = rejected_alternatives
+        if rationale is not None:
+            body["rationale"] = rationale
+        if constraints is not None:
+            body["constraints"] = constraints
+        body.update(
+            _scoped_options(valid_from=valid_from, scope_go_lives=scope_go_lives)
+        )
+        return self._request(
+            "POST", f"/memory/decisions/{decision_id}/supersede", json_body=body
+        )
+
+    def retract_decision(self, decision_id: str, reason: str) -> Dict[str, Any]:
+        """Retract a decision (mark as no longer valid).
+
+        Args:
+            decision_id: ID of the decision to retract.
+            reason: Why the decision is being retracted.
+
+        Returns:
+            Dict with decision_id and status.
+        """
+        return self._request(
+            "POST",
+            f"/memory/decisions/{decision_id}/retract",
+            json_body={"reason": reason},
+        )
+
+    def reinforce_decision(self, decision_id: str, evidence_id: str) -> Dict[str, Any]:
+        """Record supporting evidence for a decision.
+
+        Args:
+            decision_id: ID of the decision to reinforce.
+            evidence_id: Memory ID of the supporting evidence.
+
+        Returns:
+            Dict with decision_id, confidence, reinforcement_count.
+        """
+        return self._request(
+            "POST",
+            f"/memory/decisions/{decision_id}/reinforce",
+            json_body={"evidence_id": evidence_id},
+        )
+
+    def link_decision_evidence(
+        self, decision_id: str, evidence_id: str
+    ) -> Dict[str, Any]:
+        """Link a stored evidence receipt to a live decision (SM-EVIDENCE-TYPE-1).
+
+        Confidence is unchanged (``reinforce_decision`` raises it); linking twice adds nothing.
+
+        Args:
+            decision_id: ID of the decision.
+            evidence_id: The evidence node id, or the Compose ``ev:`` ref it was recorded under.
+
+        Returns:
+            Dict with decision_id, evidence_id (the node id), evidence_ids and confidence.
+            The service answers 404 for a missing decision or evidence, 409 for a superseded or
+            retracted decision and 422 for a node that is not evidence.
+        """
+        return self._request(
+            "POST",
+            f"/memory/decisions/{quote(decision_id, safe='')}/evidence",
+            json_body={"evidence_id": evidence_id},
+        )
+
+    def record_evidence(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        """Store one checked Compose evidence receipt as an ``evidence`` memory (SM-EVIDENCE-TYPE-1).
+
+        Args:
+            record: The Compose record (``contracts/evidence.schema.json#/definitions/record``):
+                id (``ev:`` + 16 hex), evidence (kind-specific, with ``at`` and ``by``),
+                checked_at, checks and optional subject. Saving the same record again is a no-op;
+                a different body under a stored id is refused (409).
+
+        Returns:
+            Dict with evidence_id, evidence_ref, kind, subject, checker, observed_at, checked_at,
+            checks, payload and the round-tripped ``record``.
+        """
+        return self._request("POST", "/memory/evidence", json_body={"record": record})
+
+    def get_evidence(self, evidence_id: str) -> Dict[str, Any]:
+        """Read one evidence receipt by node id or ``ev:`` ref (SM-EVIDENCE-TYPE-1); 404 when absent.
+
+        Returns:
+            The same dict as ``record_evidence``.
+        """
+        return self._request("GET", f"/memory/evidence/{quote(evidence_id, safe='')}")
+
+    def contradict_decision(self, decision_id: str, evidence_id: str) -> Dict[str, Any]:
+        """Record contradicting evidence against a decision.
+
+        Args:
+            decision_id: ID of the decision to contradict.
+            evidence_id: Memory ID of the contradicting evidence.
+
+        Returns:
+            Dict with decision_id, confidence, and contradiction_count.
+        """
+        return self._request(
+            "POST",
+            f"/memory/decisions/{decision_id}/contradict",
+            json_body={"evidence_id": evidence_id},
+        )
+
+    def get_decision_conflicts(
+        self, decision_id: str, min_contest: float = 0.0
+    ) -> Dict[str, Any]:
+        """Find decisions that conflict with a decision.
+
+        Args:
+            decision_id: ID of the decision to inspect.
+            min_contest: Minimum pairwise contest severity (0.0-1.0).
+
+        Returns:
+            Dict with decision_id, conflicts, and count.
+        """
+        return self._request(
+            "POST",
+            f"/memory/decisions/{decision_id}/conflicts",
+            params={"min_contest": min_contest},
+        )
+
+    def search_decisions(
+        self,
+        topic: str,
+        limit: int = 20,
+        as_of: Optional[str] = None,
+        *,
+        business_scope: Optional[Dict[str, Any]] = None,
+        valid_at: Optional[Union[str, datetime]] = None,
+    ) -> Dict[str, Any]:
+        """Search active decisions related to a topic.
+
+        ``business_scope={"site": "A"}`` selects an exact business site, with
+        sponsor fallback. ``valid_at`` selects business time independently of
+        transaction time. Unset options are omitted and datetimes use UTC.
+
+        Args:
+            topic: Search topic.
+            limit: Maximum matching decisions (1-100).
+            as_of: Optional ISO 8601 instant (SM-ASOF-DECISIONS-1). When set, the
+                server answers from the decision state as it stood at that instant:
+                the status, statement and version live then, never notes added later.
+                Omitted means now. An unparseable value is a 400 ``invalid_as_of``.
+
+        Returns:
+            Dict with decisions, count, and topic.
+
+            Each decision also carries three Dempster-Shafer belief reads derived
+            from its reinforce/contradict evidence (CORE-DECISION-BELIEF-SURFACE-1):
+            ``belief_hold`` (lower bound that the decision should stand),
+            ``plausibility_hold`` (upper bound), and ``ignorance`` (the width of that
+            interval, so 1.0 means no evidence has been recorded either way). They are
+            evidence-only and independent of the prior scalar ``confidence``, and they
+            separate "disputed" (high ``contest``) from "not yet known" (high
+            ``ignorance``) — a distinction ``stability`` cannot express, since it reads
+            0.5 for both.
+        """
+        return self._request(
+            "GET",
+            "/memory/decisions/search",
+            params={
+                "topic": topic,
+                "limit": limit,
+                **_as_of_params(as_of),
+                **_scoped_options(
+                    query=True, business_scope=business_scope, valid_at=valid_at
+                ),
+            },
+        )
+
+    def get_provenance_chain(
+        self,
+        decision_id: str,
+        as_of: Optional[str] = None,
+        *,
+        business_scope: Optional[Dict[str, Any]] = None,
+        valid_at: Optional[Union[str, datetime]] = None,
+    ) -> Dict[str, Any]:
+        """Get full provenance chain for a decision.
+
+        ``business_scope={"site": "A"}`` selects an exact business site, with
+        sponsor fallback. ``valid_at`` selects business time independently of
+        transaction time. Unset options are omitted and datetimes use UTC.
+
+        Args:
+            decision_id: The decision ID.
+            as_of: Optional ISO 8601 instant (SM-ASOF-DECISIONS-1). When set, the
+                server answers from the decision state as it stood at that instant:
+                the status, statement and version live then, never notes added later.
+                Omitted means now. An unparseable value is a 400 ``invalid_as_of``.
+
+        Returns:
+            Dict with decision, reasoning_trace, evidence, superseded.
+        """
+        return self._request(
+            "GET",
+            f"/memory/decisions/{decision_id}/provenance",
+            params={
+                **_as_of_params(as_of),
+                **_scoped_options(
+                    query=True, business_scope=business_scope, valid_at=valid_at
+                ),
+            }
+            or None,
+        )
+
+    def get_causal_chain(
+        self,
+        decision_id: str,
+        direction: str = "both",
+        max_depth: int = 3,
+    ) -> Dict[str, Any]:
+        """Trace causal chain from a decision.
+
+        Args:
+            decision_id: The decision ID.
+            direction: 'causes', 'effects', or 'both'.
+            max_depth: Maximum traversal depth (1-10).
+
+        Returns:
+            Dict with decision, causes, effects.
+        """
+        params = {"direction": direction, "max_depth": max_depth}
+        return self._request(
+            "GET", f"/memory/decisions/{decision_id}/causal-chain", params=params
+        )
+
+    def create_pending_decision(
+        self,
+        content: str,
+        requirements: List[Dict[str, Any]],
+        domain: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        agent_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create a pending decision (Acceptance Case) with unresolved requirements.
+
+        Each requirement: {"description": str, "requirement_type": str, "query_hint": str|None}.
+        Returns the decision incl. server-generated requirement_ids.
+        """
+        body: Dict[str, Any] = {"content": content, "requirements": requirements}
+        if domain:
+            body["domain"] = domain
+        if tags:
+            body["tags"] = tags
+        if agent_id is not None:
+            body["agent_id"] = agent_id
+        return self._request("POST", "/memory/decisions/pending/create", json_body=body)
+
+    def resolve_requirement(
+        self, decision_id: str, requirement_id: str, memory_id: str
+    ) -> Dict[str, Any]:
+        """Mark one requirement on a pending decision resolved by a memory item."""
+        return self._request(
+            "POST",
+            f"/memory/decisions/pending/{decision_id}/resolve",
+            json_body={"requirement_id": requirement_id, "memory_id": memory_id},
+        )
+
+    def try_activate_decision(self, decision_id: str) -> Dict[str, Any]:
+        """Try to activate a pending decision (no-op if requirements remain)."""
+        return self._request(
+            "POST", f"/memory/decisions/pending/{decision_id}/activate"
+        )
+
+    def list_pending_decisions(self, limit: int = 50) -> Dict[str, Any]:
+        """List pending decisions awaiting more evidence."""
+        return self._request(
+            "GET", "/memory/decisions/pending", params={"limit": limit}
+        )
+
+    # =========================================================================
+    # Procedure Evolution (CFS-3b)
+    # =========================================================================
+
+    def get_procedure_evolution(
+        self,
+        procedure_id: str,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """Get evolution history for a procedure.
+
+        Returns a list of evolution events showing how the procedure was
+        discovered and refined over time.
+
+        Args:
+            procedure_id: The procedure ID to get history for
+            limit: Maximum number of events to return (default 20)
+            offset: Number of events to skip (default 0)
+
+        Returns:
+            Dict with procedure_id, current_version, total_events, and events list
+
+        Example:
+            ```python
+            history = client.get_procedure_evolution("proc_123")
+            print(f"Current version: {history['current_version']}")
+            for event in history['events']:
+                print(f"  v{event['version']}: {event['event_type']} - {event['summary']}")
+            ```
+        """
+        params = {"limit": limit, "offset": offset}
+        return self._request(
+            "GET", f"/memory/procedures/{procedure_id}/evolution", params=params
+        )
+
+    def get_procedure_evolution_event(
+        self,
+        procedure_id: str,
+        event_id: str,
+    ) -> Dict[str, Any]:
+        """Get detailed information about a specific evolution event.
+
+        Returns the full content snapshot and diff for a single evolution event.
+
+        Args:
+            procedure_id: The procedure ID
+            event_id: The event ID to retrieve
+
+        Returns:
+            Full event detail including content_snapshot and changes_from_previous
+
+        Example:
+            ```python
+            event = client.get_procedure_evolution_event("proc_123", "evt_456")
+            print(f"Content at v{event['version']}:")
+            print(event['content_snapshot']['content'])
+            if event['changes_from_previous']['has_changes']:
+                print(f"Changes: {event['changes_from_previous']['summary']}")
+            ```
+        """
+        return self._request(
+            "GET", f"/memory/procedures/{procedure_id}/evolution/{event_id}"
+        )
+
+    def get_procedure_confidence_trajectory(
+        self,
+        procedure_id: str,
+    ) -> Dict[str, Any]:
+        """Get confidence trajectory data for charting.
+
+        Returns time-series data showing how confidence has changed over the
+        procedure's lifecycle, suitable for rendering in a line chart.
+
+        Args:
+            procedure_id: The procedure ID
+
+        Returns:
+            Dict with procedure_id and data_points list containing timestamp,
+            confidence, matches, and success_rate for each point
+
+        Example:
+            ```python
+            trajectory = client.get_procedure_confidence_trajectory("proc_123")
+            for point in trajectory['data_points']:
+                print(f"{point['timestamp']}: confidence={point['confidence']:.2f}")
+            ```
+        """
+        return self._request(
+            "GET", f"/memory/procedures/{procedure_id}/confidence-trajectory"
+        )
+
+    # ============================================================================
+    # Procedure Candidates (CFS-3b Recommendation Engine)
+    # ============================================================================
+
+    def list_procedure_candidates(
+        self,
+        min_score: float = 0.6,
+        min_cluster_size: int = 3,
+        days_back: int = 30,
+        limit: int = 20,
+    ) -> Dict[str, Any]:
+        """
+        List procedure promotion candidates from working memory patterns.
+
+        Analyzes working memory items to find repeated patterns that could be
+        promoted to stored procedures for reuse.
+
+        Args:
+            min_score: Minimum recommendation score (0.0-1.0, default: 0.6)
+            min_cluster_size: Minimum items in cluster (default: 3)
+            days_back: Look back period in days (default: 30)
+            limit: Maximum candidates to return (default: 20)
+
+        Returns:
+            Dict with workspace_id, candidate_count, total_working_items, and candidates list.
+            Each candidate contains cluster_id, suggested_name, suggested_description,
+            representative_content, item_count, scores, common_skills, common_tools,
+            sample_item_ids, and date_range.
+
+        Example:
+            ```python
+            result = client.list_procedure_candidates(min_score=0.7)
+            for candidate in result['candidates']:
+                print(f"{candidate['suggested_name']}: {candidate['scores']['recommendation_score']:.2f}")
+            ```
+        """
+        params = {
+            "min_score": min_score,
+            "min_cluster_size": min_cluster_size,
+            "days_back": days_back,
+            "limit": limit,
+        }
+        return self._request("GET", "/memory/procedures/candidates", params=params)
+
+    def promote_procedure_candidate(
+        self,
+        cluster_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        procedure_type: str = "extraction",
+        preferred_profile: str = "quick_extract",
+    ) -> Dict[str, Any]:
+        """
+        Promote a candidate cluster to a stored procedure.
+
+        Creates a new procedural memory item from the candidate cluster's
+        representative content and metadata.
+
+        Args:
+            cluster_id: The cluster ID from list_procedure_candidates
+            name: Optional name for the procedure (uses suggested_name if omitted)
+            description: Optional description for the procedure
+            procedure_type: Type of procedure (default: "extraction")
+            preferred_profile: Preferred pipeline profile (default: "quick_extract")
+
+        Source items are always retained (G129: the source-delete option was removed in 2.0.0).
+
+        Returns:
+            Dict with status, procedure_id, name and items_promoted
+
+        Example:
+            ```python
+            result = client.promote_procedure_candidate(
+                cluster_id="abc-123",
+                name="API Error Handler",
+                description="Handles 4xx errors from external APIs"
+            )
+            print(f"Created procedure: {result['procedure_id']}")
+            ```
+        """
+        body = {
+            "name": name,
+            "description": description,
+            "procedure_type": procedure_type,
+            "preferred_profile": preferred_profile,
+        }
+        return self._request(
+            "POST",
+            f"/memory/procedures/candidates/{cluster_id}/promote",
+            json_body=body,
+        )
+
+    def dismiss_procedure_candidate(self, cluster_id: str) -> Dict[str, Any]:
+        """
+        Dismiss a candidate cluster from future recommendations.
+
+        The candidate will be excluded from future recommendation lists
+        for this workspace.
+
+        Args:
+            cluster_id: The cluster ID to dismiss
+
+        Returns:
+            Dict with status, cluster_id, and message
+
+        Example:
+            ```python
+            result = client.dismiss_procedure_candidate("abc-123")
+            print(result['message'])  # "Candidate dismissed from future recommendations"
+            ```
+        """
+        return self._request(
+            "DELETE", f"/memory/procedures/candidates/{cluster_id}/dismiss"
+        )
+
+    # ============================================================================
+    # Procedure Schema Drift Detection (CFS-4)
+    # ============================================================================
+
+    def list_drift_events(
+        self,
+        procedure_id: Optional[str] = None,
+        resolved: Optional[bool] = None,
+        breaking_only: Optional[bool] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: int = 100,
+    ) -> Dict[str, Any]:
+        """
+        List schema drift events for the current workspace.
+
+        Args:
+            procedure_id: Filter by procedure ID.
+            resolved: Filter by resolution status.
+            breaking_only: If True, only return events with breaking changes.
+            start_date: ISO 8601 date string for range start.
+            end_date: ISO 8601 date string for range end.
+            limit: Maximum number of events to return (1-1000, default 100).
+
+        Returns:
+            Dict with workspace_id, record_count, and records list of DriftEventSummary dicts.
+
+        Example:
+            ```python
+            events = client.list_drift_events(resolved=False, breaking_only=True)
+            for event in events["records"]:
+                print(f"{event['procedure_id']}: {event['diff_summary']}")
+            ```
+        """
+        params: Dict[str, Any] = {"limit": limit}
+        if procedure_id is not None:
+            params["procedure_id"] = procedure_id
+        if resolved is not None:
+            params["resolved"] = resolved
+        if breaking_only is not None:
+            params["breaking_only"] = breaking_only
+        if start_date is not None:
+            params["start_date"] = start_date
+        if end_date is not None:
+            params["end_date"] = end_date
+        return self._request("GET", "/memory/procedures/drift", params=params)
+
+    def get_drift_event(self, event_id: str) -> Dict[str, Any]:
+        """
+        Get a single drift event with full change details.
+
+        Args:
+            event_id: The drift event ID.
+
+        Returns:
+            DriftEventDetail dict with changes list, resolution info, and full metadata.
+
+        Raises:
+            SmartMemoryClientError: If event not found (404).
+
+        Example:
+            ```python
+            event = client.get_drift_event("evt-abc-123")
+            for change in event["changes"]:
+                print(f"  {change['path']}: {change['change_type']} (breaking={change['breaking']})")
+            ```
+        """
+        return self._request("GET", f"/memory/procedures/drift/{event_id}")
+
+    def resolve_drift_event(
+        self, event_id: str, note: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Mark a drift event as resolved.
+
+        Args:
+            event_id: The drift event ID to resolve.
+            note: Optional resolution note (max 500 chars).
+
+        Returns:
+            Dict with status, event_id, and resolved=True.
+
+        Raises:
+            SmartMemoryClientError: If event not found (404).
+
+        Example:
+            ```python
+            result = client.resolve_drift_event("evt-abc-123", note="Schema updated intentionally")
+            ```
+        """
+        body: Dict[str, Any] = {}
+        if note is not None:
+            body["note"] = note
+        return self._request(
+            "POST", f"/memory/procedures/drift/{event_id}/resolve", json_body=body
+        )
+
+    def sweep_drift(self) -> Dict[str, Any]:
+        """
+        Trigger a drift sweep across all procedures in the workspace.
+
+        Checks all procedures for schema drift against their stored snapshots.
+
+        Returns:
+            SweepResult dict with workspace_id, procedures_checked, drift_detected,
+            and events_created counts.
+
+        Example:
+            ```python
+            result = client.sweep_drift()
+            print(f"Checked {result['procedures_checked']} procedures, "
+                  f"found {result['drift_detected']} with drift")
+            ```
+        """
+        return self._request("POST", "/memory/procedures/drift/sweep", json_body={})
+
+    def list_schema_snapshots(self, procedure_id: str) -> Dict[str, Any]:
+        """
+        List schema snapshots for a procedure.
+
+        Args:
+            procedure_id: The procedure ID to get snapshots for.
+
+        Returns:
+            Dict with workspace_id, procedure_id, record_count, and snapshots list
+            of SchemaSnapshotSummary dicts.
+
+        Example:
+            ```python
+            result = client.list_schema_snapshots("proc-abc-123")
+            for snap in result["snapshots"]:
+                print(f"{snap['captured_at']}: {snap['tool_count']} tools, hash={snap['schema_hash']}")
+            ```
+        """
+        return self._request("GET", f"/memory/procedures/schemas/{procedure_id}")
+
+    # ------------------------------------------------------------------
+    # Memory Snapshots (CORE-SUMMARY-1, E1)
+    # ------------------------------------------------------------------
+
+    def summary_generate(
+        self,
+        window_start: Optional[str] = None,
+        include_markdown: bool = True,
+    ) -> Dict[str, Any]:
+        """Fire a manual snapshot for the current workspace.
+
+        Returns the full snapshot payload. Raises ``SmartMemoryClientError``
+        on conflict (HTTP 409 ``{reason: lock_held}``).
+        """
+        body: Dict[str, Any] = {"include_markdown": include_markdown}
+        if window_start is not None:
+            body["window_start"] = window_start
+        return self._request("POST", "/memory/summary/generate", json_body=body)
+
+    def summary_latest(self) -> Optional[Dict[str, Any]]:
+        """Return the most recent snapshot for the current workspace, or
+        ``None`` if none exists. Other errors (auth, 5xx) propagate."""
+        try:
+            return self._request("GET", "/memory/summary/latest")
+        except SmartMemoryNotFoundError:
+            return None
+
+    def summary_get(self, snapshot_id: str) -> Optional[Dict[str, Any]]:
+        """Return a specific snapshot by id, or ``None`` if not found.
+        Other errors (auth, 5xx) propagate."""
+        try:
+            return self._request("GET", f"/memory/summary/{snapshot_id}")
+        except SmartMemoryNotFoundError:
+            return None
+
+    def summary_list(
+        self,
+        is_heartbeat: Optional[bool] = None,
+        limit: int = 20,
+        before: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List snapshots for the current workspace, newest first."""
+        params: Dict[str, Any] = {"limit": limit}
+        if is_heartbeat is not None:
+            params["is_heartbeat"] = str(is_heartbeat).lower()
+        if before is not None:
+            params["before"] = before
+        return self._request("GET", "/memory/summary/list", params=params) or []
+
+    def summary_delta(
+        self,
+        from_snapshot_id: str,
+        to_snapshot_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Return the SnapshotDelta between two snapshots, or ``None`` if
+        either snapshot is not found. Other errors (auth, 5xx) propagate."""
+        try:
+            return self._request(
+                "GET",
+                "/memory/summary/delta",
+                params={"from": from_snapshot_id, "to": to_snapshot_id},
+            )
+        except SmartMemoryNotFoundError:
+            return None
+
+    def summary_delete(self, snapshot_id: str) -> None:
+        """Admin-only. Delete a snapshot. Raises on 403/404/500."""
+        self._request("DELETE", f"/memory/summary/{snapshot_id}")
+
+    # ------------------------------------------------------------------
+    # Scoped renewable leases (SVC-LEASE-1)
+    # ------------------------------------------------------------------
+
+    def acquire_lease(
+        self, key: str, ttl_seconds: Optional[int] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Acquire a lease, or return ``None`` when a live holder owns it."""
+        body: Dict[str, Any] = {}
+        if ttl_seconds is not None:
+            body["ttl_seconds"] = ttl_seconds
+        try:
+            return self._request("POST", f"/memory/locks/{key}", json_body=body)
+        except SmartMemoryValidationError as e:
+            if e.status_code != 409:
+                raise
+            try:
+                detail = json.loads(e.detail)
+            except (TypeError, json.JSONDecodeError):
+                raise e
+            lease_detail = detail.get("detail") if isinstance(detail, dict) else None
+            if (
+                isinstance(lease_detail, dict)
+                and lease_detail.get("reason") == "lock_held"
+            ):
+                # Only a recognised 409 is definitive "not ours" control flow. A 503,
+                # network failure, malformed body, or other error is unknown and must
+                # raise so callers never mistake coordinator uncertainty for contention.
+                return None
+            raise
+
+    def renew_lease(
+        self, key: str, token: str, ttl_seconds: Optional[int] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Renew a lease, or return ``None`` when this token no longer owns it."""
+        body: Dict[str, Any] = {}
+        if ttl_seconds is not None:
+            body["ttl_seconds"] = ttl_seconds
+        try:
+            return self._request(
+                "POST",
+                f"/memory/locks/{key}/renew",
+                json_body=body,
+                headers={"X-Lease-Token": token},
+            )
+        except SmartMemoryValidationError as e:
+            if e.status_code != 409:
+                raise
+            try:
+                detail = json.loads(e.detail)
+            except (TypeError, json.JSONDecodeError):
+                raise e
+            lease_detail = detail.get("detail") if isinstance(detail, dict) else None
+            if (
+                isinstance(lease_detail, dict)
+                and lease_detail.get("reason") == "not_owner"
+            ):
+                return None
+            raise
+
+    def release_lease(self, key: str, token: str) -> bool:
+        """Release a lease, returning ``False`` when this token no longer owns it."""
+        try:
+            self._request(
+                "DELETE",
+                f"/memory/locks/{key}",
+                headers={"X-Lease-Token": token},
+            )
+            return True
+        except SmartMemoryValidationError as e:
+            if e.status_code != 409:
+                raise
+            try:
+                detail = json.loads(e.detail)
+            except (TypeError, json.JSONDecodeError):
+                raise e
+            lease_detail = detail.get("detail") if isinstance(detail, dict) else None
+            if (
+                isinstance(lease_detail, dict)
+                and lease_detail.get("reason") == "not_owner"
+            ):
+                return False
+            raise
+
+    def allocate_sequence(
+        self,
+        name: str,
+        *,
+        floor: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Consume the next numbers from a workspace-scoped monotonic sequence.
+
+        Returns ``{"name", "value", "first", "count"}`` — the caller owns the
+        inclusive range ``[first, value]``.
+
+        Unlike the lease methods there is no benign failure to swallow: every
+        non-2xx raises. An allocator that returned ``None`` on a 503 would let a
+        caller mistake coordinator failure for a value, which is the one thing
+        this primitive exists to prevent.
+
+        ``floor`` raises the counter before allocating and can never lower it,
+        so passing it on every call is idempotent and is the recommended
+        pattern — it removes any "did I initialise this?" state from the caller.
+
+        Numbers you do not use are LOST. There is no release and no reclaim;
+        gaps are guaranteed, so never treat ``value`` as a record count.
+        """
+        body: Dict[str, Any] = {}
+        if floor is not None:
+            body["floor"] = floor
+        if count is not None:
+            body["count"] = count
+        return self._request("POST", f"/memory/sequences/{name}/next", json_body=body)
+
+    def peek_sequence(self, name: str) -> Optional[int]:
+        """Return the sequence's current value, or ``None`` if never allocated.
+
+        Consumes nothing. Use this to validate a ``floor`` computation before
+        cutover without burning an ordinal.
+        """
+        try:
+            result = self._request("GET", f"/memory/sequences/{name}")
+        except SmartMemoryNotFoundError:
+            return None
+        return result.get("value") if isinstance(result, dict) else None
+
+    def export_okf(self) -> bytes:
+        """Export this workspace as a gzipped OKF bundle.
+
+        Needs workspace admin or tenant admin: any other caller gets a 403.
+        """
+        response = self._request("GET", "/memory/okf/export", return_response=True)
+        return response.content
+
+    def import_okf(self, archive: bytes) -> dict:
+        """Import a gzipped OKF bundle into this workspace."""
+        return self._request(
+            "POST",
+            "/memory/okf/import",
+            files={
+                "file": (
+                    "smartmemory-okf-import.tar.gz",
+                    archive,
+                    "application/gzip",
+                )
+            },
+        )
+
+    def import_chat_export(
+        self,
+        export: bytes,
+        *,
+        source_format: str = "auto",
+        max_conversations: int = 25,
+        filename: str = "conversations.json",
+    ) -> Dict[str, Any]:
+        """Import a ChatGPT or Claude conversation export (DIST-CHAT-IMPORT-1).
+
+        Conversations run through the normal conversation pipeline, so entities
+        and relations are extracted exactly as for a live conversation. Items
+        land with ``origin="import:chatgpt_export"`` / ``"import:claude_export"``
+        — tier 1, so they are recallable, and dedupe-eligible, so re-uploading a
+        later export updates the overlap rather than duplicating it.
+
+        Args:
+            export: Raw bytes of the vendor ``.zip`` or of ``conversations.json``.
+            source_format: ``"auto"`` (default), ``"chatgpt"``, or ``"claude"``.
+            max_conversations: Cap on conversations ingested (1-200). The import
+                is synchronous and each conversation runs the full pipeline, so
+                this bound is real. The longest conversations are kept first and
+                anything left behind is named in the returned ``warnings``.
+            filename: Name sent with the upload; only affects server-side logging.
+
+        Returns:
+            ``{source_format, conversations_imported, conversations_failed,
+            turns_imported, items_created, warnings}``. **Read ``warnings``** —
+            a non-empty list means something was capped, skipped, or degraded
+            even though the call succeeded.
+        """
+        content_type = "application/zip" if export[:2] == b"PK" else "application/json"
+        return self._request(
+            "POST",
+            "/memory/import/chat-export",
+            files={"file": (filename, export, content_type)},
+            data={
+                "source_format": source_format,
+                "max_conversations": str(max_conversations),
+            },
+        )
+
+    def chat_export_formats(self) -> Dict[str, Any]:
+        """List supported chat-export formats and how to obtain each export."""
+        return self._request("GET", "/memory/import/chat-export/formats")
+
+    def recall_pack(
+        self,
+        budget_tokens: int,
+        query: Optional[str] = None,
+        sections: Optional[List[Dict[str, Any]]] = None,
+        preset: Optional[str] = None,
+        as_of: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Assemble one priority-ordered context block within a token budget.
+
+        Packs the default sections (active plan, anchors, latest snapshot,
+        tier-1/tier-2 memory items, notes) — or the caller-supplied
+        ``sections`` override — into a single text block sized to fit
+        ``budget_tokens``. Items that don't fit are truncated
+        (``items_compacted``) or dropped (``items_dropped``); both are
+        WARN-logged server-side.
+
+        Args:
+            budget_tokens: Total token budget for the packed block (1..200000).
+            query: Optional query to rank items by relevance. When omitted,
+                items rank by tier and recency instead.
+            sections: Optional override of the default section list/order/caps,
+                each entry ``{"name": str, "cap_tokens": int}``.
+            preset: Optional named section set, used instead of ``sections``.
+                ``"wakeup"`` is the session-start L1 card (active plan, anchors,
+                workspace topics, last-session headline) — pass it with a small
+                budget (~300 tokens); the default sections go degenerate at that
+                size. The card is content-bounded, so a typical workspace renders
+                far under that. Mutually exclusive with ``sections``.
+            as_of: Optional ISO 8601 instant (SM-ASOF-DECISIONS-1). Packs the
+                decisions as they stood then; sections with no history (active
+                plan, anchors) are dropped and listed in
+                ``manifest["dropped_sections"]``. Omitted means now.
+
+        Returns:
+            The RecallPack dict: ``{"block": str, "manifest": {...}}`` — see
+            the CORE-RECALL-BUDGET-1 contract for the full manifest shape.
+
+        Example:
+            ```python
+            pack = client.recall_pack(4000, query="what did we decide about auth?")
+            print(pack["block"])
+
+            # Session start: the wake-up card (renders ~70 real tokens).
+            card = client.recall_pack(300, preset="wakeup")
+            ```
+        """
+        body: Dict[str, Any] = {"budget_tokens": budget_tokens}
+        if query is not None:
+            body["query"] = query
+        if sections is not None:
+            body["sections"] = sections
+        if preset is not None:
+            body["preset"] = preset
+        if as_of is not None:
+            body["as_of"] = as_of
+        return self._request("POST", "/memory/recall/pack", json_body=body)
+
+    def ask(
+        self,
+        question: str,
+        limit: int = 5,
+        reasoning: bool = True,
+    ) -> Dict[str, Any]:
+        """Answer a question from stored memories and their one-hop graph relations.
+
+        Unlike ``search``, which hands back ranked memories for you to read, this
+        returns a written answer plus the exact evidence it was grounded in, so the
+        answer can be checked rather than trusted. The evidence list is the retrieved
+        memory set itself, captured before the model was called — a citation in it
+        cannot have been invented.
+
+        There is no fallback answer. If the server's LLM is unavailable or returns
+        nothing, the call raises rather than handing back a synthesized reply.
+
+        Args:
+            question: The natural-language question.
+            limit: How many memories to retrieve as evidence (1..50).
+            reasoning: When False, ``reasoning`` comes back as an empty string.
+
+        Returns:
+            ``{"answer": str, "reasoning": str, "evidence": [{"item_id", "content"}],
+            "relations": [{"source", "type", "target", "source_id", "target_id"}]}``
+            — see the DIST-LITE-9 ask contract. Relation rows carry both display
+            labels and graph node ids, so a UI can focus the edge that was used.
+
+        Raises:
+            SmartMemoryValidationError: blank question or an out-of-range limit.
+            SmartMemoryServerError: the configured LLM could not answer (502).
+
+        Example:
+            ```python
+            result = client.ask("Does Zed believe the amulet was stolen by Yara?")
+            print(result["answer"])
+            for item in result["evidence"]:
+                print(item["item_id"], item["content"])
+            ```
+        """
+        body: Dict[str, Any] = {"question": question, "limit": limit}
+        if reasoning is not True:
+            body["reasoning"] = reasoning
+        return self._request("POST", "/memory/ask", json_body=body)
+
+    def _request(
+        self,
+        method: str,
+        endpoint: str,
+        params: Optional[Dict[str, Any]] = None,
+        json_body: Optional[Dict[str, Any]] = None,
+        data: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        files: Optional[Dict[str, Any]] = None,
+        return_response: bool = False,
+        _submission_scope: Optional[tuple[str, str, Optional[str]]] = None,
+    ) -> Any:
+        """Internal helper for making HTTP requests."""
+        # Save attempts use the captured identity even if the client changes during request construction.
+        base_url, workspace_id, credential = (
+            _submission_scope if _submission_scope is not None
+            else (self.base_url, self.workspace_id, self.api_key)
+        )
+        url = f"{base_url}{endpoint}"
+        req_headers = {"X-Workspace-Id": workspace_id}
+        if headers:
+            req_headers.update(headers)
+
+        if credential:
+            req_headers["Authorization"] = f"Bearer {credential}"
+
+        try:
+            request_kwargs: Dict[str, Any] = {
+                "params": params,
+                "json": json_body,
+                "data": data,
+                "headers": req_headers,
+                "timeout": self._effective_timeout(),
+            }
+            if files is not None:
+                request_kwargs["files"] = files
+            response = self._client.request(
+                method,
+                url,
+                **request_kwargs,
+            )
+            response.raise_for_status()
+            if return_response:
+                return response
+            if response.status_code == 204:
+                return None
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            status = e.response.status_code if hasattr(e, "response") else 0
+            error_detail = e.response.text if hasattr(e, "response") else str(e)
+            exc_cls = _exception_for_status(status)
+            raise exc_cls(
+                f"Request failed: {e} - Detail: {error_detail}",
+                status_code=status,
+                detail=error_detail,
+                retry_after_s=_retry_after_s(getattr(e, "response", None)),
+            ) from e
+        except httpx.TransportError as e:
+            # Preserve the concrete cause so save retries can distinguish connect from post-send failures.
+            raise SmartMemoryTransportError(f"Request failed: {str(e)}") from e
+        except Exception as e:
+            raise SmartMemoryClientError(f"Request failed: {str(e)}") from e
+
+    def _effective_timeout(self) -> float:
+        """The httpx timeout for one request: ``self.timeout``, capped by an active ``await_receipt`` deadline."""
+        cap = _transport.REQUEST_TIMEOUT_S.get()
+        return self.timeout if cap is None else min(self.timeout, cap)
+
+    def feedback(
+        self,
+        item_ids: List[str],
+        outcome: str,
+        query: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Submit explicit feedback on recalled memory items.
+
+        Adjusts ``retention_score`` immediately and, for ``helpful`` feedback with
+        multiple items, strengthens ``CO_RETRIEVED`` edges between them — feeding
+        directly into the Hebbian co-retrieval evolver.
+
+        Args:
+            item_ids: IDs of items returned by a prior ``search()`` call.
+            outcome: ``"helpful"``, ``"misleading"``, or ``"neutral"``.
+            query: Optional original search query (for context/logging).
+
+        Returns:
+            Dict with keys: ``updated`` (int), ``edges_strengthened`` (int), ``outcome`` (str).
+
+        Example:
+            ```python
+            results = client.search("what did we decide about auth?")
+            client.feedback([r.item_id for r in results], outcome="helpful")
+            ```
+        """
+        body: Dict[str, Any] = {"item_ids": item_ids, "outcome": outcome}
+        if query is not None:
+            body["query"] = query
+        return self._request("POST", "/memory/feedback", json_body=body)
+
+    def get_plugin_catalog(self) -> Dict[str, Any]:
+        """List the pipeline plugins registered in the service (hub axis 3).
+
+        ``GET /memory/plugins/catalog`` (PLAT-PLUGIN-MARKETPLACE-1). Read-only and global, not
+        per-workspace: it needs an authenticated caller but no team context.
+
+        Returns:
+            Dict with ``generated_at`` (ISO 8601), ``tiles`` (one per registered plugin, with
+            ``id``, ``name``, ``description``, ``status``, ``plugin_type``, ``author``, ``version``,
+            ``stages``, ``security_profile`` and the other contract fields) and ``refused``
+            (registered plugins the catalog could not represent, each with ``id`` and ``reason``).
+
+        Raises:
+            SmartMemoryPermissionError: not authenticated (401) or not allowed (403).
+            SmartMemoryServerError: the service could not read its plugin registry (503).
+        """
+        return self._request("GET", "/memory/plugins/catalog")
+
+    # ------------------------------------------------------------------
+    # Workspace routing (WS-ROUTING-2b)
+    # ------------------------------------------------------------------
+
+    def _routing_request(self, method: str, endpoint: str, **kwargs: Any) -> Any:
+        """``_request`` that stamps the server ``error`` code on a raised error and turns
+        ``409 routing_prefs_version_conflict`` into ``SmartMemoryRoutingConflictError``."""
+        try:
+            return self._request(method, endpoint, **kwargs)
+        except SmartMemoryClientError as e:
+            e.error_code = _body_error_code(e.detail)
+            if (
+                e.status_code == 409
+                and e.error_code == SmartMemoryRoutingConflictError.error_code
+            ):
+                raise SmartMemoryRoutingConflictError(
+                    str(e), status_code=e.status_code, detail=e.detail
+                ) from e
+            raise
+
+    def get_routing_prefs(self) -> RoutingPrefs:
+        """Read the caller's account-default routing prefs (``GET /memory/routing/prefs``).
+
+        User-scoped, no workspace header needed. No stored row reads as
+        ``{"account_default_workspace_id": None, "version": 0, "updated_at": None}``.
+        Pass the returned ``version`` to ``set_routing_prefs``.
+        """
+        return self._routing_request("GET", "/memory/routing/prefs")
+
+    def set_routing_prefs(
+        self, account_default_workspace_id: Optional[str], version: int
+    ) -> RoutingPrefs:
+        """Set (or clear, with ``None``) the account default workspace (``PUT /memory/routing/prefs``).
+
+        Compare-and-set: ``version`` is the value last read from ``get_routing_prefs()``
+        (0 when there was no row). Returns the new prefs.
+
+        Raises:
+            SmartMemoryRoutingConflictError: 409 ``routing_prefs_version_conflict``, a
+                lost CAS. Re-read with ``get_routing_prefs()`` and retry.
+            SmartMemoryPermissionError: 403, ``error_code`` is ``routing_prefs_human_only``
+                (agent principal) or ``insufficient_team_permissions`` (workspace not usable).
+            SmartMemoryValidationError: 409 ``client_bound_to_workspace`` (workspace-bound
+                API key) or 422; ``error_code`` carries the server code when there is one.
+        """
+        if isinstance(version, bool) or not isinstance(version, int) or version < 0:
+            raise ValueError("version must be an int >= 0 (the value last read)")
+        return self._routing_request(
+            "PUT",
+            "/memory/routing/prefs",
+            json_body={
+                "account_default_workspace_id": account_default_workspace_id,
+                "version": version,
+            },
+        )
+
+    def explain_routing(
+        self,
+        client_key: Optional[str] = None,
+        context_key: Optional[str] = None,
+        file_workspace_id: Optional[str] = None,
+    ) -> RoutingExplain:
+        """Explain where a write would land, and why (``GET /memory/routing/explain``). Writes nothing.
+
+        Args:
+            client_key: stands in for the ``X-SM-Client`` header (max 200 chars).
+            context_key: the project/context binding key (max 200 chars).
+            file_workspace_id: what an accepted ``.smartmemory`` file would pick. A usable
+                id reads ``status: file_hint_not_applied`` on the ``context`` candidate;
+                an unusable one reads ``inaccessible`` with no id or name.
+
+        Returns:
+            Dict with ``workspace_id``, ``workspace_name``, ``routed_by``, ``notices``,
+            ``refusal`` (``missing_team_context`` or ``insufficient_team_permissions``),
+            ``candidates`` (one per lever, in order) and ``flags``.
+        """
+        params = {
+            k: v
+            for k, v in (
+                ("client_key", client_key),
+                ("context_key", context_key),
+                ("file_workspace_id", file_workspace_id),
+            )
+            if v is not None
+        }
+        return self._routing_request(
+            "GET", "/memory/routing/explain", params=params or None
+        )
+
+    @staticmethod
+    def routing_echo(result: Any) -> RoutingEcho:
+        """Typed write echo (``workspace_id``, ``workspace_name``, ``routed_by``,
+        ``notices``) from an ``add``/``add_detailed``/``ingest`` :class:`Receipt` (read off
+        ``receipt.raw``) or an ``ingest_conversation`` result dict. Absent on an older
+        server reads as ``None``/``[]``."""
+        return routing_echo(result)
+
+    def __repr__(self) -> str:
+        auth_status = "authenticated" if self.api_key else "unauthenticated"
+        return f"SmartMemoryClient(base_url='{self.base_url}', {auth_status})"
+
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit — closes the persistent HTTP connection pool."""
+        self.close()
