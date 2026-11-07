@@ -29,6 +29,7 @@ from smartmemory_client.errors import (
     SmartMemoryTransportError,
     SmartMemoryValidationError,
     StageChainError,
+    WriteOutcomeUnknown,
 )
 from smartmemory_client.receipt import Receipt, parse_receipt
 
@@ -308,11 +309,11 @@ def test_ingest_conversation_receipt_and_typed_errors(client, monkeypatch, statu
         assert receipt.subject_kind == "document_save"
         assert receipt.document_id == "conv_1" and receipt.item_id is None
     else:
-        with pytest.raises(_exception_for_status(status)) as exc:
+        with pytest.raises(WriteOutcomeUnknown if status == 500 else _exception_for_status(status)) as exc:
             client.ingest_conversation(turns, **kwargs)
         assert exc.value.status_code == status
         assert exc.value.detail == '{"detail": "rejected"}'
-    assert len(fake.calls) == (4 if status == 500 else 1)
+    assert len(fake.calls) == 1
     method, endpoint, _, body = fake.calls[0]
     assert all(call == fake.calls[0] for call in fake.calls)
     assert (method, endpoint) == ("POST", "/memory/ingest/conversation")
@@ -845,3 +846,25 @@ def test_storage_stage_default_omits_strategy_and_explicit_value_passes_through(
         "run_id": "pipeline_1",
         "storage_strategy": "single_node",
     }
+
+
+@pytest.mark.parametrize("failure", ["lost", 408, 429, 500, 502, 503, 504])
+@pytest.mark.parametrize("conversation_id", [None, "test_replay_conversation"])
+def test_conversation_ambiguous_write_is_never_replayed(client, monkeypatch, clock, failure, conversation_id):
+    original = lost() if failure == "lost" else http(failure, {"detail": "unconfirmed"})
+    # A second send would succeed, hiding a possibly committed first write.
+    fake = wired(client, monkeypatch, original, EXTRACTED)
+    with pytest.raises(WriteOutcomeUnknown) as caught:
+        client.ingest_conversation(
+            [{"role": "user", "content": "test_replay"}],
+            conversation_id=conversation_id, idempotency_key="test_replay_key",
+        )
+    assert len(fake.calls) == 1
+    assert clock.sleeps == []
+    assert caught.value.attempts == 1
+    assert caught.value.idempotency_key == "test_replay_key"
+    assert caught.value.__cause__ is original
+    assert caught.value.status_code == original.status_code
+    assert caught.value.detail == original.detail
+    assert "Check" in str(caught.value)
+    assert "Add outcome" not in str(caught.value)

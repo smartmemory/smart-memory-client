@@ -869,7 +869,7 @@ class SmartMemoryClient:
 
         One key (the caller's, or a freshly minted ``sm2_`` UUID v4) rides in the body of every attempt, and the
         body is built once, so a retry is byte-identical. A 409 becomes the typed ``SaveConflictError``.
-        The add route makes one attempt because it does not admit retry keys. Ambiguous failures
+        Add and conversation routes make one attempt because they do not admit retry keys. Ambiguous failures
         raise ``WriteOutcomeUnknown`` so the caller can check existing records before retrying.
         """
         key = (
@@ -883,7 +883,7 @@ class SmartMemoryClient:
                 lambda: self._request("POST", endpoint, json_body=sent),
                 key=key,
                 deadline_s=self.save_retry_deadline_s,
-                retry_safe=endpoint != "/memory/add",
+                retry_safe=endpoint not in {"/memory/add", "/memory/ingest/conversation"},
             )
         except SmartMemoryClientError as exc:
             conflict = _transport.conflict_from(exc)
@@ -1956,7 +1956,9 @@ class SmartMemoryClient:
             SmartMemoryValidationError: 400/422 for rejected conversation input.
             SmartMemoryPermissionError: 401/403 for denied access.
             SmartMemoryNotFoundError: 404 for a missing resource.
-            SmartMemoryServerError: 5xx for a server failure.
+            WriteOutcomeUnknown: Transport loss or retryable HTTP failure after one attempt.
+                Check existing records before retrying. Hosted conversation keys do not deduplicate.
+            SmartMemoryServerError: Other 5xx server failures.
             ReceiptError: The answer is not a supported receipt.
         """
         body_dict: Dict[str, Any] = {"turns": turns}
