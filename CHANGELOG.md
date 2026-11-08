@@ -1,3 +1,7 @@
+## Unreleased - REL-2.0-VERSION-BUMP-1: version 2.0.0 (2026-11-08)
+
+- Version set to 2.0.0 on the 2.0 branch. No tag, no publish (D-0138).
+
 ## Unreleased - OUTREACH-MARIUS-HITL-SURFACE-1 (2026-11-08)
 
 - Added `list_conflict_reviews(status, limit, offset)` and `settle_conflict_review(review_id, action, reason)` over `GET /memory/reasoning/reviews` and `POST /memory/reasoning/reviews/{review_id}/settle` (the server records the authenticated caller as the actor; the SDK sends none). Added `get_supersession_policy(workspace_id=None)` and `set_supersession_policy(policy, workspace_id=None, if_match=None)` over the workspace settings knob `review.supersession`. Contract: smart-memory-docs `docs/features/OUTREACH-MARIUS-HITL-SURFACE-1/review-queue-contract.json`.
