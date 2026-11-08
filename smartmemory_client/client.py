@@ -4924,6 +4924,97 @@ class SmartMemoryClient:
         """
         return self._request("GET", f"/memory/reasoning/confidence-history/{item_id}")
 
+    # -- Conflict review queue (OUTREACH-MARIUS-HITL-SURFACE-1) ----------------
+
+    def list_conflict_reviews(
+        self, status: str = "open", limit: int = 50, offset: int = 0
+    ) -> Dict[str, Any]:
+        """List conflict reviews in the client's workspace.
+
+        Returns ``{items, status, limit, offset}``; each item is a ConflictReview (contract
+        ``OUTREACH-MARIUS-HITL-SURFACE-1/review-queue-contract.json``). ``status`` is ``open``
+        or ``resolved``.
+        """
+        params = {"status": status, "limit": limit, "offset": offset}
+        return self._request("GET", "/memory/reasoning/reviews", params=params)
+
+    def settle_conflict_review(
+        self, review_id: str, action: str, reason: str
+    ) -> Dict[str, Any]:
+        """Settle one review: ``action`` is ``keep_a``, ``keep_b`` or ``keep_both``.
+
+        The server records the authenticated caller as the actor. ``keep_b`` on a
+        supersession proposal applies it; an identical retry returns the stored receipt.
+        """
+        body = {"action": action, "reason": reason}
+        return self._request(
+            "POST",
+            f"/memory/reasoning/reviews/{quote(review_id, safe='')}/settle",
+            json_body=body,
+        )
+
+    def get_supersession_policy(
+        self, workspace_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """The workspace's supersession policy (``retire`` or ``propose``) and where it comes from.
+
+        Reads ``review.supersession`` from ``GET /memory/workspaces/{id}/settings``
+        (default: the client's workspace). Returns ``{workspace_id, policy, source, stated,
+        version}``: ``source`` is ``workspace``, ``tenant`` or ``default``; ``stated`` is this
+        workspace's own override (``None`` = inherit).
+        """
+        wid = workspace_id or self.workspace_id
+        if not wid:
+            raise ValueError("get_supersession_policy needs a workspace_id")
+        return self._policy_view(
+            wid,
+            self._request("GET", f"/memory/workspaces/{quote(wid, safe='')}/settings"),
+        )
+
+    def set_supersession_policy(
+        self,
+        policy: Optional[str],
+        workspace_id: Optional[str] = None,
+        if_match: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Set the workspace's supersession policy: ``retire``, ``propose``, or ``None`` to inherit.
+
+        Needs the workspace's ``edit_settings`` authority; an API key or agent may only
+        tighten (set ``propose``). ``if_match`` is the version read, for compare-and-set.
+        """
+        if policy not in ("retire", "propose", None):
+            raise ValueError("policy must be 'retire', 'propose' or None")
+        wid = workspace_id or self.workspace_id
+        if not wid:
+            raise ValueError("set_supersession_policy needs a workspace_id")
+        headers = {"If-Match": str(if_match)} if if_match is not None else None
+        return self._policy_view(
+            wid,
+            self._request(
+                "PATCH",
+                f"/memory/workspaces/{quote(wid, safe='')}/settings",
+                json_body={"stated": {"review": {"supersession": policy}}},
+                headers=headers,
+            ),
+        )
+
+    @staticmethod
+    def _policy_view(workspace_id: str, settings: Dict[str, Any]) -> Dict[str, Any]:
+        def knob(block: str) -> Any:
+            return (
+                ((settings or {}).get(block) or {})
+                .get("review", {})
+                .get("supersession")
+            )
+
+        return {
+            "workspace_id": workspace_id,
+            "policy": knob("effective"),
+            "source": knob("source"),
+            "stated": knob("stated"),
+            "version": (settings or {}).get("version"),
+        }
+
     # =========================================================================
     # Reasoning Traces (System 2 Memory)
     # =========================================================================

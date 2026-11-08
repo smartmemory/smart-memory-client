@@ -1,3 +1,7 @@
+## Unreleased - OUTREACH-MARIUS-HITL-SURFACE-1 (2026-11-08)
+
+- Added `list_conflict_reviews(status, limit, offset)` and `settle_conflict_review(review_id, action, reason)` over `GET /memory/reasoning/reviews` and `POST /memory/reasoning/reviews/{review_id}/settle` (the server records the authenticated caller as the actor; the SDK sends none). Added `get_supersession_policy(workspace_id=None)` and `set_supersession_policy(policy, workspace_id=None, if_match=None)` over the workspace settings knob `review.supersession`. Contract: smart-memory-docs `docs/features/OUTREACH-MARIUS-HITL-SURFACE-1/review-queue-contract.json`.
+
 ## Unreleased - SDK-2.0-STAGE-STORAGE-STRATEGY-FU-1 (2026-11-08)
 
 - `run_storage_stage(storage_strategy=...)` is typed `Optional[StorageStrategy]` (`Literal["dual_node", "single_node", "memory_only"]`, exported from `smartmemory_client.client`). The service answers any other value with a 422 naming them.
