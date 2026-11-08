@@ -1,3 +1,7 @@
+## Unreleased - BILL-2.0-SPINE-PURGE-DECISION-1 (2026-11-08)
+
+- Docs only: `delete_workspace` now says what happens after the 30-day restore window. Content is erased for good, and the workspace's billing records are kept 7 years for accounting, marked deleted and never shown. No behaviour change in the client.
+
 ## Unreleased - OUTREACH-MARIUS-HITL-SURFACE-1 (2026-11-08)
 
 - Added `list_conflict_reviews(status, limit, offset)` and `settle_conflict_review(review_id, action, reason)` over `GET /memory/reasoning/reviews` and `POST /memory/reasoning/reviews/{review_id}/settle` (the server records the authenticated caller as the actor; the SDK sends none). Added `get_supersession_policy(workspace_id=None)` and `set_supersession_policy(policy, workspace_id=None, if_match=None)` over the workspace settings knob `review.supersession`. Contract: smart-memory-docs `docs/features/OUTREACH-MARIUS-HITL-SURFACE-1/review-queue-contract.json`.

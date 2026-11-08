@@ -4076,7 +4076,12 @@ class SmartMemoryClient:
         )
 
     def delete_workspace(self, workspace_id: str) -> Dict[str, Any]:
-        """Hide a Workspace (202 ``{workspace_id, state: "hidden", restore_until}``)."""
+        """Hide a Workspace (202 ``{workspace_id, state: "hidden", restore_until}``).
+
+        A team admin can restore it until ``restore_until`` (30 days). After that its
+        content is erased for good. Its billing records (credit ledger and usage-limit
+        counters) are kept 7 years for accounting, marked deleted and never shown.
+        """
         return self._request("DELETE", f"/memory/workspaces/{workspace_id}")
 
     def restore_workspace(self, workspace_id: str) -> Dict[str, Any]:
