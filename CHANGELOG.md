@@ -1,3 +1,7 @@
+## Unreleased - BILL-2.0-SPINE-PURGE-DECISION-1 (2026-11-08)
+
+- Docs only: `delete_workspace` now says what happens after the 30-day restore window. Content is erased for good, and the workspace's billing records are kept 7 years for accounting, marked deleted and never shown. No behaviour change in the client.
+
 ## Unreleased - REL-2.0-VERSION-BUMP-1: version 2.0.0 (2026-11-08)
 
 - Version set to 2.0.0 on the 2.0 branch. No tag, no publish (D-0138).
