@@ -347,6 +347,23 @@ result = client.feedback(
 # result == {"updated": N, "edges_strengthened": M, "outcome": "helpful"}
 ```
 
+### Conflict Review Queue and Supersession Policy
+
+```python
+# Conflicts a model deferred to a person, and proposed replacements, in this workspace.
+page = client.list_conflict_reviews(status="open", limit=50)
+for review in page["items"]:
+    print(review["id"], review["trigger"], review["conflict"]["existing_fact"], "->", review["conflict"]["new_fact"])
+
+# Settle one: keep_a (the stored fact), keep_b (the new one; applies a proposed replacement) or keep_both.
+# The server records you (the authenticated caller) as the actor.
+client.settle_conflict_review(review["id"], "keep_b", "Checked the signed sheet")
+
+# Does a model "replaced" verdict retire the old memory at once, or only propose it for review?
+client.get_supersession_policy()            # {"policy": "propose", "source": "default", ...}
+client.set_supersession_policy("propose")   # or "retire", or None to inherit
+```
+
 ### Reasoning Traces (System 2 Memory)
 
 ```python

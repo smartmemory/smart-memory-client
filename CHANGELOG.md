@@ -1,8 +1,50 @@
-# Changelog
-
 ## SVC-2.0-SAVE-KEY-REPLAY-1
 
 - Document hosted save-key replay across add, ingest, document and conversation routes, scoped conflicts, 30-day retention and current-authority checks.
+
+## Unreleased - WS-POLICY-10 B: members create private workspaces (2026-11-09)
+
+- `create_workspace(name, team_id=None, description=None)`: `team_id` is optional. Without it the service creates your own private workspace with no Team, which nobody else can see, and the body carries no `team_id` (WS-POLICY-10 B, OWNER D-0147). The new workspace is not made the session default.
+
+## Unreleased - WS-MGMT-16-FU client (2026-11-09)
+
+- Added `get_workspace_settings`, `update_workspace_settings(patch, workspace_id=None, if_match=None)`, `get_tenant_settings` and `update_tenant_settings(patch, if_match=None)` over `GET/PATCH /memory/workspaces/{id}/settings` and `/memory/tenant/settings` (contract `modules.settings`). `patch` is `{block: {knob: value | None}}`; `If-Match` is sent when `if_match` is given. 403/409/503 raise the existing typed errors. `get_supersession_policy` and `set_supersession_policy` now run on them, same return shapes.
+
+## Unreleased - BILL-2.0-SPINE-PURGE-DECISION-1 (2026-11-08)
+
+- Docs only: `delete_workspace` now says what happens after the 30-day restore window. Content is erased for good, and the workspace's billing records are kept 7 years for accounting, marked deleted and never shown. No behaviour change in the client.
+
+## Unreleased - REL-2.0-VERSION-BUMP-1: version 2.0.0 (2026-11-08)
+
+- Version set to 2.0.0 on the 2.0 branch. No tag, no publish (D-0138).
+
+## Unreleased - OUTREACH-MARIUS-HITL-SURFACE-1 (2026-11-08)
+
+- Added `list_conflict_reviews(status, limit, offset)` and `settle_conflict_review(review_id, action, reason)` over `GET /memory/reasoning/reviews` and `POST /memory/reasoning/reviews/{review_id}/settle` (the server records the authenticated caller as the actor; the SDK sends none). Added `get_supersession_policy(workspace_id=None)` and `set_supersession_policy(policy, workspace_id=None, if_match=None)` over the workspace settings knob `review.supersession`. Contract: smart-memory-docs `docs/features/OUTREACH-MARIUS-HITL-SURFACE-1/review-queue-contract.json`.
+
+## Unreleased - SDK-2.0-STAGE-STORAGE-STRATEGY-FU-1 (2026-11-08)
+
+- `run_storage_stage(storage_strategy=...)` is typed `Optional[StorageStrategy]` (`Literal["dual_node", "single_node", "memory_only"]`, exported from `smartmemory_client.client`). The service answers any other value with a 422 naming them.
+
+## Unreleased - D-0139 on-top merge resolution
+
+- Preserve complete SDK files while combining non-admitted-route guards with safe retry and scope binding.
+
+## Unreleased - D-0139 gate rollback: RECALL-CONFLICT-FLAG-1 (2026-11-07)
+
+## Unreleased - RECALL-CONFLICT-FLAG-1 D-0139 repair
+
+- Format the restored client conflict adapter without changing the typed 409 mapping or fail_if_conflicted payload.
+
+# Changelog
+
+## Unreleased - RECALL-CONFLICT-FLAG-1 continuation
+
+- Preserve recall conflict evidence and expose strict read options with typed RecallConflictError.
+## Unreleased - REL-CALLERS-SERVICE-1-FU-404-VIEWER-ROW-1 (2026-11-06)
+
+- Correct record declaration documentation to name the supported add() client method.
+
 
 - SDK-2.0-RETRY-SAFETY-1: Raise WriteOutcomeUnknown after one ambiguous add attempt instead of duplicating a possibly committed write.
 All notable changes to this project will be documented in this file.

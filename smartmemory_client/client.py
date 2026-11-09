@@ -20,7 +20,7 @@ import warnings
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from time import perf_counter
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Sequence, Union
 from urllib.parse import quote
 
 import httpx
@@ -52,6 +52,7 @@ from smartmemory_client.errors import (  # noqa: F401  (re-exported: the classes
     SmartMemoryNotFoundError,
     SmartMemoryPermissionError,
     SmartMemoryRoutingConflictError,
+    RecallConflictError,
     SmartMemoryServerError,
     SmartMemoryTransportError,
     SmartMemoryValidationError,
@@ -59,6 +60,9 @@ from smartmemory_client.errors import (  # noqa: F401  (re-exported: the classes
 )
 
 logger = logging.getLogger(__name__)
+
+# Mirrors service_common StorageRequest.storage_strategy; the service answers any other value with a 422 naming these.
+StorageStrategy = Literal["dual_node", "single_node", "memory_only"]
 
 
 def _retry_after_s(response: Any) -> Optional[float]:
@@ -113,8 +117,21 @@ def _body_error_code(detail: str) -> str | None:
     return inner if isinstance(inner, str) and inner else None
 
 
-def _exception_for_status(status: int) -> type[SmartMemoryClientError]:
+def _exception_for_status(
+    status: int, detail: str = ""
+) -> type[SmartMemoryClientError]:
     """Map an HTTP status code to the most specific SDK exception class."""
+    if status == 409:
+        try:
+            wire = json.loads(detail)
+        except (TypeError, ValueError):
+            wire = {}
+        if (
+            isinstance(wire, dict)
+            and isinstance(wire.get("detail"), dict)
+            and wire["detail"].get("error") == "recall_conflict"
+        ):
+            return RecallConflictError
     if status == 404:
         return SmartMemoryNotFoundError
     if status in (401, 403):
@@ -1014,11 +1031,15 @@ class SmartMemoryClient:
         reranker: Optional[str] = None,
         metadata_filter: Optional[Dict[str, Any]] = None,
         *,
+        fail_if_conflicted: bool = False,
         business_scope: Optional[Dict[str, Any]] = None,
         valid_at: Optional[Union[str, datetime]] = None,
     ):
         """
         Search for memory items using semantic matching.
+
+        fail_if_conflicted=True refuses supported disagreements with RecallConflictError (409).
+        MemoryItem.conflict is response evidence for the returned bounded pool.
 
         ``business_scope={"site": "A"}`` selects an exact business site, with
         sponsor fallback. ``valid_at`` selects business time independently of
@@ -1118,6 +1139,8 @@ class SmartMemoryClient:
             "top_k": top_k,
             "enable_hybrid": enable_hybrid,
         }
+        if fail_if_conflicted:
+            body_dict["fail_if_conflicted"] = fail_if_conflicted
         body_dict.update(
             _scoped_options(business_scope=business_scope, valid_at=valid_at)
         )
@@ -1229,7 +1252,7 @@ class SmartMemoryClient:
                     body = None
                 if isinstance(body, dict) and isinstance(body.get("detail"), str):
                     error_detail = body["detail"]
-            exc_cls = _exception_for_status(status)
+            exc_cls = _exception_for_status(status, error_detail)
             raise exc_cls(
                 error_detail,
                 status_code=status,
@@ -3203,8 +3226,8 @@ class SmartMemoryClient:
         """Declare an ontology class (CORE-MEMTYPE-DECLARE-1).
 
         ``kind="record"`` declares a concrete record type: items may then be
-        written with ``memory_type=name`` through ``add()`` and
-        ``ingest_structured()``, schema-checked against ``properties_schema``
+        written with ``memory_type=name`` through ``add()``, schema-checked
+        against ``properties_schema``
         (STRICT by default — violations are refused with a structured 400;
         ``SMARTMEMORY_STRICT_SCHEMA_VALIDATION=false`` on the server is the
         WARNING-mode kill-switch). Field names/enums are pinned by
@@ -3807,7 +3830,7 @@ class SmartMemoryClient:
     def run_storage_stage(
         self,
         predecessor: Union[Receipt, str],
-        storage_strategy: Optional[str] = None,
+        storage_strategy: Optional[StorageStrategy] = None,
     ) -> Receipt:
         """Run the storage stage from the awaited extraction receipt (or its ``pipeline_state_run_id``).
 
@@ -4058,7 +4081,12 @@ class SmartMemoryClient:
         )
 
     def delete_workspace(self, workspace_id: str) -> Dict[str, Any]:
-        """Hide a Workspace (202 ``{workspace_id, state: "hidden", restore_until}``)."""
+        """Hide a Workspace (202 ``{workspace_id, state: "hidden", restore_until}``).
+
+        A team admin can restore it until ``restore_until`` (30 days). After that its
+        content is erased for good. Its billing records (credit ledger and usage-limit
+        counters) are kept 7 years for accounting, marked deleted and never shown.
+        """
         return self._request("DELETE", f"/memory/workspaces/{workspace_id}")
 
     def restore_workspace(self, workspace_id: str) -> Dict[str, Any]:
@@ -4068,15 +4096,19 @@ class SmartMemoryClient:
     def create_workspace(
         self,
         name: str,
-        team_id: str,
+        team_id: Optional[str] = None,
         description: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Create an independent Workspace with an initial Team grant."""
-        body = {
-            "name": name,
-            "description": description,
-            "team_id": team_id,
-        }
+        """Create an independent Workspace.
+
+        With ``team_id`` it is shared with that Team (tenant administrators only). Without it, it is the caller's own
+        private workspace with no Team, which nobody else can see (WS-POLICY-10 B): any member may create one with a
+        signed-in session or their own unbound key; agent and workspace-bound keys get a 403. The new workspace is not
+        made the session default.
+        """
+        body: Dict[str, Any] = {"name": name, "description": description}
+        if team_id is not None:
+            body["team_id"] = team_id
         return self._request("POST", "/memory/workspaces", json_body=body)
 
     def share_workspace(
@@ -4905,6 +4937,151 @@ class SmartMemoryClient:
             ```
         """
         return self._request("GET", f"/memory/reasoning/confidence-history/{item_id}")
+
+    # -- Conflict review queue (OUTREACH-MARIUS-HITL-SURFACE-1) ----------------
+
+    def list_conflict_reviews(
+        self, status: str = "open", limit: int = 50, offset: int = 0
+    ) -> Dict[str, Any]:
+        """List conflict reviews in the client's workspace.
+
+        Returns ``{items, status, limit, offset}``; each item is a ConflictReview (contract
+        ``OUTREACH-MARIUS-HITL-SURFACE-1/review-queue-contract.json``). ``status`` is ``open``
+        or ``resolved``.
+        """
+        params = {"status": status, "limit": limit, "offset": offset}
+        return self._request("GET", "/memory/reasoning/reviews", params=params)
+
+    def settle_conflict_review(
+        self, review_id: str, action: str, reason: str
+    ) -> Dict[str, Any]:
+        """Settle one review: ``action`` is ``keep_a``, ``keep_b`` or ``keep_both``.
+
+        The server records the authenticated caller as the actor. ``keep_b`` on a
+        supersession proposal applies it; an identical retry returns the stored receipt.
+        """
+        body = {"action": action, "reason": reason}
+        return self._request(
+            "POST",
+            f"/memory/reasoning/reviews/{quote(review_id, safe='')}/settle",
+            json_body=body,
+        )
+
+    def get_workspace_settings(
+        self, workspace_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """The workspace's layered settings record (WS-MGMT-16, contract ``modules.settings``).
+
+        ``GET /memory/workspaces/{id}/settings`` (default: the client's workspace). Returns
+        ``{scope, scope_id, version, stated, effective, source, read_only}``: per knob, ``stated`` is
+        this workspace's override (``None`` = inherit), ``effective`` the value in force and ``source``
+        ``workspace``, ``tenant`` or ``default``. Errors: 403 (neutral ``forbidden``), 503 store down.
+        """
+        wid = workspace_id or self.workspace_id
+        if not wid:
+            raise ValueError("get_workspace_settings needs a workspace_id")
+        return self._request(
+            "GET", f"/memory/workspaces/{quote(wid, safe='')}/settings"
+        )
+
+    def update_workspace_settings(
+        self,
+        patch: Dict[str, Dict[str, Any]],
+        workspace_id: Optional[str] = None,
+        if_match: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Merge-patch the workspace's overrides: ``patch`` is ``{block: {knob: value | None}}``.
+
+        ``None`` restores inheritance. Sends ``If-Match: <version>`` when ``if_match`` is given; a stale
+        version is a 409 ``settings_version_conflict`` (``SmartMemoryValidationError``). 403
+        (``settings_loosen_refused``, ``forbidden``) raises ``SmartMemoryPermissionError``, 503 a
+        ``SmartMemoryServerError``.
+        """
+        wid = workspace_id or self.workspace_id
+        if not wid:
+            raise ValueError("update_workspace_settings needs a workspace_id")
+        return self._request(
+            "PATCH",
+            f"/memory/workspaces/{quote(wid, safe='')}/settings",
+            json_body={"stated": patch},
+            headers=self._if_match_headers(if_match),
+        )
+
+    def get_tenant_settings(self) -> Dict[str, Any]:
+        """The caller tenant's settings defaults (``GET /memory/tenant/settings``, tenant admin)."""
+        return self._request("GET", "/memory/tenant/settings")
+
+    def update_tenant_settings(
+        self, patch: Dict[str, Dict[str, Any]], if_match: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Merge-patch the tenant defaults (``PATCH /memory/tenant/settings``, tenant admin); same
+        ``patch`` and ``if_match`` rules as ``update_workspace_settings``."""
+        return self._request(
+            "PATCH",
+            "/memory/tenant/settings",
+            json_body={"stated": patch},
+            headers=self._if_match_headers(if_match),
+        )
+
+    @staticmethod
+    def _if_match_headers(if_match: Optional[int]) -> Optional[Dict[str, str]]:
+        return {"If-Match": str(if_match)} if if_match is not None else None
+
+    def get_supersession_policy(
+        self, workspace_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """The workspace's supersession policy (``retire`` or ``propose``) and where it comes from.
+
+        Reads ``review.supersession`` through ``get_workspace_settings``. Returns
+        ``{workspace_id, policy, source, stated, version}``: ``source`` is ``workspace``, ``tenant``
+        or ``default``; ``stated`` is this workspace's own override (``None`` = inherit).
+        """
+        wid = workspace_id or self.workspace_id
+        if not wid:
+            raise ValueError("get_supersession_policy needs a workspace_id")
+        return self._policy_view(wid, self.get_workspace_settings(wid))
+
+    def set_supersession_policy(
+        self,
+        policy: Optional[str],
+        workspace_id: Optional[str] = None,
+        if_match: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Set the workspace's supersession policy: ``retire``, ``propose``, or ``None`` to inherit.
+
+        Needs the workspace's ``edit_settings`` authority; an API key or agent may only
+        tighten (set ``propose``). ``if_match`` is the version read, for compare-and-set.
+        """
+        if policy not in ("retire", "propose", None):
+            raise ValueError("policy must be 'retire', 'propose' or None")
+        wid = workspace_id or self.workspace_id
+        if not wid:
+            raise ValueError("set_supersession_policy needs a workspace_id")
+        return self._policy_view(
+            wid,
+            self.update_workspace_settings(
+                {"review": {"supersession": policy}},
+                workspace_id=wid,
+                if_match=if_match,
+            ),
+        )
+
+    @staticmethod
+    def _policy_view(workspace_id: str, settings: Dict[str, Any]) -> Dict[str, Any]:
+        def knob(block: str) -> Any:
+            return (
+                ((settings or {}).get(block) or {})
+                .get("review", {})
+                .get("supersession")
+            )
+
+        return {
+            "workspace_id": workspace_id,
+            "policy": knob("effective"),
+            "source": knob("source"),
+            "stated": knob("stated"),
+            "version": (settings or {}).get("version"),
+        }
 
     # =========================================================================
     # Reasoning Traces (System 2 Memory)
@@ -6280,6 +6457,8 @@ class SmartMemoryClient:
         sections: Optional[List[Dict[str, Any]]] = None,
         preset: Optional[str] = None,
         as_of: Optional[str] = None,
+        *,
+        fail_if_conflicted: bool = False,
     ) -> Dict[str, Any]:
         """Assemble one priority-ordered context block within a token budget.
 
@@ -6321,6 +6500,8 @@ class SmartMemoryClient:
             ```
         """
         body: Dict[str, Any] = {"budget_tokens": budget_tokens}
+        if fail_if_conflicted:
+            body["fail_if_conflicted"] = fail_if_conflicted
         if query is not None:
             body["query"] = query
         if sections is not None:
@@ -6420,7 +6601,7 @@ class SmartMemoryClient:
         except httpx.HTTPStatusError as e:
             status = e.response.status_code if hasattr(e, "response") else 0
             error_detail = e.response.text if hasattr(e, "response") else str(e)
-            exc_cls = _exception_for_status(status)
+            exc_cls = _exception_for_status(status, error_detail)
             raise exc_cls(
                 f"Request failed: {e} - Detail: {error_detail}",
                 status_code=status,

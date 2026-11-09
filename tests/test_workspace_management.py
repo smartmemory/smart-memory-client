@@ -270,3 +270,47 @@ def test_lifecycle_errors_use_existing_mapping(client, name, call, status, exc):
         with pytest.raises(exc) as info:
             call(client)
     assert info.value.status_code == status
+
+
+# ---- WS-POLICY-10 B: private create (team_id optional) ------------------------------------------------------------
+
+
+def test_create_workspace_without_team_sends_no_team_id(client, mock_request):
+    client.create_workspace("Scratch")
+
+    mock_request.assert_called_once_with(
+        "POST",
+        "/memory/workspaces",
+        json_body={"name": "Scratch", "description": None},
+    )
+
+
+def test_create_private_workspace_wire_body_and_result(client):
+    created = {"workspace_id": "ws_new", "effective_permission": "admin"}
+    with patch.object(
+        client._client, "request", return_value=_http_response(201, created)
+    ) as req:
+        assert client.create_workspace("Scratch", description="tmp") == created
+    args, kwargs = req.call_args
+    assert args == ("POST", "http://test-url/memory/workspaces")
+    assert kwargs["json"] == {"name": "Scratch", "description": "tmp"}
+
+
+# One row per status the create route answers (403 agent/bound key/non-admin shared, 404 inactive Team, 422 body).
+CREATE_ERROR_ROWS = [
+    (403, SmartMemoryPermissionError),
+    (404, SmartMemoryNotFoundError),
+    (400, SmartMemoryValidationError),
+    (422, SmartMemoryValidationError),
+    (500, SmartMemoryServerError),
+]
+
+
+@pytest.mark.parametrize(
+    "status,exc", CREATE_ERROR_ROWS, ids=[str(r[0]) for r in CREATE_ERROR_ROWS]
+)
+def test_create_workspace_errors_use_existing_mapping(client, status, exc):
+    with patch.object(client._client, "request", return_value=_http_response(status)):
+        with pytest.raises(exc) as info:
+            client.create_workspace("Scratch")
+    assert info.value.status_code == status
