@@ -4091,15 +4091,19 @@ class SmartMemoryClient:
     def create_workspace(
         self,
         name: str,
-        team_id: str,
+        team_id: Optional[str] = None,
         description: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Create an independent Workspace with an initial Team grant."""
-        body = {
-            "name": name,
-            "description": description,
-            "team_id": team_id,
-        }
+        """Create an independent Workspace.
+
+        With ``team_id`` it is shared with that Team (tenant administrators only). Without it, it is the caller's own
+        private workspace with no Team, which nobody else can see (WS-POLICY-10 B): any member may create one with a
+        signed-in session or their own unbound key; agent and workspace-bound keys get a 403. The new workspace is not
+        made the session default.
+        """
+        body: Dict[str, Any] = {"name": name, "description": description}
+        if team_id is not None:
+            body["team_id"] = team_id
         return self._request("POST", "/memory/workspaces", json_body=body)
 
     def share_workspace(

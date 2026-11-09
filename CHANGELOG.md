@@ -1,3 +1,7 @@
+## Unreleased - WS-POLICY-10 B: members create private workspaces (2026-11-09)
+
+- `create_workspace(name, team_id=None, description=None)`: `team_id` is optional. Without it the service creates your own private workspace with no Team, which nobody else can see, and the body carries no `team_id` (WS-POLICY-10 B, OWNER D-0147). The new workspace is not made the session default.
+
 ## Unreleased - BILL-2.0-SPINE-PURGE-DECISION-1 (2026-11-08)
 
 - Docs only: `delete_workspace` now says what happens after the 30-day restore window. Content is erased for good, and the workspace's billing records are kept 7 years for accounting, marked deleted and never shown. No behaviour change in the client.
