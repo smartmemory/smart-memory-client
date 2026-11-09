@@ -4962,23 +4962,79 @@ class SmartMemoryClient:
             json_body=body,
         )
 
+    def get_workspace_settings(
+        self, workspace_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """The workspace's layered settings record (WS-MGMT-16, contract ``modules.settings``).
+
+        ``GET /memory/workspaces/{id}/settings`` (default: the client's workspace). Returns
+        ``{scope, scope_id, version, stated, effective, source, read_only}``: per knob, ``stated`` is
+        this workspace's override (``None`` = inherit), ``effective`` the value in force and ``source``
+        ``workspace``, ``tenant`` or ``default``. Errors: 403 (neutral ``forbidden``), 503 store down.
+        """
+        wid = workspace_id or self.workspace_id
+        if not wid:
+            raise ValueError("get_workspace_settings needs a workspace_id")
+        return self._request(
+            "GET", f"/memory/workspaces/{quote(wid, safe='')}/settings"
+        )
+
+    def update_workspace_settings(
+        self,
+        patch: Dict[str, Dict[str, Any]],
+        workspace_id: Optional[str] = None,
+        if_match: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Merge-patch the workspace's overrides: ``patch`` is ``{block: {knob: value | None}}``.
+
+        ``None`` restores inheritance. Sends ``If-Match: <version>`` when ``if_match`` is given; a stale
+        version is a 409 ``settings_version_conflict`` (``SmartMemoryValidationError``). 403
+        (``settings_loosen_refused``, ``forbidden``) raises ``SmartMemoryPermissionError``, 503 a
+        ``SmartMemoryServerError``.
+        """
+        wid = workspace_id or self.workspace_id
+        if not wid:
+            raise ValueError("update_workspace_settings needs a workspace_id")
+        return self._request(
+            "PATCH",
+            f"/memory/workspaces/{quote(wid, safe='')}/settings",
+            json_body={"stated": patch},
+            headers=self._if_match_headers(if_match),
+        )
+
+    def get_tenant_settings(self) -> Dict[str, Any]:
+        """The caller tenant's settings defaults (``GET /memory/tenant/settings``, tenant admin)."""
+        return self._request("GET", "/memory/tenant/settings")
+
+    def update_tenant_settings(
+        self, patch: Dict[str, Dict[str, Any]], if_match: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Merge-patch the tenant defaults (``PATCH /memory/tenant/settings``, tenant admin); same
+        ``patch`` and ``if_match`` rules as ``update_workspace_settings``."""
+        return self._request(
+            "PATCH",
+            "/memory/tenant/settings",
+            json_body={"stated": patch},
+            headers=self._if_match_headers(if_match),
+        )
+
+    @staticmethod
+    def _if_match_headers(if_match: Optional[int]) -> Optional[Dict[str, str]]:
+        return {"If-Match": str(if_match)} if if_match is not None else None
+
     def get_supersession_policy(
         self, workspace_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """The workspace's supersession policy (``retire`` or ``propose``) and where it comes from.
 
-        Reads ``review.supersession`` from ``GET /memory/workspaces/{id}/settings``
-        (default: the client's workspace). Returns ``{workspace_id, policy, source, stated,
-        version}``: ``source`` is ``workspace``, ``tenant`` or ``default``; ``stated`` is this
-        workspace's own override (``None`` = inherit).
+        Reads ``review.supersession`` through ``get_workspace_settings``. Returns
+        ``{workspace_id, policy, source, stated, version}``: ``source`` is ``workspace``, ``tenant``
+        or ``default``; ``stated`` is this workspace's own override (``None`` = inherit).
         """
         wid = workspace_id or self.workspace_id
         if not wid:
             raise ValueError("get_supersession_policy needs a workspace_id")
-        return self._policy_view(
-            wid,
-            self._request("GET", f"/memory/workspaces/{quote(wid, safe='')}/settings"),
-        )
+        return self._policy_view(wid, self.get_workspace_settings(wid))
 
     def set_supersession_policy(
         self,
@@ -4996,14 +5052,12 @@ class SmartMemoryClient:
         wid = workspace_id or self.workspace_id
         if not wid:
             raise ValueError("set_supersession_policy needs a workspace_id")
-        headers = {"If-Match": str(if_match)} if if_match is not None else None
         return self._policy_view(
             wid,
-            self._request(
-                "PATCH",
-                f"/memory/workspaces/{quote(wid, safe='')}/settings",
-                json_body={"stated": {"review": {"supersession": policy}}},
-                headers=headers,
+            self.update_workspace_settings(
+                {"review": {"supersession": policy}},
+                workspace_id=wid,
+                if_match=if_match,
             ),
         )
 
