@@ -1,3 +1,7 @@
+## 2.0.1
+
+Version bump to 2.0.1, every SmartMemory repo reads the same version (REL-2.0-VERSION-BUMP-2.0.1-1).
+
 ## SVC-2.0-SAVE-KEY-REPLAY-1
 
 - Document hosted save-key replay across add, ingest, document and conversation routes, scoped conflicts, 30-day retention and current-authority checks.
