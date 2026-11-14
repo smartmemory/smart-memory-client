@@ -1,3 +1,7 @@
+## Unreleased - CLAIMS-BUILD-02: ask returns the ids it cited (2026-11-14)
+
+- Docs: `SmartMemoryClient.ask()` docstring names the new response fields `used_evidence_ids` and `grounded`, and `memory_type` and `created_at` on every evidence item. The fixed "No stored record matches this question." answer comes back with `grounded: false` when nothing matches or the model cites no evidence. No request change.
+
 ## 2.0.1
 
 Version bump to 2.0.1, every SmartMemory repo reads the same version (REL-2.0-VERSION-BUMP-2.0.1-1).

@@ -6535,10 +6535,16 @@ class SmartMemoryClient:
             reasoning: When False, ``reasoning`` comes back as an empty string.
 
         Returns:
-            ``{"answer": str, "reasoning": str, "evidence": [{"item_id", "content"}],
-            "relations": [{"source", "type", "target", "source_id", "target_id"}]}``
+            ``{"answer": str, "reasoning": str,
+            "evidence": [{"item_id", "content", "memory_type", "created_at"}],
+            "relations": [{"source", "type", "target", "source_id", "target_id"}],
+            "used_evidence_ids": [str], "grounded": bool}``
             — see the DIST-LITE-9 ask contract. Relation rows carry both display
             labels and graph node ids, so a UI can focus the edge that was used.
+            ``used_evidence_ids`` are the evidence ids the answer cites, in
+            first-cited order. When nothing matches (no model call is made) or the
+            model cites none of its evidence, ``answer`` is "No stored record matches
+            this question." and ``grounded`` is False.
 
         Raises:
             SmartMemoryValidationError: blank question or an out-of-range limit.
