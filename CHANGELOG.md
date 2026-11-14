@@ -1,3 +1,7 @@
+## Unreleased - CLAIMS-BUILD-20: optional `decided_by` and `recommended_by` on decisions (2026-11-14)
+
+- `create_decision`, `create_pending_decision` and `supersede_decision` take keyword-only `decided_by` and `recommended_by`: who decided and who recommended, as the caller states it. Sent only when given. Caller-supplied, not verified, never used for authorization. The service enforces the 256-character limit (422).
+
 ## Unreleased - CLAIMS-BUILD-02: ask returns the ids it cited (2026-11-14)
 
 - Docs (CLAIMS-02-FIX1): the `ask()` docstring names both fixed texts: "No stored record matches this question." when nothing matched, "The answer could not be tied to a stored record." when the model cited none of the evidence.

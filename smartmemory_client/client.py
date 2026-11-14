@@ -164,6 +164,17 @@ _KEEPALIVE_EXPIRY_S = 30.0
 _POOL_LIMITS = dict(max_connections=100, max_keepalive_connections=20)
 
 
+def _stated_by(
+    decided_by: Optional[str], recommended_by: Optional[str]
+) -> Dict[str, str]:
+    """The supplied decision "who" fields (CLAIMS-BUILD-20); None means omitted.
+
+    Caller-stated text: the service enforces the 256-character limit.
+    """
+    stated = {"decided_by": decided_by, "recommended_by": recommended_by}
+    return {key: value for key, value in stated.items() if value is not None}
+
+
 def _scoped_options(*, query: bool = False, **options: Any) -> Dict[str, Any]:
     """Copy supplied validity options, encoding dates in UTC and GET scope once.
 
@@ -5288,6 +5299,8 @@ class SmartMemoryClient:
         agent_id: Optional[str] = None,
         *,
         scope_go_lives: Optional[List[Dict[str, Any]]] = None,
+        decided_by: Optional[str] = None,
+        recommended_by: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create a new decision with provenance tracking.
 
@@ -5308,6 +5321,9 @@ class SmartMemoryClient:
             rejected_alternatives: Alternatives considered and dropped (CORE-EXPERTISE-1).
             rationale: Why this decision over the alternatives (CORE-EXPERTISE-1).
             constraints: Decision-scoped hard limits (CORE-EXPERTISE-1).
+            decided_by: Who decided, as you state it (plain text, at most 256 characters).
+            recommended_by: Who recommended it, as you state it (plain text, at most 256 characters).
+                Both are caller-supplied, not verified and never used for authorization (CLAIMS-BUILD-20).
 
         Returns:
             Created decision dict with decision_id, content, confidence, status.
@@ -5335,6 +5351,7 @@ class SmartMemoryClient:
             body["constraints"] = constraints
         if agent_id is not None:
             body["agent_id"] = agent_id
+        body.update(_stated_by(decided_by, recommended_by))
         body.update(_scoped_options(scope_go_lives=scope_go_lives))
         return self._request("POST", "/memory/decisions/create", json_body=body)
 
@@ -5542,6 +5559,8 @@ class SmartMemoryClient:
         *,
         valid_from: Optional[Union[str, datetime]] = None,
         scope_go_lives: Optional[List[Dict[str, Any]]] = None,
+        decided_by: Optional[str] = None,
+        recommended_by: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Replace a decision with a new one.
 
@@ -5559,6 +5578,9 @@ class SmartMemoryClient:
             rejected_alternatives: Alternatives considered and dropped for the replacement.
             rationale: Why the replacement was chosen.
             constraints: Hard limits applying to the replacement.
+            decided_by: Who decided the replacement, as you state it (plain text, at most 256 characters).
+            recommended_by: Who recommended the replacement, as you state it (plain text, at most 256 characters).
+                Both are caller-supplied, not verified and never used for authorization (CLAIMS-BUILD-20).
 
         Returns:
             Dict with old_decision_id, new_decision_id, status.
@@ -5575,6 +5597,7 @@ class SmartMemoryClient:
             body["rationale"] = rationale
         if constraints is not None:
             body["constraints"] = constraints
+        body.update(_stated_by(decided_by, recommended_by))
         body.update(
             _scoped_options(valid_from=valid_from, scope_go_lives=scope_go_lives)
         )
@@ -5806,11 +5829,16 @@ class SmartMemoryClient:
         domain: Optional[str] = None,
         tags: Optional[List[str]] = None,
         agent_id: Optional[str] = None,
+        *,
+        decided_by: Optional[str] = None,
+        recommended_by: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create a pending decision (Acceptance Case) with unresolved requirements.
 
         Each requirement: {"description": str, "requirement_type": str, "query_hint": str|None}.
-        Returns the decision incl. server-generated requirement_ids.
+        Returns the decision incl. server-generated requirement_ids. ``decided_by`` and
+        ``recommended_by`` are caller-stated plain text (at most 256 characters), not verified
+        and never used for authorization (CLAIMS-BUILD-20).
         """
         body: Dict[str, Any] = {"content": content, "requirements": requirements}
         if domain:
@@ -5819,6 +5847,7 @@ class SmartMemoryClient:
             body["tags"] = tags
         if agent_id is not None:
             body["agent_id"] = agent_id
+        body.update(_stated_by(decided_by, recommended_by))
         return self._request("POST", "/memory/decisions/pending/create", json_body=body)
 
     def resolve_requirement(
