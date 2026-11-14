@@ -6542,9 +6542,10 @@ class SmartMemoryClient:
             — see the DIST-LITE-9 ask contract. Relation rows carry both display
             labels and graph node ids, so a UI can focus the edge that was used.
             ``used_evidence_ids`` are the evidence ids the answer cites, in
-            first-cited order. When nothing matches (no model call is made) or the
-            model cites none of its evidence, ``answer`` is "No stored record matches
-            this question." and ``grounded`` is False.
+            first-cited order. When nothing matches (no model call is made),
+            ``answer`` is "No stored record matches this question."; when the model
+            cites none of its evidence, it is "The answer could not be tied to a
+            stored record." In both cases ``grounded`` is False.
 
         Raises:
             SmartMemoryValidationError: blank question or an out-of-range limit.
