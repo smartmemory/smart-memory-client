@@ -1,3 +1,7 @@
+## Unreleased - CLAIMS-BUILD-21: search results name the lanes that found them (2026-11-14)
+
+- `MemoryItem.matched_by` (`Optional[List[str]]`): the retrieval lanes that found a search result, as the service returns them (for example `["lexical", "semantic"]`). `None` means not recorded on that server path; an older server without the field reads as `None`, no error.
+
 ## Unreleased - CLAIMS-BUILD-20: optional `decided_by` and `recommended_by` on decisions (2026-11-14)
 
 - `create_decision`, `create_pending_decision` and `supersede_decision` take keyword-only `decided_by` and `recommended_by`: who decided and who recommended, as the caller states it. Sent only when given. Caller-supplied, not verified, never used for authorization. The service enforces the 256-character limit (422).
