@@ -565,3 +565,37 @@ def test_code_context_ambiguity_raises_validation_error_with_candidates(
     assert [
         c["file_path"] for c in json.loads(raised.value.detail)["detail"]["candidates"]
     ] == ["a.py", "b.py"]
+
+
+# CLAIMS-BUILD-20: decided_by / recommended_by are caller-stated text, sent only when given.
+@patch("httpx.Client.request")
+def test_decision_writes_send_decided_by_and_recommended_by(mock_request, client):
+    mock_request.return_value = _ok()
+    stated = {"decided_by": "Maria Chen", "recommended_by": "pricing-agent"}
+
+    client.create_decision("Ship to site B first", **stated)
+    assert _called_path(mock_request) == "/memory/decisions/create"
+    assert {k: mock_request.call_args.kwargs["json"][k] for k in stated} == stated
+
+    client.create_pending_decision(
+        "Ship to site B first", [{"description": "pilot passes"}], **stated
+    )
+    assert _called_path(mock_request) == "/memory/decisions/pending/create"
+    assert {k: mock_request.call_args.kwargs["json"][k] for k in stated} == stated
+
+    client.supersede_decision("decision_123", "Ship to site C", "B slipped", **stated)
+    assert _called_path(mock_request) == "/memory/decisions/decision_123/supersede"
+    assert {k: mock_request.call_args.kwargs["json"][k] for k in stated} == stated
+
+
+@patch("httpx.Client.request")
+def test_decision_writes_omit_decided_by_and_recommended_by_when_unset(
+    mock_request, client
+):
+    mock_request.return_value = _ok()
+    client.create_decision("Ship to site B first")
+    client.create_pending_decision("Ship", [{"description": "pilot passes"}])
+    client.supersede_decision("decision_123", "Ship to site C", "B slipped")
+    for call in mock_request.call_args_list:
+        assert "decided_by" not in call.kwargs["json"]
+        assert "recommended_by" not in call.kwargs["json"]
