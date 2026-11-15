@@ -88,6 +88,11 @@ class MemoryItem:
 
     conflict: Optional[Dict[str, Any]] = None
 
+    # CLAIMS-BUILD-21: the retrieval lanes that found a search result (e.g. ["lexical", "semantic"]).
+    # None = not recorded on that server path, or an older server without the field.
+    # Last field, so positional construction keeps its order.
+    matched_by: Optional[List[str]] = None
+
     def __getitem__(self, key: str) -> Any:
         """Dict-like access for compatibility."""
         return getattr(self, key)
@@ -125,6 +130,7 @@ class MemoryItem:
             memory_type=data.get("memory_type", data.get("type", "semantic")),
             metadata=data.get("metadata", {}),
             score=data.get("score"),
+            matched_by=data.get("matched_by"),
             conflict=data.get("conflict"),
             rerank_status=rerank_status,
             rerank_score=data.get("rerank_score"),
