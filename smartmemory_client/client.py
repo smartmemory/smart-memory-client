@@ -40,6 +40,7 @@ from smartmemory_client.models.session import (
 )
 
 from smartmemory_client import _save_transport as _transport
+from smartmemory_client.path_guard import path_id
 from smartmemory_client.receipt import Receipt, parse_receipt
 from smartmemory_client.errors import (  # noqa: F401  (re-exported: the classes lived here before 2.0)
     STAGE_CHAIN_CODES,
@@ -5441,7 +5442,7 @@ class SmartMemoryClient:
         """
         return self._request(
             "GET",
-            f"/memory/decisions/{decision_id}",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}",
             params={
                 **_as_of_params(as_of),
                 **_scoped_options(
@@ -5602,7 +5603,9 @@ class SmartMemoryClient:
             _scoped_options(valid_from=valid_from, scope_go_lives=scope_go_lives)
         )
         return self._request(
-            "POST", f"/memory/decisions/{decision_id}/supersede", json_body=body
+            "POST",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/supersede",
+            json_body=body,
         )
 
     def retract_decision(self, decision_id: str, reason: str) -> Dict[str, Any]:
@@ -5617,7 +5620,7 @@ class SmartMemoryClient:
         """
         return self._request(
             "POST",
-            f"/memory/decisions/{decision_id}/retract",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/retract",
             json_body={"reason": reason},
         )
 
@@ -5638,7 +5641,7 @@ class SmartMemoryClient:
         """
         return self._request(
             "POST",
-            f"/memory/decisions/{decision_id}/restore",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/restore",
             json_body={"reason": reason},
         )
 
@@ -5654,7 +5657,7 @@ class SmartMemoryClient:
         """
         return self._request(
             "POST",
-            f"/memory/decisions/{decision_id}/reinforce",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/reinforce",
             json_body={"evidence_id": evidence_id},
         )
 
@@ -5676,7 +5679,7 @@ class SmartMemoryClient:
         """
         return self._request(
             "POST",
-            f"/memory/decisions/{quote(decision_id, safe='')}/evidence",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/evidence",
             json_body={"evidence_id": evidence_id},
         )
 
@@ -5715,7 +5718,7 @@ class SmartMemoryClient:
         """
         return self._request(
             "POST",
-            f"/memory/decisions/{decision_id}/contradict",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/contradict",
             json_body={"evidence_id": evidence_id},
         )
 
@@ -5733,7 +5736,7 @@ class SmartMemoryClient:
         """
         return self._request(
             "POST",
-            f"/memory/decisions/{decision_id}/conflicts",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/conflicts",
             params={"min_contest": min_contest},
         )
 
@@ -5812,7 +5815,7 @@ class SmartMemoryClient:
         """
         return self._request(
             "GET",
-            f"/memory/decisions/{decision_id}/provenance",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/provenance",
             params={
                 **_as_of_params(as_of),
                 **_scoped_options(
@@ -5840,7 +5843,9 @@ class SmartMemoryClient:
         """
         params = {"direction": direction, "max_depth": max_depth}
         return self._request(
-            "GET", f"/memory/decisions/{decision_id}/causal-chain", params=params
+            "GET",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/causal-chain",
+            params=params,
         )
 
     def create_pending_decision(
@@ -5877,14 +5882,15 @@ class SmartMemoryClient:
         """Mark one requirement on a pending decision resolved by a memory item."""
         return self._request(
             "POST",
-            f"/memory/decisions/pending/{decision_id}/resolve",
+            f"/memory/decisions/pending/{path_id(decision_id, under='/memory/decisions/pending/')}/resolve",
             json_body={"requirement_id": requirement_id, "memory_id": memory_id},
         )
 
     def try_activate_decision(self, decision_id: str) -> Dict[str, Any]:
         """Try to activate a pending decision (no-op if requirements remain)."""
         return self._request(
-            "POST", f"/memory/decisions/pending/{decision_id}/activate"
+            "POST",
+            f"/memory/decisions/pending/{path_id(decision_id, under='/memory/decisions/pending/')}/activate",
         )
 
     def list_pending_decisions(self, limit: int = 50) -> Dict[str, Any]:
