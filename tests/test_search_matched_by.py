@@ -19,17 +19,42 @@ def _search(rows, **options):
 @pytest.mark.parametrize("cite", [False, True], ids=["plain", "cited"])
 def test_search_results_carry_the_lanes_that_found_them(cite):
     rows = [
-        {"item_id": "test_mb_both", "content": "a", "score": 0.9, "matched_by": ["lexical", "semantic"]},
-        {"item_id": "test_mb_one", "content": "b", "score": 0.4, "matched_by": ["semantic"]},
-        {"item_id": "test_mb_unrecorded", "content": "c", "score": 0.2, "matched_by": None},
+        {
+            "item_id": "test_mb_both",
+            "content": "a",
+            "score": 0.9,
+            "matched_by": ["lexical", "semantic"],
+        },
+        {
+            "item_id": "test_mb_one",
+            "content": "b",
+            "score": 0.4,
+            "matched_by": ["semantic"],
+        },
+        {
+            "item_id": "test_mb_unrecorded",
+            "content": "c",
+            "score": 0.2,
+            "matched_by": None,
+        },
     ]
     results = _search(rows, cite=cite)
-    assert [item.matched_by for item in results] == [["lexical", "semantic"], ["semantic"], None]
-    assert results[0]["matched_by"] == results[0].to_dict()["matched_by"] == ["lexical", "semantic"]
+    assert [item.matched_by for item in results] == [
+        ["lexical", "semantic"],
+        ["semantic"],
+        None,
+    ]
+    assert (
+        results[0]["matched_by"]
+        == results[0].to_dict()["matched_by"]
+        == ["lexical", "semantic"]
+    )
     assert results[0].score == 0.9
 
 
 def test_an_older_server_without_the_field_reads_as_not_recorded():
-    item = MemoryItem.from_dict({"item_id": "test_mb_old", "content": "x", "score": 0.5})
+    item = MemoryItem.from_dict(
+        {"item_id": "test_mb_old", "content": "x", "score": 0.5}
+    )
     assert item.matched_by is None
     assert "matched_by" not in item.metadata
