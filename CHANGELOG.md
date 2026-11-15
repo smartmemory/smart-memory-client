@@ -2,6 +2,7 @@
 
 - `SmartMemoryClient.restore_decision(decision_id, reason)` posts to `/memory/decisions/{decision_id}/restore`.
 - Review fix round 1: new `smartmemory_client/path_guard.py`. Every decision method refuses, before any request, an id that could reach another route (`/`, `\\`, `.`, `..`, control characters, a route name such as `search`) and sends any other id as one encoded path segment.
+- `restore_decision` docstring: the lifecycle notes a decision read returns come from its history, and gain `retired_by` and `retracted_by`.
 
 ## Unreleased - CLAIMS-BUILD-21: search results name the lanes that found them (2026-11-14)
 
