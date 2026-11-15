@@ -1,3 +1,7 @@
+## Unreleased - DECISION-RESTORE-ONE-ACTION-1: restore a wrongly retired decision (2026-11-15)
+
+- `SmartMemoryClient.restore_decision(decision_id, reason)` posts to `/memory/decisions/{decision_id}/restore`.
+
 ## Unreleased - CLAIMS-BUILD-21: search results name the lanes that found them (2026-11-14)
 
 - `MemoryItem.matched_by` (`Optional[List[str]]`): the retrieval lanes that found a search result, as the service returns them (for example `["lexical", "semantic"]`). `None` means not recorded on that server path; an older server without the field reads as `None`, no error.

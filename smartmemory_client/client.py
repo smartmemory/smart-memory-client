@@ -5621,6 +5621,27 @@ class SmartMemoryClient:
             json_body={"reason": reason},
         )
 
+    def restore_decision(self, decision_id: str, reason: str) -> Dict[str, Any]:
+        """Restore a decision that a replacement wrongly retired (DECISION-RESTORE-ONE-ACTION-1).
+
+        One call makes the decision active again. The replacement stays active, the link between them is kept in
+        history with who restored it, when and why. Only the decision's owner can restore it.
+
+        Args:
+            decision_id: ID of the retired (superseded) decision.
+            reason: Why the retirement was wrong (required, not blank).
+
+        Returns:
+            Dict with decision_id, status ("active"), replacement_decision_id, replacement_rule, restored_at,
+            restored_by. Refusals raise: 404 not_found, 403 not_owner, 409 not_retired, scheduled, replaced_again
+            (with newer_decision_id) or replacement_unreadable.
+        """
+        return self._request(
+            "POST",
+            f"/memory/decisions/{decision_id}/restore",
+            json_body={"reason": reason},
+        )
+
     def reinforce_decision(self, decision_id: str, evidence_id: str) -> Dict[str, Any]:
         """Record supporting evidence for a decision.
 

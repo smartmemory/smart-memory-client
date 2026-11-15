@@ -176,6 +176,12 @@ def _called_path(mock_request: MagicMock) -> str:
             "/memory/decisions/decision_123/retract",
         ),
         (
+            "restore_decision",
+            ("decision_123", "wrongly retired"),
+            "POST",
+            "/memory/decisions/decision_123/restore",
+        ),
+        (
             "reinforce_decision",
             ("decision_123", "item_123"),
             "POST",
