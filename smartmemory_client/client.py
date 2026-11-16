@@ -205,6 +205,10 @@ def _scoped_options(*, query: bool = False, **options: Any) -> Dict[str, Any]:
     return result
 
 
+#: The lifecycle states ``list_decisions(status=...)`` reads (the ``GET /memory/decisions`` route's filter).
+DECISION_STATES = ("active", "superseded", "retracted", "pending")
+
+
 def _as_of_params(as_of: Optional[str]) -> Dict[str, Any]:
     """``{"as_of": as_of}`` when set, else ``{}`` (SM-ASOF-DECISIONS-1).
 
@@ -5464,8 +5468,16 @@ class SmartMemoryClient:
         *,
         business_scope: Optional[Dict[str, Any]] = None,
         valid_at: Optional[Union[str, datetime]] = None,
+        status: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """List active decisions with optional filters.
+        """List decisions with optional filters: the ones in force by default.
+
+        ``status`` picks one lifecycle state (OUTREACH-MARIUS-HITL-SURFACE-1 p4): omit it or
+        ``"active"`` for the decisions in force, ``"superseded"`` for the ones that were replaced
+        ("what did we use to charge?"), ``"retracted"`` for the withdrawn ones, ``"pending"`` for
+        the ones waiting on a requirement. Any other value raises ``ValueError`` before a request
+        is sent. A replacement still waiting for a person is not listed here: it is a review
+        (``list_conflict_reviews``) and the rule it would replace stays active until it is settled.
 
         ``business_scope={"site": "A"}`` selects an exact business site, with
         sponsor fallback. ``valid_at`` selects business time independently of
@@ -5500,11 +5512,17 @@ class SmartMemoryClient:
             ``ignorance``) — a distinction ``stability`` cannot express, since it reads
             0.5 for both.
         """
+        if status is not None and status not in DECISION_STATES:
+            raise ValueError(
+                f"status must be one of {', '.join(DECISION_STATES)} (omit it for active)"
+            )
         params: Dict[str, Any] = {"min_confidence": min_confidence, "limit": limit}
         if domain:
             params["domain"] = domain
         if decision_type:
             params["decision_type"] = decision_type
+        if status is not None and status != "active":
+            params["status"] = status
         if provenance_memory_id is not None:
             params["provenance_memory_id"] = provenance_memory_id
         if agent_id is not None:

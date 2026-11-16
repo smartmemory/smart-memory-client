@@ -1,3 +1,7 @@
+## Unreleased - OUTREACH-MARIUS-HITL-SURFACE-1 part 4: list replaced and retracted decisions (2026-11-16)
+
+- `list_decisions(status=...)`: `active` (default), `superseded`, `retracted` or `pending`, sent as the `GET /memory/decisions` route's existing `status` filter. Any other value raises `ValueError` before a request. Proven against the real service app in smart-memory-mcp `tests/real_service/test_hosted_decisions_connector_notes.py`.
+
 ## Unreleased - OUTREACH-MARIUS-HITL-SURFACE-1 part 2: a replacing decision waits for a person in propose mode (2026-11-16)
 
 - `supersede_decision` documents the `held_for_review` answer (`review_id`, `new_decision_id` None) a propose workspace returns. No code change: the response is returned as sent.
