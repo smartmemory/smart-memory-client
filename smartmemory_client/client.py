@@ -5584,7 +5584,12 @@ class SmartMemoryClient:
                 Both are caller-supplied, not verified and never used for authorization (CLAIMS-BUILD-20).
 
         Returns:
-            Dict with old_decision_id, new_decision_id, status.
+            Dict with old_decision_id, new_decision_id, status. ``status`` is
+            ``"superseded"``, or ``"held_for_review"`` when the workspace's
+            supersession policy is ``propose``: then nothing was replaced, the
+            old decision stays active, ``new_decision_id`` is None and
+            ``review_id`` names the review that decides it (accept with
+            ``settle_conflict_review(review_id, "keep_b", reason)``).
         """
         body = {
             "new_content": new_content,
