@@ -5092,8 +5092,10 @@ class SmartMemoryClient:
     ) -> Dict[str, Any]:
         """Set the workspace's supersession policy: ``retire``, ``propose``, or ``None`` to inherit.
 
-        Needs the workspace's ``edit_settings`` authority; an API key or agent may only
-        tighten (set ``propose``). ``if_match`` is the version read, for compare-and-set.
+        Setting ``propose`` needs edit rights. Setting ``retire``, or ``None`` when the inherited
+        value is ``retire``, turns the review hold off and needs a workspace owner or admin (an
+        editor gets 403 ``privacy_loosen_admin_required``). An API key or agent may only tighten.
+        ``if_match`` is the version read, for compare-and-set.
         """
         if policy not in ("retire", "propose", None):
             raise ValueError("policy must be 'retire', 'propose' or None")

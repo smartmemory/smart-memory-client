@@ -1,5 +1,7 @@
 ## 2.0.2
 
+- REL-2-0-2-MERGED-TIP-1: `set_supersession_policy` docstring and README now say turning the review hold off (`retire`, or `None` when the inherited value is `retire`) needs a workspace owner or admin. Docs only.
+
 ## Unreleased - OUTREACH-MARIUS-HITL-SURFACE-1 part 8: an API key can approve a held decision (2026-11-16)
 
 - `set_review_approval` accepts `person_or_key` (the service default since part 8: a signed-in person or an API key approves). Docstrings name the three values and that loosening needs a workspace admin.
