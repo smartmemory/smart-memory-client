@@ -1,3 +1,8 @@
+## Unreleased - OUTREACH-MARIUS-HITL-SURFACE-1 part 7: only a person approves by default (2026-11-16)
+
+- Only a person approves a review by default now (service side). New `get_review_approval` and `set_review_approval` (`person_only`, `anyone` or `None` to inherit) on the workspace settings route.
+- `settle_conflict_review` raises `SmartMemoryPermissionError` whose message is the service's 403 sentence as written. `list_conflict_reviews` documents `total`.
+
 ## Unreleased - OUTREACH-MARIUS-HITL-SURFACE-1 part 4: list replaced and retracted decisions (2026-11-16)
 
 - `list_decisions(status=...)`: `active` (default), `superseded`, `retracted` or `pending`, sent as the `GET /memory/decisions` route's existing `status` filter. Any other value raises `ValueError` before a request. Proven against the real service app in smart-memory-mcp `tests/real_service/test_hosted_decisions_connector_notes.py`.

@@ -102,6 +102,18 @@ class SmartMemorySubstrateError(SmartMemoryServerError):
     substrate error (``VectorSubstrateError``), surfaced instead of an empty page."""
 
 
+def _detail_sentence(detail: str) -> str | None:
+    """The service's ``detail`` sentence (a string, or ``detail.message``) from an error body, else ``None``."""
+    try:
+        body = json.loads(detail)
+    except (TypeError, ValueError):
+        return None
+    inner = body.get("detail") if isinstance(body, dict) else None
+    if isinstance(inner, dict):
+        inner = inner.get("message")
+    return inner if isinstance(inner, str) and inner.strip() else None
+
+
 def _body_error_code(detail: str) -> str | None:
     """Read the ``error`` code out of an error body: ``{"detail": {"error": code}}``,
     ``{"detail": "code"}`` or ``{"error": code}``. ``None`` when there is none (a 422
@@ -4961,9 +4973,10 @@ class SmartMemoryClient:
     ) -> Dict[str, Any]:
         """List conflict reviews in the client's workspace.
 
-        Returns ``{items, status, limit, offset}``; each item is a ConflictReview (contract
+        Returns ``{items, total, status, limit, offset}``; each item is a ConflictReview (contract
         ``OUTREACH-MARIUS-HITL-SURFACE-1/review-queue-contract.json``). ``status`` is ``open``
-        or ``resolved``.
+        or ``resolved``. ``total`` counts the reviews of that status in the workspace (a page may
+        hold fewer rows, never more).
         """
         params = {"status": status, "limit": limit, "offset": offset}
         return self._request("GET", "/memory/reasoning/reviews", params=params)
@@ -4975,13 +4988,26 @@ class SmartMemoryClient:
 
         The server records the authenticated caller as the actor. ``keep_b`` on a
         supersession proposal applies it; an identical retry returns the stored receipt.
+
+        By default (``review.approval`` = ``person_only``) only a signed-in person may settle: an
+        API key, an agent or a hosted connector session gets ``SmartMemoryPermissionError`` whose
+        message is the service's own sentence ("Only a person can approve reviews in this
+        workspace ..."), unchanged. ``set_review_approval("anyone")`` by a person lifts it.
         """
         body = {"action": action, "reason": reason}
-        return self._request(
-            "POST",
-            f"/memory/reasoning/reviews/{quote(review_id, safe='')}/settle",
-            json_body=body,
-        )
+        try:
+            return self._request(
+                "POST",
+                f"/memory/reasoning/reviews/{quote(review_id, safe='')}/settle",
+                json_body=body,
+            )
+        except SmartMemoryPermissionError as e:
+            sentence = _detail_sentence(e.detail)
+            if sentence is None:
+                raise
+            raise SmartMemoryPermissionError(
+                sentence, status_code=e.status_code, detail=e.detail
+            ) from e
 
     def get_workspace_settings(
         self, workspace_id: Optional[str] = None
@@ -5082,14 +5108,51 @@ class SmartMemoryClient:
             ),
         )
 
+    def get_review_approval(self, workspace_id: Optional[str] = None) -> Dict[str, Any]:
+        """Who may settle reviews in the workspace (``review.approval``) and where it comes from.
+
+        ``person_only`` (the default: only a signed-in person, never an API key, an agent or a hosted
+        connector session) or ``anyone``. Returns ``{workspace_id, policy, source, stated, version}``
+        like ``get_supersession_policy``.
+        """
+        wid = workspace_id or self.workspace_id
+        if not wid:
+            raise ValueError("get_review_approval needs a workspace_id")
+        return self._policy_view(wid, self.get_workspace_settings(wid), "approval")
+
+    def set_review_approval(
+        self,
+        approval: Optional[str],
+        workspace_id: Optional[str] = None,
+        if_match: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Set who may settle reviews: ``person_only``, ``anyone``, or ``None`` to inherit.
+
+        Needs ``edit_settings``; anyone but a signed-in person (an API key, an agent, a hosted
+        connector session) may only tighten (set ``person_only``), so ``anyone`` or ``None`` from
+        them raises ``SmartMemoryPermissionError`` (``settings_loosen_refused``).
+        """
+        if approval not in ("person_only", "anyone", None):
+            raise ValueError("approval must be 'person_only', 'anyone' or None")
+        wid = workspace_id or self.workspace_id
+        if not wid:
+            raise ValueError("set_review_approval needs a workspace_id")
+        return self._policy_view(
+            wid,
+            self.update_workspace_settings(
+                {"review": {"approval": approval}},
+                workspace_id=wid,
+                if_match=if_match,
+            ),
+            "approval",
+        )
+
     @staticmethod
-    def _policy_view(workspace_id: str, settings: Dict[str, Any]) -> Dict[str, Any]:
+    def _policy_view(
+        workspace_id: str, settings: Dict[str, Any], knob_name: str = "supersession"
+    ) -> Dict[str, Any]:
         def knob(block: str) -> Any:
-            return (
-                ((settings or {}).get(block) or {})
-                .get("review", {})
-                .get("supersession")
-            )
+            return ((settings or {}).get(block) or {}).get("review", {}).get(knob_name)
 
         return {
             "workspace_id": workspace_id,
