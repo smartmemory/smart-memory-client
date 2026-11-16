@@ -1,3 +1,7 @@
+## Unreleased - OUTREACH-MARIUS-HITL-SURFACE-1 part 8: an API key can approve a held decision (2026-11-16)
+
+- `set_review_approval` accepts `person_or_key` (the service default since part 8: a signed-in person or an API key approves). Docstrings name the three values and that loosening needs a workspace admin.
+
 ## Unreleased - OUTREACH-MARIUS-HITL-SURFACE-1 part 7: only a person approves by default (2026-11-16)
 
 - Only a person approves a review by default now (service side). New `get_review_approval` and `set_review_approval` (`person_only`, `anyone` or `None` to inherit) on the workspace settings route.

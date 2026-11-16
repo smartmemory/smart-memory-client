@@ -224,7 +224,9 @@ class TestReviewApproval:
             f"{BASE}/memory/workspaces/ws1/settings",
         )
 
-    @pytest.mark.parametrize("approval", ["person_only", "anyone", None])
+    @pytest.mark.parametrize(
+        "approval", ["person_only", "person_or_key", "anyone", None]
+    )
     @patch("httpx.Client.request")
     def test_set_patches_the_approval_knob(self, mock_req, client, approval):
         mock_req.return_value = _ok(APPROVAL_SETTINGS)

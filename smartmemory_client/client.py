@@ -4989,10 +4989,11 @@ class SmartMemoryClient:
         The server records the authenticated caller as the actor. ``keep_b`` on a
         supersession proposal applies it; an identical retry returns the stored receipt.
 
-        By default (``review.approval`` = ``person_only``) only a signed-in person may settle: an
-        API key, an agent or a hosted connector session gets ``SmartMemoryPermissionError`` whose
-        message is the service's own sentence ("Only a person can approve reviews in this
-        workspace ..."), unchanged. ``set_review_approval("anyone")`` by a person lifts it.
+        By default (``review.approval`` = ``person_or_key``) a signed-in person or an API key may
+        settle; an agent or a hosted connector session gets ``SmartMemoryPermissionError`` whose
+        message is the service's own sentence ("Only a person or an API key can approve reviews in
+        this workspace ..."), unchanged. Under ``person_only`` a key is refused too. A workspace
+        admin's ``set_review_approval("anyone")`` lets everyone settle.
         """
         body = {"action": action, "reason": reason}
         try:
@@ -5111,8 +5112,8 @@ class SmartMemoryClient:
     def get_review_approval(self, workspace_id: Optional[str] = None) -> Dict[str, Any]:
         """Who may settle reviews in the workspace (``review.approval``) and where it comes from.
 
-        ``person_only`` (the default: only a signed-in person, never an API key, an agent or a hosted
-        connector session) or ``anyone``. Returns ``{workspace_id, policy, source, stated, version}``
+        ``person_or_key`` (the default: a signed-in person or an API key, never an agent or a hosted
+        connector session), ``person_only`` (only a signed-in person) or ``anyone``. Returns ``{workspace_id, policy, source, stated, version}``
         like ``get_supersession_policy``.
         """
         wid = workspace_id or self.workspace_id
@@ -5126,14 +5127,18 @@ class SmartMemoryClient:
         workspace_id: Optional[str] = None,
         if_match: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Set who may settle reviews: ``person_only``, ``anyone``, or ``None`` to inherit.
+        """Set who may settle reviews: ``person_only``, ``person_or_key``, ``anyone``, or ``None`` to
+        inherit (the default, ``person_or_key``).
 
         Needs ``edit_settings``; anyone but a signed-in person (an API key, an agent, a hosted
-        connector session) may only tighten (set ``person_only``), so ``anyone`` or ``None`` from
-        them raises ``SmartMemoryPermissionError`` (``settings_loosen_refused``).
+        connector session) may only tighten (set ``person_only``), so a looser value or ``None`` from
+        them raises ``SmartMemoryPermissionError`` (``settings_loosen_refused``). A signed-in person
+        loosens only with the workspace admin grant (``privacy_loosen_admin_required`` otherwise).
         """
-        if approval not in ("person_only", "anyone", None):
-            raise ValueError("approval must be 'person_only', 'anyone' or None")
+        if approval not in ("person_only", "person_or_key", "anyone", None):
+            raise ValueError(
+                "approval must be 'person_only', 'person_or_key', 'anyone' or None"
+            )
         wid = workspace_id or self.workspace_id
         if not wid:
             raise ValueError("set_review_approval needs a workspace_id")
