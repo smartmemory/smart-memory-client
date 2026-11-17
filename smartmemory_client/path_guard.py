@@ -17,7 +17,7 @@ from urllib.parse import quote
 #: Static path segments the service has directly under each decision prefix an id follows (service OpenAPI snapshot;
 #: the MCP list for the same prefixes). ``tests/test_decision_path_guard.py`` pins it to the MCP copy's values.
 RESERVED_SEGMENTS: dict[str, frozenset[str]] = {
-    "/memory/decisions/": frozenset({"create", "pending", "search"}),
+    "/memory/decisions/": frozenset({"create", "pending", "search", "auto-changes"}),
     "/memory/decisions/pending/": frozenset({"create"}),
 }
 

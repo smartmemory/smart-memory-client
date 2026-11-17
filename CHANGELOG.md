@@ -1,3 +1,9 @@
+## Unreleased - STUDIO-DECISION-VIEW-1 U5: the three decision reads (2026-11-18)
+
+- `SmartMemoryClient.get_decision_history(decision_id, limit=, before=, as_of=)`, `get_decision_sites(decision_id, at=, scopes=)` and `list_decision_auto_changes(since=, status=, limit=, offset=)` read `/memory/decisions/{id}/history`, `/memory/decisions/{id}/sites` and `/memory/decisions/auto-changes`. Refusals raise the existing typed errors (404 `SmartMemoryNotFoundError`, 400 `SmartMemoryValidationError` with `error_code`). Datetimes are sent in UTC.
+- `auto-changes` is now a reserved decision id segment (it is a route name), so `get_decision("auto-changes")` raises `ValueError` before any request.
+- Tests use recorded responses (contract and the U4 report), not a live service.
+
 ## 2.0.2
 
 - REL-2-0-2-MERGED-TIP-1: `set_supersession_policy` docstring and README now say turning the review hold off (`retire`, or `None` when the inherited value is `retire`) needs a workspace owner or admin. Docs only.

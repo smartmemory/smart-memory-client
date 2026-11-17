@@ -87,5 +87,5 @@ def test_a_normal_or_odd_id_stays_one_segment_of_its_own_route(recorded):
         segment = "dec_1%3Fx%3D1%23frag%20%252F"
         assert f"/{segment}" in seen[0] and "?x=1" not in seen[0], (name, seen[0])
     assert RESERVED_SEGMENTS["/memory/decisions/"] == frozenset(
-        {"create", "pending", "search"}
+        {"create", "pending", "search", "auto-changes"}
     )

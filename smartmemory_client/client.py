@@ -5743,6 +5743,107 @@ class SmartMemoryClient:
             json_body={"reason": reason},
         )
 
+    def get_decision_history(
+        self,
+        decision_id: str,
+        *,
+        limit: Optional[int] = None,
+        before: Optional[Union[str, datetime]] = None,
+        as_of: Optional[Union[str, datetime]] = None,
+    ) -> Dict[str, Any]:
+        """A decision's dated history, newest first (STUDIO-DECISION-VIEW-1).
+
+        One call lists every version and event: recorded, edited, replaced, retracted, restored, review
+        answers and evidence links, each with who and why. Who is an actor string ``<kind>:<id>`` (for example
+        ``human:alice``), never a name the caller sent.
+
+        Args:
+            decision_id: The decision whose history to read.
+            limit: Entries to return, 1 to 500 (the service default is 100).
+            before: Only entries strictly older than this instant (paging: pass the last entry's ``at``).
+            as_of: Only entries at or before this instant. Datetimes use UTC.
+
+        Returns:
+            Dict with ``decision_id``, ``entries`` (newest first; each has ``entry_kind`` ``version`` or
+            ``event``, ``at``, ``action``, ``asked_by``, ``approved_by``, ``reason``, ``old_content``,
+            ``new_content``, ``related_decision_id``, ``related_visible``), ``start`` (``at``, ``kind``
+            ``recorded|migrated|unknown`` and a plain-words ``note``) and ``truncated`` (more entries exist).
+
+        Raises:
+            SmartMemoryNotFoundError: 404, no such decision here (another workspace and a decision you
+                cannot read answer the same).
+            SmartMemoryValidationError: 400 ``invalid_before`` or ``invalid_as_of``; 422 for a ``limit`` out of range.
+        """
+        return self._request(
+            "GET",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/history",
+            params=_scoped_options(limit=limit, before=before, as_of=as_of) or None,
+        )
+
+    def get_decision_sites(
+        self,
+        decision_id: str,
+        *,
+        at: Optional[Union[str, datetime]] = None,
+        scopes: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Which rule is in force at each site on one date, in one call (STUDIO-DECISION-VIEW-1).
+
+        Args:
+            decision_id: A decision of the chain (the rule it replaced and the rule that replaced it are walked).
+            at: The date the table answers for (default now). Datetimes use UTC.
+            scopes: Extra sites to answer for even when no rule names them, each ``{"site": "05"}``.
+
+        Returns:
+            Dict with ``decision_id``, ``at``, ``all_sites`` (true when the chain has no site schedule: the rule
+            applies everywhere from ``all_sites_from`` and ``rows`` is empty) and ``rows`` (one per site, sorted:
+            ``scope``, ``in_force`` and ``next``, each ``{decision_id, visible, from}`` or ``None``). ``in_force``
+            ``None`` means no rule of the chain is in force at that site on that date, never a default rule.
+            A rule the caller cannot read has ``visible`` false and ``decision_id`` ``None``.
+
+        Raises:
+            SmartMemoryNotFoundError: 404, no such decision here.
+            SmartMemoryValidationError: 400 ``invalid_scope`` or ``invalid_at_or_scope``.
+        """
+        params: Dict[str, Any] = _scoped_options(at=at)
+        if scopes:
+            params["scope"] = [json.dumps(scope, separators=(",", ":")) for scope in scopes]
+        return self._request(
+            "GET",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/sites",
+            params=params or None,
+        )
+
+    def list_decision_auto_changes(
+        self,
+        *,
+        since: Optional[Union[str, datetime]] = None,
+        status: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Rules the note reader replaced or retracted by itself, with no person approving (STUDIO-DECISION-VIEW-1).
+
+        Args:
+            since: Window start (default: 30 days ago). Datetimes use UTC.
+            status: ``"unchecked"`` (the service default), ``"checked"``, ``"undone"`` or ``"all"``.
+            limit: 1 to 500 (default 50).
+            offset: Items to skip.
+
+        Returns:
+            Dict with ``items`` (newest first), ``total``, ``unchecked_count``, ``notify`` (the workspace's
+            ``review.notify_auto_changes``), ``supersession`` (``"retire"`` or ``"propose"``) and ``since``.
+            Undo is ``restore_decision`` on the old decision.
+
+        Raises:
+            SmartMemoryValidationError: 400 ``invalid_status`` or ``invalid_since``.
+        """
+        return self._request(
+            "GET",
+            "/memory/decisions/auto-changes",
+            params=_scoped_options(since=since, status=status, limit=limit, offset=offset) or None,
+        )
+
     def reinforce_decision(self, decision_id: str, evidence_id: str) -> Dict[str, Any]:
         """Record supporting evidence for a decision.
 
