@@ -186,3 +186,77 @@ class TestSupersessionPolicy:
             client.set_supersession_policy("propose")
         with pytest.raises(error):
             client.get_supersession_policy()
+
+
+# -- Part 7 (2.0.2): who may approve, the 403 sentence as is, total --------------------------------
+
+APPROVAL_SETTINGS = {
+    **SETTINGS,
+    "stated": {"review": {"approval": None}},
+    "effective": {"review": {"approval": "person_only"}},
+    "source": {"review": {"approval": "default"}},
+}
+SENTENCE = (
+    "Only a person can approve reviews in this workspace (review approval is person_only); "
+    "this caller is an API key. The review is still open."
+)
+
+
+def _refused(detail_json: str):
+    resp = _error(403)
+    resp.text = detail_json
+    return resp
+
+
+class TestReviewApproval:
+    @patch("httpx.Client.request")
+    def test_get_reads_the_approval_knob(self, mock_req, client):
+        mock_req.return_value = _ok(APPROVAL_SETTINGS)
+        assert client.get_review_approval() == {
+            "workspace_id": "ws1",
+            "policy": "person_only",
+            "source": "default",
+            "stated": None,
+            "version": 3,
+        }
+        assert mock_req.call_args.args[:2] == (
+            "GET",
+            f"{BASE}/memory/workspaces/ws1/settings",
+        )
+
+    @pytest.mark.parametrize(
+        "approval", ["person_only", "person_or_key", "anyone", None]
+    )
+    @patch("httpx.Client.request")
+    def test_set_patches_the_approval_knob(self, mock_req, client, approval):
+        mock_req.return_value = _ok(APPROVAL_SETTINGS)
+        client.set_review_approval(approval)
+        assert mock_req.call_args.args[0] == "PATCH"
+        assert mock_req.call_args.kwargs["json"] == {
+            "stated": {"review": {"approval": approval}}
+        }
+
+    @patch("httpx.Client.request")
+    def test_set_rejects_an_unknown_value_before_any_request(self, mock_req, client):
+        with pytest.raises(ValueError, match="approval must be"):
+            client.set_review_approval("nobody")
+        mock_req.assert_not_called()
+
+    @patch("httpx.Client.request")
+    def test_a_refused_settle_carries_the_service_sentence_unchanged(
+        self, mock_req, client
+    ):
+        import json
+
+        mock_req.return_value = _refused(json.dumps({"detail": SENTENCE}))
+        with pytest.raises(SmartMemoryPermissionError) as info:
+            client.settle_conflict_review("conflict_a", "keep_b", "approved")
+        assert str(info.value) == SENTENCE
+        assert info.value.status_code == 403
+
+    @patch("httpx.Client.request")
+    def test_the_list_returns_total(self, mock_req, client):
+        mock_req.return_value = _ok(
+            {"items": [], "total": 55, "status": "open", "limit": 50, "offset": 0}
+        )
+        assert client.list_conflict_reviews()["total"] == 55

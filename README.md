@@ -350,6 +350,10 @@ result = client.feedback(
 ### Conflict Review Queue and Supersession Policy
 
 ```python
+# Rules that were replaced or retracted (the default lists the ones in force).
+replaced = client.list_decisions(status="superseded")   # "what did we use to charge?"
+withdrawn = client.list_decisions(status="retracted")
+
 # Conflicts a model deferred to a person, and proposed replacements, in this workspace.
 page = client.list_conflict_reviews(status="open", limit=50)
 for review in page["items"]:
@@ -361,7 +365,7 @@ client.settle_conflict_review(review["id"], "keep_b", "Checked the signed sheet"
 
 # Does a model "replaced" verdict retire the old memory at once, or only propose it for review?
 client.get_supersession_policy()            # {"policy": "propose", "source": "default", ...}
-client.set_supersession_policy("propose")   # or "retire", or None to inherit
+client.set_supersession_policy("propose")   # "retire" (or None when it inherits retire) needs a workspace admin
 ```
 
 ### Reasoning Traces (System 2 Memory)

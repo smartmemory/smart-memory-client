@@ -40,6 +40,7 @@ from smartmemory_client.models.session import (
 )
 
 from smartmemory_client import _save_transport as _transport
+from smartmemory_client.path_guard import path_id
 from smartmemory_client.receipt import Receipt, parse_receipt
 from smartmemory_client.errors import (  # noqa: F401  (re-exported: the classes lived here before 2.0)
     STAGE_CHAIN_CODES,
@@ -99,6 +100,18 @@ class SmartMemoryUnsupportedError(SmartMemoryServerError):
 class SmartMemorySubstrateError(SmartMemoryServerError):
     """Raised by the ``vector_*`` methods on HTTP 503: the vector backend reported a
     substrate error (``VectorSubstrateError``), surfaced instead of an empty page."""
+
+
+def _detail_sentence(detail: str) -> str | None:
+    """The service's ``detail`` sentence (a string, or ``detail.message``) from an error body, else ``None``."""
+    try:
+        body = json.loads(detail)
+    except (TypeError, ValueError):
+        return None
+    inner = body.get("detail") if isinstance(body, dict) else None
+    if isinstance(inner, dict):
+        inner = inner.get("message")
+    return inner if isinstance(inner, str) and inner.strip() else None
 
 
 def _body_error_code(detail: str) -> str | None:
@@ -202,6 +215,10 @@ def _scoped_options(*, query: bool = False, **options: Any) -> Dict[str, Any]:
             result["business_scope"], separators=(",", ":")
         )
     return result
+
+
+#: The lifecycle states ``list_decisions(status=...)`` reads (the ``GET /memory/decisions`` route's filter).
+DECISION_STATES = ("active", "superseded", "retracted", "pending")
 
 
 def _as_of_params(as_of: Optional[str]) -> Dict[str, Any]:
@@ -4956,9 +4973,10 @@ class SmartMemoryClient:
     ) -> Dict[str, Any]:
         """List conflict reviews in the client's workspace.
 
-        Returns ``{items, status, limit, offset}``; each item is a ConflictReview (contract
+        Returns ``{items, total, status, limit, offset}``; each item is a ConflictReview (contract
         ``OUTREACH-MARIUS-HITL-SURFACE-1/review-queue-contract.json``). ``status`` is ``open``
-        or ``resolved``.
+        or ``resolved``. ``total`` counts the reviews of that status in the workspace (a page may
+        hold fewer rows, never more).
         """
         params = {"status": status, "limit": limit, "offset": offset}
         return self._request("GET", "/memory/reasoning/reviews", params=params)
@@ -4970,13 +4988,27 @@ class SmartMemoryClient:
 
         The server records the authenticated caller as the actor. ``keep_b`` on a
         supersession proposal applies it; an identical retry returns the stored receipt.
+
+        By default (``review.approval`` = ``person_or_key``) a signed-in person or an API key may
+        settle; an agent or a hosted connector session gets ``SmartMemoryPermissionError`` whose
+        message is the service's own sentence ("Only a person or an API key can approve reviews in
+        this workspace ..."), unchanged. Under ``person_only`` a key is refused too. A workspace
+        admin's ``set_review_approval("anyone")`` lets everyone settle.
         """
         body = {"action": action, "reason": reason}
-        return self._request(
-            "POST",
-            f"/memory/reasoning/reviews/{quote(review_id, safe='')}/settle",
-            json_body=body,
-        )
+        try:
+            return self._request(
+                "POST",
+                f"/memory/reasoning/reviews/{quote(review_id, safe='')}/settle",
+                json_body=body,
+            )
+        except SmartMemoryPermissionError as e:
+            sentence = _detail_sentence(e.detail)
+            if sentence is None:
+                raise
+            raise SmartMemoryPermissionError(
+                sentence, status_code=e.status_code, detail=e.detail
+            ) from e
 
     def get_workspace_settings(
         self, workspace_id: Optional[str] = None
@@ -5060,8 +5092,10 @@ class SmartMemoryClient:
     ) -> Dict[str, Any]:
         """Set the workspace's supersession policy: ``retire``, ``propose``, or ``None`` to inherit.
 
-        Needs the workspace's ``edit_settings`` authority; an API key or agent may only
-        tighten (set ``propose``). ``if_match`` is the version read, for compare-and-set.
+        Setting ``propose`` needs edit rights. Setting ``retire``, or ``None`` when the inherited
+        value is ``retire``, turns the review hold off and needs a workspace owner or admin (an
+        editor gets 403 ``privacy_loosen_admin_required``). An API key or agent may only tighten.
+        ``if_match`` is the version read, for compare-and-set.
         """
         if policy not in ("retire", "propose", None):
             raise ValueError("policy must be 'retire', 'propose' or None")
@@ -5077,14 +5111,55 @@ class SmartMemoryClient:
             ),
         )
 
-    @staticmethod
-    def _policy_view(workspace_id: str, settings: Dict[str, Any]) -> Dict[str, Any]:
-        def knob(block: str) -> Any:
-            return (
-                ((settings or {}).get(block) or {})
-                .get("review", {})
-                .get("supersession")
+    def get_review_approval(self, workspace_id: Optional[str] = None) -> Dict[str, Any]:
+        """Who may settle reviews in the workspace (``review.approval``) and where it comes from.
+
+        ``person_or_key`` (the default: a signed-in person or an API key, never an agent or a hosted
+        connector session), ``person_only`` (only a signed-in person) or ``anyone``. Returns ``{workspace_id, policy, source, stated, version}``
+        like ``get_supersession_policy``.
+        """
+        wid = workspace_id or self.workspace_id
+        if not wid:
+            raise ValueError("get_review_approval needs a workspace_id")
+        return self._policy_view(wid, self.get_workspace_settings(wid), "approval")
+
+    def set_review_approval(
+        self,
+        approval: Optional[str],
+        workspace_id: Optional[str] = None,
+        if_match: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Set who may settle reviews: ``person_only``, ``person_or_key``, ``anyone``, or ``None`` to
+        inherit (the default, ``person_or_key``).
+
+        Needs ``edit_settings``; anyone but a signed-in person (an API key, an agent, a hosted
+        connector session) may only tighten (set ``person_only``), so a looser value or ``None`` from
+        them raises ``SmartMemoryPermissionError`` (``settings_loosen_refused``). A signed-in person
+        loosens only with the workspace admin grant (``privacy_loosen_admin_required`` otherwise).
+        """
+        if approval not in ("person_only", "person_or_key", "anyone", None):
+            raise ValueError(
+                "approval must be 'person_only', 'person_or_key', 'anyone' or None"
             )
+        wid = workspace_id or self.workspace_id
+        if not wid:
+            raise ValueError("set_review_approval needs a workspace_id")
+        return self._policy_view(
+            wid,
+            self.update_workspace_settings(
+                {"review": {"approval": approval}},
+                workspace_id=wid,
+                if_match=if_match,
+            ),
+            "approval",
+        )
+
+    @staticmethod
+    def _policy_view(
+        workspace_id: str, settings: Dict[str, Any], knob_name: str = "supersession"
+    ) -> Dict[str, Any]:
+        def knob(block: str) -> Any:
+            return ((settings or {}).get(block) or {}).get("review", {}).get(knob_name)
 
         return {
             "workspace_id": workspace_id,
@@ -5441,7 +5516,7 @@ class SmartMemoryClient:
         """
         return self._request(
             "GET",
-            f"/memory/decisions/{decision_id}",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}",
             params={
                 **_as_of_params(as_of),
                 **_scoped_options(
@@ -5463,8 +5538,16 @@ class SmartMemoryClient:
         *,
         business_scope: Optional[Dict[str, Any]] = None,
         valid_at: Optional[Union[str, datetime]] = None,
+        status: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """List active decisions with optional filters.
+        """List decisions with optional filters: the ones in force by default.
+
+        ``status`` picks one lifecycle state (OUTREACH-MARIUS-HITL-SURFACE-1 p4): omit it or
+        ``"active"`` for the decisions in force, ``"superseded"`` for the ones that were replaced
+        ("what did we use to charge?"), ``"retracted"`` for the withdrawn ones, ``"pending"`` for
+        the ones waiting on a requirement. Any other value raises ``ValueError`` before a request
+        is sent. A replacement still waiting for a person is not listed here: it is a review
+        (``list_conflict_reviews``) and the rule it would replace stays active until it is settled.
 
         ``business_scope={"site": "A"}`` selects an exact business site, with
         sponsor fallback. ``valid_at`` selects business time independently of
@@ -5499,11 +5582,17 @@ class SmartMemoryClient:
             ``ignorance``) — a distinction ``stability`` cannot express, since it reads
             0.5 for both.
         """
+        if status is not None and status not in DECISION_STATES:
+            raise ValueError(
+                f"status must be one of {', '.join(DECISION_STATES)} (omit it for active)"
+            )
         params: Dict[str, Any] = {"min_confidence": min_confidence, "limit": limit}
         if domain:
             params["domain"] = domain
         if decision_type:
             params["decision_type"] = decision_type
+        if status is not None and status != "active":
+            params["status"] = status
         if provenance_memory_id is not None:
             params["provenance_memory_id"] = provenance_memory_id
         if agent_id is not None:
@@ -5583,7 +5672,12 @@ class SmartMemoryClient:
                 Both are caller-supplied, not verified and never used for authorization (CLAIMS-BUILD-20).
 
         Returns:
-            Dict with old_decision_id, new_decision_id, status.
+            Dict with old_decision_id, new_decision_id, status. ``status`` is
+            ``"superseded"``, or ``"held_for_review"`` when the workspace's
+            supersession policy is ``propose``: then nothing was replaced, the
+            old decision stays active, ``new_decision_id`` is None and
+            ``review_id`` names the review that decides it (accept with
+            ``settle_conflict_review(review_id, "keep_b", reason)``).
         """
         body = {
             "new_content": new_content,
@@ -5602,7 +5696,9 @@ class SmartMemoryClient:
             _scoped_options(valid_from=valid_from, scope_go_lives=scope_go_lives)
         )
         return self._request(
-            "POST", f"/memory/decisions/{decision_id}/supersede", json_body=body
+            "POST",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/supersede",
+            json_body=body,
         )
 
     def retract_decision(self, decision_id: str, reason: str) -> Dict[str, Any]:
@@ -5617,7 +5713,33 @@ class SmartMemoryClient:
         """
         return self._request(
             "POST",
-            f"/memory/decisions/{decision_id}/retract",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/retract",
+            json_body={"reason": reason},
+        )
+
+    def restore_decision(self, decision_id: str, reason: str) -> Dict[str, Any]:
+        """Restore a decision that a replacement wrongly retired (DECISION-RESTORE-ONE-ACTION-1).
+
+        One call makes the decision active again. The replacement stays active, the link between them is kept in
+        history with who restored it, when and why. Only the decision's owner can restore it.
+
+        Args:
+            decision_id: ID of the retired (superseded) decision.
+            reason: Why the retirement was wrong (required, not blank).
+
+        Returns:
+            Dict with decision_id, status ("active"), replacement_decision_id, replacement_rule, restored_at,
+            restored_by. Refusals raise: 404 not_found, 403 not_owner, 409 not_retired, scheduled, replaced_again
+            (with newer_decision_id) or replacement_unreadable.
+
+        The lifecycle notes a decision read returns in ``context_snapshot`` (``retired_by``, ``superseded_reason``,
+        ``superseded_at``, ``retracted_by``, ``retraction_reason``, ``retracted_at``, ``restored_by``, ``restored_at``,
+        ``restore_reason``, ``restored_from_replacement``) come from the decision's history, not from what an update
+        wrote under those names.
+        """
+        return self._request(
+            "POST",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/restore",
             json_body={"reason": reason},
         )
 
@@ -5633,7 +5755,7 @@ class SmartMemoryClient:
         """
         return self._request(
             "POST",
-            f"/memory/decisions/{decision_id}/reinforce",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/reinforce",
             json_body={"evidence_id": evidence_id},
         )
 
@@ -5655,7 +5777,7 @@ class SmartMemoryClient:
         """
         return self._request(
             "POST",
-            f"/memory/decisions/{quote(decision_id, safe='')}/evidence",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/evidence",
             json_body={"evidence_id": evidence_id},
         )
 
@@ -5694,7 +5816,7 @@ class SmartMemoryClient:
         """
         return self._request(
             "POST",
-            f"/memory/decisions/{decision_id}/contradict",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/contradict",
             json_body={"evidence_id": evidence_id},
         )
 
@@ -5712,7 +5834,7 @@ class SmartMemoryClient:
         """
         return self._request(
             "POST",
-            f"/memory/decisions/{decision_id}/conflicts",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/conflicts",
             params={"min_contest": min_contest},
         )
 
@@ -5791,7 +5913,7 @@ class SmartMemoryClient:
         """
         return self._request(
             "GET",
-            f"/memory/decisions/{decision_id}/provenance",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/provenance",
             params={
                 **_as_of_params(as_of),
                 **_scoped_options(
@@ -5819,7 +5941,9 @@ class SmartMemoryClient:
         """
         params = {"direction": direction, "max_depth": max_depth}
         return self._request(
-            "GET", f"/memory/decisions/{decision_id}/causal-chain", params=params
+            "GET",
+            f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/causal-chain",
+            params=params,
         )
 
     def create_pending_decision(
@@ -5856,14 +5980,15 @@ class SmartMemoryClient:
         """Mark one requirement on a pending decision resolved by a memory item."""
         return self._request(
             "POST",
-            f"/memory/decisions/pending/{decision_id}/resolve",
+            f"/memory/decisions/pending/{path_id(decision_id, under='/memory/decisions/pending/')}/resolve",
             json_body={"requirement_id": requirement_id, "memory_id": memory_id},
         )
 
     def try_activate_decision(self, decision_id: str) -> Dict[str, Any]:
         """Try to activate a pending decision (no-op if requirements remain)."""
         return self._request(
-            "POST", f"/memory/decisions/pending/{decision_id}/activate"
+            "POST",
+            f"/memory/decisions/pending/{path_id(decision_id, under='/memory/decisions/pending/')}/activate",
         )
 
     def list_pending_decisions(self, limit: int = 50) -> Dict[str, Any]:

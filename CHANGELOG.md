@@ -1,3 +1,30 @@
+## 2.0.2
+
+- REL-2-0-2-MERGED-TIP-1: `set_supersession_policy` docstring and README now say turning the review hold off (`retire`, or `None` when the inherited value is `retire`) needs a workspace owner or admin. Docs only.
+
+## Unreleased - OUTREACH-MARIUS-HITL-SURFACE-1 part 8: an API key can approve a held decision (2026-11-16)
+
+- `set_review_approval` accepts `person_or_key` (the service default since part 8: a signed-in person or an API key approves). Docstrings name the three values and that loosening needs a workspace admin.
+
+## Unreleased - OUTREACH-MARIUS-HITL-SURFACE-1 part 7: only a person approves by default (2026-11-16)
+
+- Only a person approves a review by default now (service side). New `get_review_approval` and `set_review_approval` (`person_only`, `anyone` or `None` to inherit) on the workspace settings route.
+- `settle_conflict_review` raises `SmartMemoryPermissionError` whose message is the service's 403 sentence as written. `list_conflict_reviews` documents `total`.
+
+## Unreleased - OUTREACH-MARIUS-HITL-SURFACE-1 part 4: list replaced and retracted decisions (2026-11-16)
+
+- `list_decisions(status=...)`: `active` (default), `superseded`, `retracted` or `pending`, sent as the `GET /memory/decisions` route's existing `status` filter. Any other value raises `ValueError` before a request. Proven against the real service app in smart-memory-mcp `tests/real_service/test_hosted_decisions_connector_notes.py`.
+
+## Unreleased - OUTREACH-MARIUS-HITL-SURFACE-1 part 2: a replacing decision waits for a person in propose mode (2026-11-16)
+
+- `supersede_decision` documents the `held_for_review` answer (`review_id`, `new_decision_id` None) a propose workspace returns. No code change: the response is returned as sent.
+
+## Unreleased - DECISION-RESTORE-ONE-ACTION-1: restore a wrongly retired decision (2026-11-15)
+
+- `SmartMemoryClient.restore_decision(decision_id, reason)` posts to `/memory/decisions/{decision_id}/restore`.
+- Review fix round 1: new `smartmemory_client/path_guard.py`. Every decision method refuses, before any request, an id that could reach another route (`/`, `\\`, `.`, `..`, control characters, a route name such as `search`) and sends any other id as one encoded path segment.
+- `restore_decision` docstring: the lifecycle notes a decision read returns come from its history, and gain `retired_by` and `retracted_by`.
+
 ## Unreleased - CLAIMS-BUILD-21: search results name the lanes that found them (2026-11-14)
 
 - `MemoryItem.matched_by` (`Optional[List[str]]`): the retrieval lanes that found a search result, as the service returns them (for example `["lexical", "semantic"]`). `None` means not recorded on that server path; an older server without the field reads as `None`, no error.
