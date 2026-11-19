@@ -126,7 +126,7 @@ def _body_error_code(detail: str) -> str | None:
         return None
     inner = body.get("detail", body)
     if isinstance(inner, dict):
-        inner = inner.get("error")
+        inner = inner.get("error") or inner.get("code")
     return inner if isinstance(inner, str) and inner else None
 
 
@@ -5743,6 +5743,13 @@ class SmartMemoryClient:
             json_body={"reason": reason},
         )
 
+    def _decision_view_get(self, path: str, *, params: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        try:
+            return self._request("GET", path, params=params)
+        except SmartMemoryValidationError as error:
+            error.error_code = _body_error_code(error.detail)
+            raise
+
     def get_decision_history(
         self,
         decision_id: str,
@@ -5774,8 +5781,7 @@ class SmartMemoryClient:
                 cannot read answer the same).
             SmartMemoryValidationError: 400 ``invalid_before``, ``invalid_as_of``, or ``invalid_limit``.
         """
-        return self._request(
-            "GET",
+        return self._decision_view_get(
             f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/history",
             params=_scoped_options(limit=limit, before=before, as_of=as_of) or None,
         )
@@ -5808,8 +5814,7 @@ class SmartMemoryClient:
         params: Dict[str, Any] = _scoped_options(at=at)
         if scopes:
             params["scope"] = [json.dumps(scope, separators=(",", ":")) for scope in scopes]
-        return self._request(
-            "GET",
+        return self._decision_view_get(
             f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/sites",
             params=params or None,
         )
@@ -5838,8 +5843,7 @@ class SmartMemoryClient:
         Raises:
             SmartMemoryValidationError: 400 ``invalid_status`` or ``invalid_since``.
         """
-        return self._request(
-            "GET",
+        return self._decision_view_get(
             "/memory/decisions/auto-changes",
             params=_scoped_options(since=since, status=status, limit=limit, offset=offset) or None,
         )

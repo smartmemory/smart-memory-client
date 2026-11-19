@@ -2,7 +2,7 @@
 
 - `SmartMemoryClient.get_decision_history(decision_id, limit=, before=, as_of=)`, `get_decision_sites(decision_id, at=, scopes=)` and `list_decision_auto_changes(since=, status=, limit=, offset=)` read `/memory/decisions/{id}/history`, `/memory/decisions/{id}/sites` and `/memory/decisions/auto-changes`. Refusals raise the existing typed errors (404 `SmartMemoryNotFoundError`, 400 `SmartMemoryValidationError` with `error_code`). Datetimes are sent in UTC.
 - `auto-changes` is now a reserved decision id segment (it is a route name), so `get_decision("auto-changes")` raises `ValueError` before any request.
-- History documents the service’s named 400 response for an invalid limit. Added decision read examples and coverage for permission and server errors.
+- History documents the service’s named 400 response for an invalid limit. Added decision read examples and coverage for permission and server errors. Decision read validation errors carry the named service code on the 2.0 client.
 
 ## 2.0.2
 
