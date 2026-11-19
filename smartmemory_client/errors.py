@@ -195,3 +195,11 @@ class RecallConflictError(SmartMemoryValidationError):
     """Strict recall refused (409). Scoped pairs are retained in JSON detail."""
 
     code = "recall_conflict"
+
+
+class DecisionHistoryProtectedError(SmartMemoryValidationError):
+    """HTTP 409 ``decision_history_protected``: a generic write (``update``, ``add_edge``, ``link``, a zettel link or
+    a bulk graph write) would change a decision's history (its status, supersession or lifecycle links). Nothing was
+    written; use the decision calls (``/memory/decisions/...``) instead. Never retried."""
+
+    error_code = "decision_history_protected"
