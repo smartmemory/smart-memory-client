@@ -41,16 +41,6 @@ def test_metadata_filter_body(flt, sent):
     assert ("metadata_filter" in body) is (sent is not None)
 
 
-def test_non_dict_filter_is_refused_before_any_request():
-    client = _client()
-    with (
-        patch("httpx.Client.request") as request,
-        pytest.raises(ValueError, match="must be a dict"),
-    ):
-        client.search("x", metadata_filter=[("customer_id", "c")])
-    assert not request.called
-
-
 def test_incomplete_coverage_is_exposed():
     client = _client()
     with patch(

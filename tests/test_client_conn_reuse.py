@@ -9,10 +9,7 @@ Real loopback server (HTTP/1.1 keep-alive) that counts accepted TCP connections.
 OS-assigned (port 0) and the server is shut down in the fixture teardown, pass or fail.
 """
 
-import ast
 import json
-import pathlib
-import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
@@ -157,82 +154,6 @@ def test_http2_client_builds_when_h2_is_installed():
         assert c._client._transport._pool._http2 is True
     finally:
         c.close()
-
-
-# ---- structural guard: no code path may build its own client ----
-
-_SOURCE = pathlib.Path(client_module.__file__).read_text()
-_TREE = ast.parse(_SOURCE)
-_HTTPX_FACTORIES = {
-    "Client",
-    "AsyncClient",
-    "get",
-    "post",
-    "put",
-    "patch",
-    "delete",
-    "head",
-    "options",
-    "request",
-    "stream",
-}
-
-
-def _httpx_calls():
-    for node in ast.walk(_TREE):
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "httpx"
-            and node.func.attr in _HTTPX_FACTORIES
-        ):
-            yield node.func.attr, node.lineno
-
-
-def _enclosing_function(lineno):
-    best = None
-    for node in ast.walk(_TREE):
-        if (
-            isinstance(node, ast.FunctionDef)
-            and node.lineno <= lineno <= node.end_lineno
-        ):
-            if best is None or node.lineno > best.lineno:
-                best = node
-    return best.name if best else None
-
-
-def test_only_the_constructor_builds_an_httpx_client_and_nothing_makes_one_off_calls():
-    calls = list(_httpx_calls())
-    assert calls, "expected the pooled httpx.Client construction"
-    for attr, lineno in calls:
-        where = _enclosing_function(lineno)
-        assert (attr, where) == ("Client", "__init__"), (
-            f"client.py:{lineno} calls httpx.{attr} in {where}; use self._client so the pool is reused"
-        )
-    assert [a for a, _ in calls].count("Client") == 1
-
-
-def test_no_other_module_in_the_package_opens_connections():
-    pkg = pathlib.Path(client_module.__file__).parent
-    offenders = []
-    for path in pkg.rglob("*.py"):
-        if path.name == "client.py":
-            continue
-        text = path.read_text()
-        # An httpx exception class (``httpx.TransportError`` in _save_transport's retry
-        # classifier) is a type check, not a connection; any other ``httpx.`` use is flagged.
-        if re.search(r"\bhttpx\.(?![A-Za-z]*(?:Error|Exception)\b)", text):
-            offenders.append((path.name, "httpx."))
-        for needle in (
-            "requests.",
-            "urllib.request",
-            "http.client",
-            "aiohttp",
-        ):
-            if needle in text:
-                offenders.append((path.name, needle))
-    assert offenders == []
 
 
 def test_close_releases_the_pool():

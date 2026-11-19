@@ -1,3 +1,7 @@
+## Unreleased
+
+- TEST-TEARDOWN-1: Remove five source and census checks and one duplicate metadata-filter case from the Python SDK tests.
+
 ## 2.0.2
 
 - REL-2-0-2-MERGED-TIP-1: `set_supersession_policy` docstring and README now say turning the review hold off (`retire`, or `None` when the inherited value is `retire`) needs a workspace owner or admin. Docs only.
