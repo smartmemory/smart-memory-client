@@ -5810,6 +5810,7 @@ class SmartMemoryClient:
         Raises:
             SmartMemoryNotFoundError: 404, no such decision here.
             SmartMemoryValidationError: 400 ``invalid_scope`` or ``invalid_at_or_scope``.
+            SmartMemoryServerError: 503 ``scoped_history_unavailable`` when the site history cannot be read.
         """
         params: Dict[str, Any] = _scoped_options(at=at)
         if scopes:
