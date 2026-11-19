@@ -1,3 +1,7 @@
+## Unreleased - OPS-CLI-WIRING-AUDIT-1 (2026-11-20)
+
+- `verify_client.py` exits with an error on stderr if an installed `smartmemory` core fails to import. The clean-separation check still passes when core is absent.
+
 ## 2.0.7
 
 ## Unreleased - BUG-DECISION-HISTORY-PAGE-TIE-1: history cursor (2026-11-23)
