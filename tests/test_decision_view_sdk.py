@@ -14,6 +14,8 @@ from smartmemory_client import (
     SmartMemoryClient,
     SmartMemoryNotFoundError,
     SmartMemoryValidationError,
+    SmartMemoryPermissionError,
+    SmartMemoryServerError,
 )
 
 HISTORY = {
@@ -156,3 +158,21 @@ def test_an_id_that_could_reach_another_route_is_refused_before_any_request(bad)
     with pytest.raises(Exception):
         client.get_decision_sites(bad)
     assert calls == []
+
+
+@pytest.mark.parametrize(
+    "status,expected",
+    [(401, SmartMemoryPermissionError), (403, SmartMemoryPermissionError), (500, SmartMemoryServerError)],
+)
+def test_view_reads_preserve_auth_and_server_errors(status, expected):
+    client, calls = _client(_json(status, {"detail": "read refused"}))
+    with client:
+        for method, args in (
+            (client.get_decision_history, ("d0",)),
+            (client.get_decision_sites, ("d0",)),
+            (client.list_decision_auto_changes, ()),
+        ):
+            with pytest.raises(expected) as refused:
+                method(*args)
+            assert refused.value.status_code == status
+        assert len(calls) == 3

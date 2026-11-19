@@ -5772,7 +5772,7 @@ class SmartMemoryClient:
         Raises:
             SmartMemoryNotFoundError: 404, no such decision here (another workspace and a decision you
                 cannot read answer the same).
-            SmartMemoryValidationError: 400 ``invalid_before`` or ``invalid_as_of``; 422 for a ``limit`` out of range.
+            SmartMemoryValidationError: 400 ``invalid_before``, ``invalid_as_of``, or ``invalid_limit``.
         """
         return self._request(
             "GET",
