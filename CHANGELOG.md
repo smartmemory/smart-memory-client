@@ -1,3 +1,7 @@
+## Unreleased - DECISION-DOOR-1 shape (b): typed refusal of generic writes to a decision's history (2026-11-19)
+
+- New `DecisionHistoryProtectedError` (a `SmartMemoryValidationError`, `error_code = "decision_history_protected"`). The service answers 409 with that code when `update()`, an edge or link call, or a graph bulk call would change a decision's status, supersession or lifecycle links through a generic write. `update()` raises it as is (before, any 409 became a `SaveConflictError`). Decision history changes only through the decision methods (`supersede_decision`, ...).
+
 ## 2.0.2
 
 - REL-2-0-2-MERGED-TIP-1: `set_supersession_policy` docstring and README now say turning the review hold off (`retire`, or `None` when the inherited value is `retire`) needs a workspace owner or admin. Docs only.

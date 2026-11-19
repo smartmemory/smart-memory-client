@@ -44,6 +44,7 @@ from smartmemory_client.path_guard import path_id
 from smartmemory_client.receipt import Receipt, parse_receipt
 from smartmemory_client.errors import (  # noqa: F401  (re-exported: the classes lived here before 2.0)
     STAGE_CHAIN_CODES,
+    DecisionHistoryProtectedError,
     IdempotencyConflictError,
     ReceiptError,
     RetryKeyExpiredError,
@@ -145,6 +146,8 @@ def _exception_for_status(
             and wire["detail"].get("error") == "recall_conflict"
         ):
             return RecallConflictError
+        if _body_error_code(detail) == DecisionHistoryProtectedError.error_code:
+            return DecisionHistoryProtectedError
     if status == 404:
         return SmartMemoryNotFoundError
     if status in (401, 403):
@@ -1743,6 +1746,8 @@ class SmartMemoryClient:
 
         try:
             result = self._request("PATCH", f"/memory/{item_id}", json_body=body)
+        except DecisionHistoryProtectedError:
+            raise  # a refusal, not a save conflict: nothing to retry with the same key
         except SmartMemoryClientError as exc:
             conflict = _transport.conflict_from(exc)
             if conflict is None:
