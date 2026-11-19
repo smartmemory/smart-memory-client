@@ -355,6 +355,10 @@ sites = client.get_decision_sites(decision_id, at="2026-10-15T00:00:00Z")
 changes = client.list_decision_auto_changes(status="unchecked")
 ```
 
+A decision detail read includes `display_status` for the screen label. During a
+site rollout the label can be `replaced` while `status` is still `active`.
+Use the sites table to find the rule in force at a particular site.
+
 History entries are newest first. Each site row identifies the rule in force at
 the requested time and the next scheduled rule. An unreadable decision raises
 the same `SmartMemoryNotFoundError` as a missing decision.
