@@ -37,7 +37,11 @@ HISTORY = {
             "evidence_id": None,
         },
     ],
-    "start": {"at": "2026-09-01T09:00:00+00:00", "kind": "recorded", "note": "Recorded 1 Sep 2026."},
+    "start": {
+        "at": "2026-09-01T09:00:00+00:00",
+        "kind": "recorded",
+        "note": "Recorded 1 Sep 2026.",
+    },
     "truncated": False,
 }
 SITES = {
@@ -48,17 +52,36 @@ SITES = {
     "rows": [
         {
             "scope": {"site": "01"},
-            "in_force": {"decision_id": "d1", "visible": True, "from": "2026-10-01T00:00:00+00:00"},
+            "in_force": {
+                "decision_id": "d1",
+                "visible": True,
+                "from": "2026-10-01T00:00:00+00:00",
+            },
             "next": None,
         },
         {
             "scope": {"site": "03"},
-            "in_force": {"decision_id": "d0", "visible": True, "from": "2026-09-01T00:00:00+00:00"},
-            "next": {"decision_id": "d1", "visible": True, "from": "2026-11-01T00:00:00+00:00"},
+            "in_force": {
+                "decision_id": "d0",
+                "visible": True,
+                "from": "2026-09-01T00:00:00+00:00",
+            },
+            "next": {
+                "decision_id": "d1",
+                "visible": True,
+                "from": "2026-11-01T00:00:00+00:00",
+            },
         },
     ],
 }
-AUTO = {"items": [], "total": 0, "unchecked_count": 0, "notify": True, "supersession": "propose", "since": "2026-10-19T00:00:00+00:00"}
+AUTO = {
+    "items": [],
+    "total": 0,
+    "unchecked_count": 0,
+    "notify": True,
+    "supersession": "propose",
+    "since": "2026-10-19T00:00:00+00:00",
+}
 
 
 def _client(responder):
@@ -81,7 +104,9 @@ def _json(status, body):
 def test_history_reads_the_route_and_sends_only_what_is_set():
     client, calls = _client(_json(200, HISTORY))
     assert client.get_decision_history("d0") == HISTORY
-    assert calls[0].method == "GET" and calls[0].url.path == "/memory/decisions/d0/history"
+    assert (
+        calls[0].method == "GET" and calls[0].url.path == "/memory/decisions/d0/history"
+    )
     assert dict(calls[0].url.params) == {}
     client.get_decision_history(
         "d0",
@@ -115,7 +140,9 @@ def test_auto_changes_goes_to_the_literal_path_not_a_decision_id():
     assert client.list_decision_auto_changes() == AUTO
     assert calls[0].url.path == "/memory/decisions/auto-changes"
     assert dict(calls[0].url.params) == {}
-    client.list_decision_auto_changes(status="all", limit=5, offset=10, since="2026-10-01T00:00:00Z")
+    client.list_decision_auto_changes(
+        status="all", limit=5, offset=10, since="2026-10-01T00:00:00Z"
+    )
     assert dict(calls[1].url.params) == {
         "status": "all",
         "limit": "5",
@@ -136,7 +163,11 @@ def test_unknown_decision_is_a_not_found_error(call):
 
 @pytest.mark.parametrize(
     "call, code",
-    [("history", "invalid_before"), ("sites", "invalid_scope"), ("auto", "invalid_status")],
+    [
+        ("history", "invalid_before"),
+        ("sites", "invalid_scope"),
+        ("auto", "invalid_status"),
+    ],
 )
 def test_named_400_refusals_are_validation_errors_with_the_code(call, code):
     client, _ = _client(_json(400, {"detail": {"code": code, "message": "bad value"}}))
@@ -153,16 +184,20 @@ def test_named_400_refusals_are_validation_errors_with_the_code(call, code):
 @pytest.mark.parametrize("bad", ["../x", "a/b", "auto-changes"])
 def test_an_id_that_could_reach_another_route_is_refused_before_any_request(bad):
     client, calls = _client(_json(200, HISTORY))
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         client.get_decision_history(bad)
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         client.get_decision_sites(bad)
     assert calls == []
 
 
 @pytest.mark.parametrize(
     "status,expected",
-    [(401, SmartMemoryPermissionError), (403, SmartMemoryPermissionError), (500, SmartMemoryServerError)],
+    [
+        (401, SmartMemoryPermissionError),
+        (403, SmartMemoryPermissionError),
+        (500, SmartMemoryServerError),
+    ],
 )
 def test_view_reads_preserve_auth_and_server_errors(status, expected):
     client, calls = _client(_json(status, {"detail": "read refused"}))

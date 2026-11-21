@@ -5743,7 +5743,9 @@ class SmartMemoryClient:
             json_body={"reason": reason},
         )
 
-    def _decision_view_get(self, path: str, *, params: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def _decision_view_get(
+        self, path: str, *, params: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         try:
             return self._request("GET", path, params=params)
         except SmartMemoryValidationError as error:
@@ -5814,7 +5816,9 @@ class SmartMemoryClient:
         """
         params: Dict[str, Any] = _scoped_options(at=at)
         if scopes:
-            params["scope"] = [json.dumps(scope, separators=(",", ":")) for scope in scopes]
+            params["scope"] = [
+                json.dumps(scope, separators=(",", ":")) for scope in scopes
+            ]
         return self._decision_view_get(
             f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/sites",
             params=params or None,
@@ -5846,7 +5850,10 @@ class SmartMemoryClient:
         """
         return self._decision_view_get(
             "/memory/decisions/auto-changes",
-            params=_scoped_options(since=since, status=status, limit=limit, offset=offset) or None,
+            params=_scoped_options(
+                since=since, status=status, limit=limit, offset=offset
+            )
+            or None,
         )
 
     def reinforce_decision(self, decision_id: str, evidence_id: str) -> Dict[str, Any]:
