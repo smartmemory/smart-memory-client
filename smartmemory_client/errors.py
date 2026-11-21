@@ -8,6 +8,7 @@ without importing the client.
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, Optional
 
 
@@ -195,6 +196,34 @@ class RecallConflictError(SmartMemoryValidationError):
     """Strict recall refused (409). Scoped pairs are retained in JSON detail."""
 
     code = "recall_conflict"
+
+
+class ConflictCheckUndecidedError(SmartMemoryValidationError):
+    """A strict read (``fail_if_conflicted=True``) held pairs its conflict check could not decide (409
+    ``conflict_check_undecided``). Not a proven conflict, so it is not a ``RecallConflictError``.
+
+    ``pairs`` (scoped id pairs) and ``reason`` (fixed text, no claim text) are read from the response detail.
+    With the server setting ``conflict_check_unsure="mark"`` the read succeeds instead and
+    ``SmartMemoryClient.last_conflict_check`` holds the same pairs.
+    """
+
+    code = "conflict_check_undecided"
+
+    def _wire(self) -> dict:
+        try:
+            body = json.loads(self.detail or "")
+        except (TypeError, ValueError):
+            return {}
+        inner = body.get("detail") if isinstance(body, dict) else None
+        return inner if isinstance(inner, dict) else {}
+
+    @property
+    def pairs(self) -> list:
+        return [list(pair) for pair in self._wire().get("pairs") or []]
+
+    @property
+    def reason(self) -> str:
+        return str(self._wire().get("reason") or "")
 
 
 class DecisionHistoryProtectedError(SmartMemoryValidationError):
