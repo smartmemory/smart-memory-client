@@ -102,3 +102,29 @@ def test_recall_pack_raises_the_typed_error_and_returns_the_manifest_marker():
     pack = client.recall_pack(2000, sections=sections, fail_if_conflicted=True)
     assert pack["manifest"]["conflict_check"] == MARKER
     assert pack["conflict"] is False
+
+
+def test_method_hint_and_not_checked_count_pass_through_unchanged():
+    """Core's judge build adds ``method`` to both 409 bodies, and ``hint`` plus a count to the undecided one."""
+    body = {"detail": {**UNDECIDED_409["detail"], "method": "jev", "hint": "set a key", "pairs_not_checked": 4}}
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(409, json=body)
+
+    with pytest.raises(ConflictCheckUndecidedError) as undecided:
+        _client(handler).search("KX-410", fail_if_conflicted=True)
+    assert (undecided.value.method, undecided.value.hint, undecided.value.pairs_not_checked) == ("jev", "set a key", 4)
+    assert undecided.value.pairs == [["test_ccu_a", "test_ccu_b"]]
+
+    conflict = {"detail": {"error": "recall_conflict", "message": "m", "pairs": [["a", "b"]], "method": "jev"}}
+    with pytest.raises(RecallConflictError) as refused:
+        _client(lambda request: httpx.Response(409, json=conflict)).search("KX-410", fail_if_conflicted=True)
+    assert refused.value.method == "jev"
+
+
+def test_fields_absent_from_an_older_service_read_as_none():
+    with pytest.raises(ConflictCheckUndecidedError) as undecided:
+        _client(lambda request: httpx.Response(409, json=UNDECIDED_409)).search("KX-410", fail_if_conflicted=True)
+    assert (undecided.value.method, undecided.value.hint, undecided.value.pairs_not_checked) == (None, None, None)
