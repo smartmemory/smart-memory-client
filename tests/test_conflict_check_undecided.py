@@ -36,12 +36,18 @@ MARKER = {
 }
 ITEMS = [
     {"item_id": "test_ccu_a", "content": "KX-410 costs 1,200 EUR.", "conflict": None},
-    {"item_id": "test_ccu_b", "content": "KX-410 price is 1,450 EUR.", "conflict": None},
+    {
+        "item_id": "test_ccu_b",
+        "content": "KX-410 price is 1,450 EUR.",
+        "conflict": None,
+    },
 ]
 
 
 def _client(handler):
-    client = SmartMemoryClient(base_url="http://testserver", team_id="team-test", api_key="key-test")
+    client = SmartMemoryClient(
+        base_url="http://testserver", team_id="team-test", api_key="key-test"
+    )
     client._client.close()
     client._client = httpx.Client(transport=httpx.MockTransport(handler))
     return client
@@ -55,7 +61,10 @@ def test_only_the_undecided_409_gets_the_undecided_exception():
     assert not issubclass(cls, RecallConflictError)
     recall = json.dumps({"detail": {"error": "recall_conflict", "pairs": [["a", "b"]]}})
     assert _exception_for_status(409, recall) is RecallConflictError
-    assert _exception_for_status(409, '{"detail":{"error":"revision_conflict"}}') is SmartMemoryValidationError
+    assert (
+        _exception_for_status(409, '{"detail":{"error":"revision_conflict"}}')
+        is SmartMemoryValidationError
+    )
     assert _exception_for_status(409, "not JSON") is SmartMemoryValidationError
 
 
@@ -91,7 +100,14 @@ def test_recall_pack_raises_the_typed_error_and_returns_the_manifest_marker():
     answers = iter(
         [
             httpx.Response(409, json=UNDECIDED_409),
-            httpx.Response(200, json={"block": "b", "conflict": False, "manifest": {"conflict_check": MARKER}}),
+            httpx.Response(
+                200,
+                json={
+                    "block": "b",
+                    "conflict": False,
+                    "manifest": {"conflict_check": MARKER},
+                },
+            ),
         ]
     )
     client = _client(lambda request: next(answers))
@@ -106,7 +122,14 @@ def test_recall_pack_raises_the_typed_error_and_returns_the_manifest_marker():
 
 def test_method_hint_and_not_checked_count_pass_through_unchanged():
     """Core's judge build adds ``method`` to both 409 bodies, and ``hint`` plus a count to the undecided one."""
-    body = {"detail": {**UNDECIDED_409["detail"], "method": "jev", "hint": "set a key", "pairs_not_checked": 4}}
+    body = {
+        "detail": {
+            **UNDECIDED_409["detail"],
+            "method": "jev",
+            "hint": "set a key",
+            "pairs_not_checked": 4,
+        }
+    }
     seen = []
 
     def handler(request):
@@ -115,16 +138,35 @@ def test_method_hint_and_not_checked_count_pass_through_unchanged():
 
     with pytest.raises(ConflictCheckUndecidedError) as undecided:
         _client(handler).search("KX-410", fail_if_conflicted=True)
-    assert (undecided.value.method, undecided.value.hint, undecided.value.pairs_not_checked) == ("jev", "set a key", 4)
+    assert (
+        undecided.value.method,
+        undecided.value.hint,
+        undecided.value.pairs_not_checked,
+    ) == ("jev", "set a key", 4)
     assert undecided.value.pairs == [["test_ccu_a", "test_ccu_b"]]
 
-    conflict = {"detail": {"error": "recall_conflict", "message": "m", "pairs": [["a", "b"]], "method": "jev"}}
+    conflict = {
+        "detail": {
+            "error": "recall_conflict",
+            "message": "m",
+            "pairs": [["a", "b"]],
+            "method": "jev",
+        }
+    }
     with pytest.raises(RecallConflictError) as refused:
-        _client(lambda request: httpx.Response(409, json=conflict)).search("KX-410", fail_if_conflicted=True)
+        _client(lambda request: httpx.Response(409, json=conflict)).search(
+            "KX-410", fail_if_conflicted=True
+        )
     assert refused.value.method == "jev"
 
 
 def test_fields_absent_from_an_older_service_read_as_none():
     with pytest.raises(ConflictCheckUndecidedError) as undecided:
-        _client(lambda request: httpx.Response(409, json=UNDECIDED_409)).search("KX-410", fail_if_conflicted=True)
-    assert (undecided.value.method, undecided.value.hint, undecided.value.pairs_not_checked) == (None, None, None)
+        _client(lambda request: httpx.Response(409, json=UNDECIDED_409)).search(
+            "KX-410", fail_if_conflicted=True
+        )
+    assert (
+        undecided.value.method,
+        undecided.value.hint,
+        undecided.value.pairs_not_checked,
+    ) == (None, None, None)
