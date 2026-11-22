@@ -1,3 +1,5 @@
+## 2.0.3
+
 ## Unreleased - DECISION-DOOR-1 shape (b): typed refusal of generic writes to a decision's history (2026-11-19)
 
 - New `DecisionHistoryProtectedError` (a `SmartMemoryValidationError`, `error_code = "decision_history_protected"`). The service answers 409 with that code when `update()`, an edge or link call, or a graph bulk call would change a decision's status, supersession or lifecycle links through a generic write. `update()` raises it as is (before, any 409 became a `SaveConflictError`). Decision history changes only through the decision methods (`supersede_decision`, ...).
