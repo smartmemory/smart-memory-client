@@ -1,3 +1,5 @@
+## 2.0.4
+
 ## Unreleased - BUG-FAIL-IF-CONFLICTED-SOURCE-DATE-1: a strict read that could not decide raises its own error (2026-11-21)
 
 - New `ConflictCheckUndecidedError` (a `SmartMemoryValidationError`, `code = "conflict_check_undecided"`, `pairs` and `reason` read from the response). The service answers 409 `conflict_check_undecided` when `fail_if_conflicted=True` and two notes share a product-code-like name but give different numbers the checker could not compare. It is not a `RecallConflictError`: no disagreement was proven. `search` and `recall_pack` raise it. It was a generic `SmartMemoryValidationError`.
