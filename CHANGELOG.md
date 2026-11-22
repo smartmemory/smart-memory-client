@@ -1,3 +1,9 @@
+## Unreleased - BUG-FAIL-IF-CONFLICTED-SOURCE-DATE-1: a strict read that could not decide raises its own error (2026-11-21)
+
+- New `ConflictCheckUndecidedError` (a `SmartMemoryValidationError`, `code = "conflict_check_undecided"`, `pairs` and `reason` read from the response). The service answers 409 `conflict_check_undecided` when `fail_if_conflicted=True` and two notes share a product-code-like name but give different numbers the checker could not compare. It is not a `RecallConflictError`: no disagreement was proven. `search` and `recall_pack` raise it. It was a generic `SmartMemoryValidationError`.
+- New `SmartMemoryClient.last_conflict_check`: the `conflict_check` marker of the most recent `search()` when the server setting `conflict_check_unsure` is `mark` (`None` otherwise, reset on every call). `recall_pack` returns it as `manifest["conflict_check"]`.
+- `RecallConflictError.method` and `ConflictCheckUndecidedError.method`, `.hint`, `.pairs_not_checked`: read unchanged from the 409 body when the service sends them (core's Jev judge build), `None` otherwise.
+- Tests: `tests/test_conflict_check_undecided.py` (new, real `httpx` client on a `MockTransport`, the service's real response bodies). Needs the service change of the same unit.
 ## 2.0.3
 
 ## Unreleased - DECISION-DOOR-1 shape (b): typed refusal of generic writes to a decision's history (2026-11-19)

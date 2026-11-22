@@ -55,6 +55,7 @@ from smartmemory_client.errors import (  # noqa: F401  (re-exported: the classes
     SmartMemoryPermissionError,
     SmartMemoryRoutingConflictError,
     RecallConflictError,
+    ConflictCheckUndecidedError,
     SmartMemoryServerError,
     SmartMemoryTransportError,
     SmartMemoryValidationError,
@@ -146,6 +147,12 @@ def _exception_for_status(
             and wire["detail"].get("error") == "recall_conflict"
         ):
             return RecallConflictError
+        if (
+            isinstance(wire, dict)
+            and isinstance(wire.get("detail"), dict)
+            and wire["detail"].get("error") == ConflictCheckUndecidedError.code
+        ):
+            return ConflictCheckUndecidedError
         if _body_error_code(detail) == DecisionHistoryProtectedError.error_code:
             return DecisionHistoryProtectedError
     if status == 404:
@@ -1070,6 +1077,8 @@ class SmartMemoryClient:
         Search for memory items using semantic matching.
 
         fail_if_conflicted=True refuses supported disagreements with RecallConflictError (409).
+        A pair it could not decide raises ConflictCheckUndecidedError (409), or is marked in
+        ``last_conflict_check`` when the server setting is ``mark``.
         MemoryItem.conflict is response evidence for the returned bounded pool.
 
         ``business_scope={"site": "A"}`` selects an exact business site, with
@@ -1306,7 +1315,10 @@ class SmartMemoryClient:
         # the envelope and discarding this would throw away the only signal
         # that an as-of answer contains present-day content.
         self._last_as_of_diagnostics: Optional[Dict[str, Any]] = None
+        # BUG-FAIL-IF-CONFLICTED-SOURCE-DATE-1: the "could not decide" marker (conflict_check_unsure="mark").
+        self._last_conflict_check: Optional[Dict[str, Any]] = None
         if isinstance(response_data, dict) and "results" in response_data:
+            self._last_conflict_check = response_data.get("conflict_check")
             self._last_inert_parameters = dict(
                 response_data.get("inert_parameters") or {}
             )
@@ -1391,6 +1403,17 @@ class SmartMemoryClient:
         query-wide resolver health.
         """
         return getattr(self, "_last_as_of_diagnostics", None)
+
+    @property
+    def last_conflict_check(self) -> Optional[Dict[str, Any]]:
+        """BUG-FAIL-IF-CONFLICTED-SOURCE-DATE-1: the "could not decide" marker from the most recent ``search()``.
+
+        ``None`` unless the call used ``fail_if_conflicted=True``, the server setting ``conflict_check_unsure`` is
+        ``mark`` and a pair could not be decided. Then ``{"method": "aligned_text", "undecided_pairs":
+        [{"item_ids": [a, b], "reason": str}]}``. Undecided is not a proven conflict: ``MemoryItem.conflict`` stays
+        ``None``. With the default setting (``raise``) the call raises ``ConflictCheckUndecidedError`` instead.
+        """
+        return getattr(self, "_last_conflict_check", None)
 
     @property
     def last_group_roots(self) -> Dict[str, Dict[str, Any]]:
