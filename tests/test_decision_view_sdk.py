@@ -119,6 +119,8 @@ def test_history_reads_the_route_and_sends_only_what_is_set():
         "before": "2026-11-01T00:00:00Z",
         "as_of": "2026-10-02T00:00:00+00:00",
     }
+    client.get_decision_history("d0", limit=2, cursor="opaque-cursor")
+    assert dict(calls[2].url.params) == {"limit": "2", "cursor": "opaque-cursor"}
 
 
 def test_sites_is_one_call_with_a_table_and_scopes_repeat():
