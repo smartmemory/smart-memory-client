@@ -4,6 +4,7 @@
 - New `SmartMemoryClient.last_conflict_check`: the `conflict_check` marker of the most recent `search()` when the server setting `conflict_check_unsure` is `mark` (`None` otherwise, reset on every call). `recall_pack` returns it as `manifest["conflict_check"]`.
 - `RecallConflictError.method` and `ConflictCheckUndecidedError.method`, `.hint`, `.pairs_not_checked`: read unchanged from the 409 body when the service sends them (core's Jev judge build), `None` otherwise.
 - Tests: `tests/test_conflict_check_undecided.py` (new, real `httpx` client on a `MockTransport`, the service's real response bodies). Needs the service change of the same unit.
+## 2.0.3
 
 ## Unreleased - DECISION-DOOR-1 shape (b): typed refusal of generic writes to a decision's history (2026-11-19)
 
