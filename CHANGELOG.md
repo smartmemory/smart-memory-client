@@ -2,6 +2,16 @@
 
 - `get_decision_history(..., cursor=...)`: pass the previous page's `next_cursor`; entries recorded at one instant are no longer skipped. `before` is deprecated (lossy at ties) and still sent as before. 400 `invalid_cursor` surfaces as `SmartMemoryValidationError.error_code`. New `tests/integration/test_decision_history_cursor_walk.py` (note H2, real HTTP, needs `SM_DV_HISTORY_SEED`).
 
+## 2.0.4
+
+## Unreleased - BUG-FAIL-IF-CONFLICTED-SOURCE-DATE-1: a strict read that could not decide raises its own error (2026-11-21)
+
+- New `ConflictCheckUndecidedError` (a `SmartMemoryValidationError`, `code = "conflict_check_undecided"`, `pairs` and `reason` read from the response). The service answers 409 `conflict_check_undecided` when `fail_if_conflicted=True` and two notes share a product-code-like name but give different numbers the checker could not compare. It is not a `RecallConflictError`: no disagreement was proven. `search` and `recall_pack` raise it. It was a generic `SmartMemoryValidationError`.
+- New `SmartMemoryClient.last_conflict_check`: the `conflict_check` marker of the most recent `search()` when the server setting `conflict_check_unsure` is `mark` (`None` otherwise, reset on every call). `recall_pack` returns it as `manifest["conflict_check"]`.
+- `RecallConflictError.method` and `ConflictCheckUndecidedError.method`, `.hint`, `.pairs_not_checked`: read unchanged from the 409 body when the service sends them (core's Jev judge build), `None` otherwise.
+- Tests: `tests/test_conflict_check_undecided.py` (new, real `httpx` client on a `MockTransport`, the service's real response bodies). Needs the service change of the same unit.
+## 2.0.3
+
 ## Unreleased - DECISION-DOOR-1 shape (b): typed refusal of generic writes to a decision's history (2026-11-19)
 
 - New `DecisionHistoryProtectedError` (a `SmartMemoryValidationError`, `error_code = "decision_history_protected"`). The service answers 409 with that code when `update()`, an edge or link call, or a graph bulk call would change a decision's status, supersession or lifecycle links through a generic write. `update()` raises it as is (before, any 409 became a `SaveConflictError`). Decision history changes only through the decision methods (`supersede_decision`, ...).
