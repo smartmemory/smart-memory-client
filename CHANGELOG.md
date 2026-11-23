@@ -1,3 +1,7 @@
+## Unreleased - BUG-DECISION-HISTORY-PAGE-TIE-1: history cursor (2026-11-23)
+
+- `get_decision_history(..., cursor=...)`: pass the previous page's `next_cursor`; entries recorded at one instant are no longer skipped. `before` is deprecated (lossy at ties) and still sent as before. 400 `invalid_cursor` surfaces as `SmartMemoryValidationError.error_code`. New `tests/integration/test_decision_history_cursor_walk.py` (note H2, real HTTP, needs `SM_DV_HISTORY_SEED`).
+
 ## 2.0.4
 
 ## Unreleased - BUG-FAIL-IF-CONFLICTED-SOURCE-DATE-1: a strict read that could not decide raises its own error (2026-11-21)

@@ -5787,6 +5787,7 @@ class SmartMemoryClient:
         limit: Optional[int] = None,
         before: Optional[Union[str, datetime]] = None,
         as_of: Optional[Union[str, datetime]] = None,
+        cursor: Optional[str] = None,
     ) -> Dict[str, Any]:
         """A decision's dated history, newest first (STUDIO-DECISION-VIEW-1).
 
@@ -5797,23 +5798,31 @@ class SmartMemoryClient:
         Args:
             decision_id: The decision whose history to read.
             limit: Entries to return, 1 to 500 (the service default is 100).
-            before: Only entries strictly older than this instant (paging: pass the last entry's ``at``).
+            cursor: The previous page's ``next_cursor``: the next page starts right after its last entry, so
+                entries recorded at the same instant are never skipped (BUG-DECISION-HISTORY-PAGE-TIE-1).
+            before: Deprecated. Only entries strictly older than this instant. Skips entries that share the
+                instant a page ended on; page with ``cursor`` instead.
             as_of: Only entries at or before this instant. Datetimes use UTC.
 
         Returns:
             Dict with ``decision_id``, ``entries`` (newest first; each has ``entry_kind`` ``version`` or
             ``event``, ``at``, ``action``, ``asked_by``, ``approved_by``, ``reason``, ``old_content``,
             ``new_content``, ``related_decision_id``, ``related_visible``), ``start`` (``at``, ``kind``
-            ``recorded|migrated|unknown`` and a plain-words ``note``) and ``truncated`` (more entries exist).
+            ``recorded|migrated|unknown`` and a plain-words ``note``), ``truncated`` (more entries exist) and
+            ``next_cursor`` (pass it as ``cursor`` for the next page; None on the last page).
 
         Raises:
             SmartMemoryNotFoundError: 404, no such decision here (another workspace and a decision you
                 cannot read answer the same).
-            SmartMemoryValidationError: 400 ``invalid_before``, ``invalid_as_of``, or ``invalid_limit``.
+            SmartMemoryValidationError: 400 ``invalid_before``, ``invalid_as_of``, ``invalid_limit`` or
+                ``invalid_cursor`` (a cursor this history did not return).
         """
         return self._decision_view_get(
             f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/history",
-            params=_scoped_options(limit=limit, before=before, as_of=as_of) or None,
+            params=_scoped_options(
+                limit=limit, before=before, as_of=as_of, cursor=cursor
+            )
+            or None,
         )
 
     def get_decision_sites(
