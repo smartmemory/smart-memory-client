@@ -2,6 +2,26 @@
 
 - TEST-TEARDOWN-1: Remove five source and census checks and one duplicate metadata-filter case from the Python SDK tests.
 
+## 2.0.4
+
+## Unreleased - BUG-FAIL-IF-CONFLICTED-SOURCE-DATE-1: a strict read that could not decide raises its own error (2026-11-21)
+
+- New `ConflictCheckUndecidedError` (a `SmartMemoryValidationError`, `code = "conflict_check_undecided"`, `pairs` and `reason` read from the response). The service answers 409 `conflict_check_undecided` when `fail_if_conflicted=True` and two notes share a product-code-like name but give different numbers the checker could not compare. It is not a `RecallConflictError`: no disagreement was proven. `search` and `recall_pack` raise it. It was a generic `SmartMemoryValidationError`.
+- New `SmartMemoryClient.last_conflict_check`: the `conflict_check` marker of the most recent `search()` when the server setting `conflict_check_unsure` is `mark` (`None` otherwise, reset on every call). `recall_pack` returns it as `manifest["conflict_check"]`.
+- `RecallConflictError.method` and `ConflictCheckUndecidedError.method`, `.hint`, `.pairs_not_checked`: read unchanged from the 409 body when the service sends them (core's Jev judge build), `None` otherwise.
+- Tests: `tests/test_conflict_check_undecided.py` (new, real `httpx` client on a `MockTransport`, the service's real response bodies). Needs the service change of the same unit.
+## 2.0.3
+
+## Unreleased - DECISION-DOOR-1 shape (b): typed refusal of generic writes to a decision's history (2026-11-19)
+
+- New `DecisionHistoryProtectedError` (a `SmartMemoryValidationError`, `error_code = "decision_history_protected"`). The service answers 409 with that code when `update()`, an edge or link call, or a graph bulk call would change a decision's status, supersession or lifecycle links through a generic write. `update()` raises it as is (before, any 409 became a `SaveConflictError`). Decision history changes only through the decision methods (`supersede_decision`, ...).
+## Unreleased - STUDIO-DECISION-VIEW-1 U5: the three decision reads (2026-11-18)
+
+- `SmartMemoryClient.get_decision_history(decision_id, limit=, before=, as_of=)`, `get_decision_sites(decision_id, at=, scopes=)` and `list_decision_auto_changes(since=, status=, limit=, offset=)` read `/memory/decisions/{id}/history`, `/memory/decisions/{id}/sites` and `/memory/decisions/auto-changes`. Refusals raise the existing typed errors (404 `SmartMemoryNotFoundError`, 400 `SmartMemoryValidationError` with `error_code`). Datetimes are sent in UTC.
+- Decision detail examples explain the rollout display label and lifecycle status. Site table documentation covers the 503 response when site history is unavailable.
+- `auto-changes` is now a reserved decision id segment (it is a route name), so `get_decision("auto-changes")` raises `ValueError` before any request.
+- History documents the service’s named 400 response for an invalid limit. Added decision read examples and coverage for permission and server errors. Decision read validation errors carry the named service code on the 2.0 client.
+
 ## 2.0.2
 
 - REL-2-0-2-MERGED-TIP-1: `set_supersession_policy` docstring and README now say turning the review hold off (`retire`, or `None` when the inherited value is `retire`) needs a workspace owner or admin. Docs only.
@@ -92,7 +112,6 @@ Version bump to 2.0.1, every SmartMemory repo reads the same version (REL-2.0-VE
 ## Unreleased - REL-CALLERS-SERVICE-1-FU-404-VIEWER-ROW-1 (2026-11-06)
 
 - Correct record declaration documentation to name the supported add() client method.
-
 
 - SDK-2.0-RETRY-SAFETY-1: Raise WriteOutcomeUnknown after one ambiguous add attempt instead of duplicating a possibly committed write.
 All notable changes to this project will be documented in this file.
@@ -196,7 +215,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `supersede_decision` accepts and forwards optional `rejected_alternatives`, `rationale`, and
   `constraints` using the canonical service field names.
 
-
 ### Documentation (2026-09-10) — decision belief reads (CORE-DECISION-BELIEF-SURFACE-1)
 
 - `get_decision`, `list_decisions` and `search_decisions` document the three Dempster-Shafer belief reads
@@ -206,7 +224,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and independent of the prior scalar `confidence`, and they separate a disputed decision (high `contest`)
   from one nothing has evidenced yet (high `ignorance`), which `stability` cannot do because it reads 0.5
   for both.
-
 
 ### Added (2026-09-06) — optional request correlation and per-call timing hooks (MAYA-ENDPOINT-VISIBILITY-1)
 
@@ -222,7 +239,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   request proceeds. An id that fails validation is dropped with a warning rather than sent.
 - Neither hook is called for a request that failed before a response (connect/timeout); those
   raise to the caller as before.
-
 
 ### Changed (2026-09-06) — `personalize()` and `ground()` document their 501 (CORE-PERSONALIZATION-CONTRACT-1, CORE-GROUND-ROUTE-CONTRACT-1)
 
@@ -252,7 +268,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   archived items were returned ranked like live ones. Callers who want them must
   now pass `include_archived=True`.
 
-
 ### Fixed (2026-09-27) — live client test setup
 
 - Require the existing service-availability fixture for the three live-service tests in `test_client.py`, so a missing service skips them instead of failing health or producing false-positive authentication checks.
@@ -268,13 +283,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Preserve nullable rerank_score, reason status, actual model identity and pool diagnostics through MemoryItem.from_dict/to_dict; missing legacy evidence stays unverified.
 
-
 ### Added (2026-09-07) — list grounding policy (PLAT-RETRIEVAL-POLICY-1 slice 1)
 
 - `list_memories(include_grounding=None)` inherits workspace then env defaults (OFF unless
   configured); explicit `False` and `True` are sent. The response retains the resolved
   `policy.include_grounding` and `policy.source` fields. No SDK version bump.
-
 
 - fix(memory): add optional memory_type to list_memories, composed with metadata filters and applied server-side before pagination/counting.
 
@@ -316,7 +329,6 @@ items_created, warnings}`.
 **Read `warnings`.** A non-empty list means something was capped, skipped, or degraded even
 though the call returned 200 — the import is synchronous and capped by default, so a
 partial import is a normal outcome, not an error.
-
 
 ### Changed — recommended wake-up budget ~200 -> ~300 (CORE-TOKEN-ESTIMATOR-UNDERCOUNT-1)
 
@@ -595,7 +607,6 @@ update. Published wheel-only.
 ### Changed (auto, lockstep) — track product version 1.4.25 (1.4.25)
 - Version copied from the smartmemory-core release (single-source lockstep).
 
-
 ### Deprecated (SEC-AUTH-REVOCATION-1 token-prefix, 2026-06-04) — raw-JWT api_key (0.7.8)
 
 - **`SmartMemoryClient(api_key="eyJ…")` now emits a `DeprecationWarning`.** A raw JWT in the
@@ -652,7 +663,6 @@ Source: `smart-memory-docs/docs/features/CORE-AGENT-2/report.md`. Contract: `sma
 ### Added (CORE-DECISION-PROVENANCE-LOOKUP-1, 2026-05-23) — `list_decisions(provenance_memory_id=...)`
 
 - **`list_decisions()`** gains an optional `provenance_memory_id` kwarg. When set, the SDK passes it through to `GET /memory/decisions?provenance_memory_id=<id>` and returns only active decisions whose provenance subgraph contains that memory. Other filters (`domain`, `decision_type`, `min_confidence`, `limit`) compose in-query — the SDK never sees a truncated-below-limit result. Backwards-compatible; existing callers see no behavior change.
-
 
 ### Changed (CORE-RECALL-LINEAGE-1 Phase 3, 2026-05-22) — SearchResponse envelope unwrap
 
