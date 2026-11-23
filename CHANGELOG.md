@@ -5,6 +5,16 @@
 ## Unreleased - BUG-SUPERSEDE-ISOLATES-REPLACEMENT-1: typed link rows for neighbors and decision provenance (2026-11-23)
 
 - New `smartmemory_client.models.NeighborRow` and `InheritedLink` (TypedDict, typing only; the client still returns dicts). `get_neighbors` rows carry `link_class`, `inherited`, `inherited_from`, `inherited_depth`; `get_provenance_chain` carries `inherited_links`. Contract: `smart-memory-docs/docs/features/BUG-SUPERSEDE-ISOLATES-REPLACEMENT-1/inherited-links-contract.json`. Needs the service change of the same unit.
+## Unreleased - BUG-OKF-IMPORT-SLOW-1: background import and export vectors option (2026-11-23)
+
+- `import_okf(archive, background=True)`, new `okf_import_job(run_id)`, `export_okf(vectors=False)`.
+
+## Unreleased - BUG-EXPORT-CLEAR-IMPORT-DUPLICATE-DECISIONS-1: add without re-mined decisions, import merge counts (2026-11-23)
+
+- `add(..., extract_decisions=False)` (also `add_detailed`): adds the note with decision extraction off (`POST /memory/add` `extract_decisions`). Sent only when set.
+- `import_okf` docstring names the merge counts the service now returns: `created`, `merged`, `links_added`, `replacements_restored`, `replacements_not_restored`.
+- Tests: `tests/test_embed_control_and_supersede_link.py` (forwarded when set, omitted when not).
+
 ## 2.0.4
 
 ## Unreleased - BUG-FAIL-IF-CONFLICTED-SOURCE-DATE-1: a strict read that could not decide raises its own error (2026-11-21)
