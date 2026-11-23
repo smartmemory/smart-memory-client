@@ -26,12 +26,16 @@ def test_h2_client_cursor_walk_returns_all_six_once_in_order(seed):
     from smartmemory_client import SmartMemoryClient
     from smartmemory_client import SmartMemoryValidationError
 
-    with SmartMemoryClient(base_url=seed["base_url"], token=seed["token"], team_id=seed["workspace_id"]) as client:
+    with SmartMemoryClient(
+        base_url=seed["base_url"], token=seed["token"], team_id=seed["workspace_id"]
+    ) as client:
         whole = client.get_decision_history(seed["decision_id"], limit=500)["entries"]
         assert whole == seed["entries"] and len(whole) == 6
         walked, cursor = [], None
         for _ in range(10):
-            page = client.get_decision_history(seed["decision_id"], limit=2, cursor=cursor)
+            page = client.get_decision_history(
+                seed["decision_id"], limit=2, cursor=cursor
+            )
             walked += page["entries"]
             if not page["truncated"]:
                 assert page["next_cursor"] is None

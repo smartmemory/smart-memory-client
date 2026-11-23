@@ -5819,7 +5819,9 @@ class SmartMemoryClient:
         """
         return self._decision_view_get(
             f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/history",
-            params=_scoped_options(limit=limit, before=before, as_of=as_of, cursor=cursor)
+            params=_scoped_options(
+                limit=limit, before=before, as_of=as_of, cursor=cursor
+            )
             or None,
         )
 
