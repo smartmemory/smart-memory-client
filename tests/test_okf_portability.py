@@ -70,3 +70,49 @@ def test_import_okf_uploads_archive_as_multipart_with_workspace_auth(mock_reques
         }
     finally:
         client.close()
+
+
+@patch("httpx.Client.request")
+def test_export_okf_without_vectors_sends_the_flag(mock_request):
+    """BUG-OKF-IMPORT-SLOW-1: vectors=False asks for the smaller file; the default sends no flag."""
+    mock_request.return_value = _response(content=ARCHIVE)
+
+    client = _client()
+    try:
+        client.export_okf(vectors=False)
+        assert mock_request.call_args.kwargs["params"] == {"vectors": "false"}
+        client.export_okf()
+        assert mock_request.call_args.kwargs["params"] is None
+    finally:
+        client.close()
+
+
+@patch("httpx.Client.request")
+def test_background_import_and_job_status(mock_request):
+    """BUG-OKF-IMPORT-SLOW-1: background=True sends the flag; okf_import_job reads the run."""
+    started = {
+        "run_id": "okf-import-1",
+        "status": "queued",
+        "total": 240,
+        "deadline_at": 1.0,
+    }
+    mock_request.return_value = _response(payload=started)
+
+    client = _client()
+    try:
+        assert client.import_okf(ARCHIVE, background=True) == started
+        assert mock_request.call_args.kwargs["params"] == {"background": "true"}
+
+        state = {
+            "run_id": "okf-import-1",
+            "status": "completed",
+            "done": 240,
+            "total": 240,
+            "result": {},
+        }
+        mock_request.return_value = _response(payload=state)
+        assert client.okf_import_job("okf-import-1") == state
+        method, url = mock_request.call_args.args
+        assert (method, url) == ("GET", f"{BASE_URL}/memory/okf/jobs/okf-import-1")
+    finally:
+        client.close()

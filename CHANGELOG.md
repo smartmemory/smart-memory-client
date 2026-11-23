@@ -1,3 +1,7 @@
+## Unreleased - BUG-OKF-IMPORT-SLOW-1: background import and export vectors option (2026-11-23)
+
+- `import_okf(archive, background=True)`, new `okf_import_job(run_id)`, `export_okf(vectors=False)`.
+
 ## Unreleased - BUG-EXPORT-CLEAR-IMPORT-DUPLICATE-DECISIONS-1: add without re-mined decisions, import merge counts (2026-11-23)
 
 - `add(..., extract_decisions=False)` (also `add_detailed`): adds the note with decision extraction off (`POST /memory/add` `extract_decisions`). Sent only when set.
