@@ -2140,7 +2140,10 @@ class SmartMemoryClient:
             item_id: Memory item ID
 
         Returns:
-            List of neighbor information with item and link_type
+            List of neighbor rows (``smartmemory_client.models.NeighborRow``): ``item_id``, ``link_type``,
+            ``direction``, ``link_class``, and for a decision that replaced another also the links it inherits
+            (``inherited`` true, ``inherited_from`` and ``inherited_depth`` name the replaced decision holding the
+            link) and one ``SUPERSEDES`` row per decision it replaced or that replaced it.
 
         Example:
             ```python
@@ -6050,7 +6053,10 @@ class SmartMemoryClient:
                 Omitted means now. An unparseable value is a 400 ``invalid_as_of``.
 
         Returns:
-            Dict with decision, reasoning_trace, evidence, superseded.
+            Dict with decision, reasoning_trace, evidence, superseded, superseded_by and
+            ``inherited_links`` (``smartmemory_client.models.InheritedLink``): the links this decision
+            inherits from the decisions it replaced, each naming ``inherited_from``; never listed in its
+            own ``evidence``. With ``as_of``, only links written by then.
         """
         return self._request(
             "GET",
