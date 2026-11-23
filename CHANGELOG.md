@@ -1,3 +1,9 @@
+## Unreleased - BUG-EXPORT-CLEAR-IMPORT-DUPLICATE-DECISIONS-1: add without re-mined decisions, import merge counts (2026-11-23)
+
+- `add(..., extract_decisions=False)` (also `add_detailed`): adds the note with decision extraction off (`POST /memory/add` `extract_decisions`). Sent only when set.
+- `import_okf` docstring names the merge counts the service now returns: `created`, `merged`, `links_added`, `replacements_restored`, `replacements_not_restored`.
+- Tests: `tests/test_embed_control_and_supersede_link.py` (forwarded when set, omitted when not).
+
 ## 2.0.4
 
 ## Unreleased - BUG-FAIL-IF-CONFLICTED-SOURCE-DATE-1: a strict read that could not decide raises its own error (2026-11-21)

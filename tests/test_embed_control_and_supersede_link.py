@@ -87,6 +87,11 @@ class TestEmbedControl:
     def test_embed_false_forwarded(self):
         assert self._add_body(embed=False)["embed"] is False
 
+    def test_extract_decisions_false_forwarded_and_omitted_when_unset(self):
+        """BUG-EXPORT-CLEAR-IMPORT-DUPLICATE-DECISIONS-1: the older-export import adds notes with it off."""
+        assert self._add_body(extract_decisions=False)["extract_decisions"] is False
+        assert "extract_decisions" not in self._add_body()
+
     def test_embed_true_forwarded(self):
         assert self._add_body(embed=True)["embed"] is True
 
