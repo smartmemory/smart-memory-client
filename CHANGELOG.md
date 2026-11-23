@@ -2,6 +2,9 @@
 
 - `get_decision_history(..., cursor=...)`: pass the previous page's `next_cursor`; entries recorded at one instant are no longer skipped. `before` is deprecated (lossy at ties) and still sent as before. 400 `invalid_cursor` surfaces as `SmartMemoryValidationError.error_code`. New `tests/integration/test_decision_history_cursor_walk.py` (note H2, real HTTP, needs `SM_DV_HISTORY_SEED`).
 
+## Unreleased - BUG-SUPERSEDE-ISOLATES-REPLACEMENT-1: typed link rows for neighbors and decision provenance (2026-11-23)
+
+- New `smartmemory_client.models.NeighborRow` and `InheritedLink` (TypedDict, typing only; the client still returns dicts). `get_neighbors` rows carry `link_class`, `inherited`, `inherited_from`, `inherited_depth`; `get_provenance_chain` carries `inherited_links`. Contract: `smart-memory-docs/docs/features/BUG-SUPERSEDE-ISOLATES-REPLACEMENT-1/inherited-links-contract.json`. Needs the service change of the same unit.
 ## 2.0.4
 
 ## Unreleased - BUG-FAIL-IF-CONFLICTED-SOURCE-DATE-1: a strict read that could not decide raises its own error (2026-11-21)
