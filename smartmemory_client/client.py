@@ -724,9 +724,13 @@ class SmartMemoryClient:
         ] = None,
         embed: Optional[bool] = None,
         idempotency_key: Optional[str] = None,
+        extract_decisions: Optional[bool] = None,
     ) -> Receipt:
         """
         Add a memory item to the system.
+
+        ``extract_decisions=False`` adds the note with decision extraction off (BUG-EXPORT-CLEAR-IMPORT-DUPLICATE-
+        DECISIONS-1; sent only when set, None keeps the service default).
 
         Args:
             item: Memory content (string) or MemoryItem object
@@ -796,6 +800,7 @@ class SmartMemoryClient:
             conversation_context,
             embed,
             idempotency_key=idempotency_key,
+            extract_decisions=extract_decisions,
         )
 
     def add_detailed(
@@ -810,6 +815,7 @@ class SmartMemoryClient:
         ] = None,
         embed: Optional[bool] = None,
         idempotency_key: Optional[str] = None,
+        extract_decisions: Optional[bool] = None,
     ) -> Receipt:
         """Same call and same :class:`Receipt` as ``add()`` (2.0.0: no longer the response dict).
 
@@ -827,6 +833,7 @@ class SmartMemoryClient:
             conversation_context,
             embed,
             idempotency_key=idempotency_key,
+            extract_decisions=extract_decisions,
         )
 
     def _add_response(
@@ -841,6 +848,7 @@ class SmartMemoryClient:
         ] = None,
         embed: Optional[bool] = None,
         idempotency_key: Optional[str] = None,
+        extract_decisions: Optional[bool] = None,
     ) -> Receipt:
         """Shared ``POST /memory/add`` for ``add`` and ``add_detailed``: returns the save receipt."""
         # Handle different input types
@@ -904,6 +912,8 @@ class SmartMemoryClient:
         # byte-identical to the pre-feature request.
         if embed is not None:
             body_dict["embed"] = embed
+        if extract_decisions is not None:
+            body_dict["extract_decisions"] = extract_decisions
 
         try:
             return self._save("/memory/add", body_dict, idempotency_key=idempotency_key)
@@ -6692,19 +6702,36 @@ class SmartMemoryClient:
             return None
         return result.get("value") if isinstance(result, dict) else None
 
-    def export_okf(self) -> bytes:
+    def export_okf(self, *, vectors: Optional[bool] = None) -> bytes:
         """Export this workspace as a gzipped OKF bundle.
 
-        Needs workspace admin or tenant admin: any other caller gets a 403.
+        Needs workspace admin or tenant admin: any other caller gets a 403. ``vectors`` (server default true) adds each
+        item's stored vector, so an import with the same embedder skips re-embedding; false gives a smaller file
+        (BUG-OKF-IMPORT-SLOW-1).
         """
-        response = self._request("GET", "/memory/okf/export", return_response=True)
+        params = (
+            None if vectors is None else {"vectors": "true" if vectors else "false"}
+        )
+        response = self._request(
+            "GET", "/memory/okf/export", params=params, return_response=True
+        )
         return response.content
 
-    def import_okf(self, archive: bytes) -> dict:
-        """Import a gzipped OKF bundle into this workspace."""
+    def import_okf(self, archive: bytes, *, background: bool = False) -> dict:
+        """Import a gzipped OKF bundle into this workspace.
+
+        The import merges into what is already there (BUG-EXPORT-CLEAR-IMPORT-DUPLICATE-DECISIONS-1). The result adds
+        ``created``, ``merged``, ``links_added``, ``replacements_restored`` and ``replacements_not_restored`` to
+        ``imported``, ``failed``, ``workspace_id`` and ``warnings``; ``imported`` = ``created`` + ``merged``. A file
+        with vectors adds ``vectors_in_file``, ``vectors_reused``, ``vectors_refused`` and ``vectors_sampled``.
+
+        ``background=True`` (BUG-OKF-IMPORT-SLOW-1) answers at once with ``run_id``, ``status``, ``total`` and
+        ``deadline_at`` and writes in the background; read progress and the result with ``okf_import_job(run_id)``.
+        """
         return self._request(
             "POST",
             "/memory/okf/import",
+            params={"background": "true"} if background else None,
             files={
                 "file": (
                     "smartmemory-okf-import.tar.gz",
@@ -6713,6 +6740,14 @@ class SmartMemoryClient:
                 )
             },
         )
+
+    def okf_import_job(self, run_id: str) -> dict:
+        """Progress and result of a background OKF import (BUG-OKF-IMPORT-SLOW-1).
+
+        ``status`` is ``queued``, ``running``, ``completed``, ``failed``, ``abandoned`` (importing the same file again
+        finishes it) or ``unknown_run_id``; ``done`` of ``total`` items are settled; ``result`` once completed.
+        """
+        return self._request("GET", f"/memory/okf/jobs/{quote(run_id, safe='')}")
 
     def import_chat_export(
         self,
