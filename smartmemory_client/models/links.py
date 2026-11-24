@@ -27,7 +27,8 @@ class NeighborRow(TypedDict, total=False):
     inherited: bool
     inherited_from: Optional[str]
     inherited_depth: Optional[int]
-    status: Optional[str]  # only on a decision's replaces row (``link_class`` ``chain``)
+    # only on a decision's replaces row (``link_class`` ``chain``)
+    status: Optional[str]
 
 
 class InheritedLink(TypedDict, total=False):
