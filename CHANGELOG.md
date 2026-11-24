@@ -1,3 +1,8 @@
+## Unreleased - BUG-MCP-ACTIVATE-STAGED-REASON-1: the activate reply's optional `reason` (2026-11-24)
+
+- `try_activate_decision` now returns the new `DecisionActivation` TypedDict (`smartmemory_client.models.decisions`, exported from `smartmemory_client.models`): `activated`, `decision`, and `reason: NotRequired[Literal["staged"]]`. `"staged"` means approved and waiting for its approval's publish. It is sent only when not activated and the caller may be told; absent otherwise. No runtime change: still the server's dict. Contract `smart-memory-docs/docs/plans/contracts/decisions.json` `api.activate_response`. Needs the service change of the same unit.
+- Tests: `tests/test_activate_staged_reason.py` (new).
+
 ## 2.0.4
 
 ## Unreleased - BUG-FAIL-IF-CONFLICTED-SOURCE-DATE-1: a strict read that could not decide raises its own error (2026-11-21)

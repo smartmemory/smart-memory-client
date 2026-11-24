@@ -28,6 +28,7 @@ import httpx
 # Use local model instead of core dependency
 from smartmemory_client.models.memory_item import MemoryItem
 from smartmemory_client.models.conversation import ConversationContextModel
+from smartmemory_client.models.decisions import DecisionActivation
 from smartmemory_client.models.routing import (
     RoutingEcho,
     RoutingExplain,
@@ -6125,8 +6126,14 @@ class SmartMemoryClient:
             json_body={"requirement_id": requirement_id, "memory_id": memory_id},
         )
 
-    def try_activate_decision(self, decision_id: str) -> Dict[str, Any]:
-        """Try to activate a pending decision (no-op if requirements remain)."""
+    def try_activate_decision(self, decision_id: str) -> DecisionActivation:
+        """Try to activate a pending decision (no-op if requirements remain).
+
+        Returns ``{"activated", "decision"}`` plus, when not activated and the caller may be
+        told why, ``reason`` (``"staged"``: approved, waits for its approval's publish).
+        ``reason`` is absent otherwise; ignore a value you do not know
+        (BUG-MCP-ACTIVATE-STAGED-REASON-1).
+        """
         return self._request(
             "POST",
             f"/memory/decisions/pending/{path_id(decision_id, under='/memory/decisions/pending/')}/activate",
