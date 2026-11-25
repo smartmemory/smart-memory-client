@@ -724,9 +724,13 @@ class SmartMemoryClient:
         ] = None,
         embed: Optional[bool] = None,
         idempotency_key: Optional[str] = None,
+        extract_decisions: Optional[bool] = None,
     ) -> Receipt:
         """
         Add a memory item to the system.
+
+        ``extract_decisions=False`` adds the note with decision extraction off (BUG-EXPORT-CLEAR-IMPORT-DUPLICATE-
+        DECISIONS-1; sent only when set, None keeps the service default).
 
         Args:
             item: Memory content (string) or MemoryItem object
@@ -796,6 +800,7 @@ class SmartMemoryClient:
             conversation_context,
             embed,
             idempotency_key=idempotency_key,
+            extract_decisions=extract_decisions,
         )
 
     def add_detailed(
@@ -810,6 +815,7 @@ class SmartMemoryClient:
         ] = None,
         embed: Optional[bool] = None,
         idempotency_key: Optional[str] = None,
+        extract_decisions: Optional[bool] = None,
     ) -> Receipt:
         """Same call and same :class:`Receipt` as ``add()`` (2.0.0: no longer the response dict).
 
@@ -827,6 +833,7 @@ class SmartMemoryClient:
             conversation_context,
             embed,
             idempotency_key=idempotency_key,
+            extract_decisions=extract_decisions,
         )
 
     def _add_response(
@@ -841,6 +848,7 @@ class SmartMemoryClient:
         ] = None,
         embed: Optional[bool] = None,
         idempotency_key: Optional[str] = None,
+        extract_decisions: Optional[bool] = None,
     ) -> Receipt:
         """Shared ``POST /memory/add`` for ``add`` and ``add_detailed``: returns the save receipt."""
         # Handle different input types
@@ -904,6 +912,8 @@ class SmartMemoryClient:
         # byte-identical to the pre-feature request.
         if embed is not None:
             body_dict["embed"] = embed
+        if extract_decisions is not None:
+            body_dict["extract_decisions"] = extract_decisions
 
         try:
             return self._save("/memory/add", body_dict, idempotency_key=idempotency_key)
@@ -2140,7 +2150,10 @@ class SmartMemoryClient:
             item_id: Memory item ID
 
         Returns:
-            List of neighbor information with item and link_type
+            List of neighbor rows (``smartmemory_client.models.NeighborRow``): ``item_id``, ``link_type``,
+            ``direction``, ``link_class``, and for a decision that replaced another also the links it inherits
+            (``inherited`` true, ``inherited_from`` and ``inherited_depth`` name the replaced decision holding the
+            link) and one ``SUPERSEDES`` row per decision it replaced or that replaced it.
 
         Example:
             ```python
@@ -5787,6 +5800,7 @@ class SmartMemoryClient:
         limit: Optional[int] = None,
         before: Optional[Union[str, datetime]] = None,
         as_of: Optional[Union[str, datetime]] = None,
+        cursor: Optional[str] = None,
     ) -> Dict[str, Any]:
         """A decision's dated history, newest first (STUDIO-DECISION-VIEW-1).
 
@@ -5797,23 +5811,31 @@ class SmartMemoryClient:
         Args:
             decision_id: The decision whose history to read.
             limit: Entries to return, 1 to 500 (the service default is 100).
-            before: Only entries strictly older than this instant (paging: pass the last entry's ``at``).
+            cursor: The previous page's ``next_cursor``: the next page starts right after its last entry, so
+                entries recorded at the same instant are never skipped (BUG-DECISION-HISTORY-PAGE-TIE-1).
+            before: Deprecated. Only entries strictly older than this instant. Skips entries that share the
+                instant a page ended on; page with ``cursor`` instead.
             as_of: Only entries at or before this instant. Datetimes use UTC.
 
         Returns:
             Dict with ``decision_id``, ``entries`` (newest first; each has ``entry_kind`` ``version`` or
             ``event``, ``at``, ``action``, ``asked_by``, ``approved_by``, ``reason``, ``old_content``,
             ``new_content``, ``related_decision_id``, ``related_visible``), ``start`` (``at``, ``kind``
-            ``recorded|migrated|unknown`` and a plain-words ``note``) and ``truncated`` (more entries exist).
+            ``recorded|migrated|unknown`` and a plain-words ``note``), ``truncated`` (more entries exist) and
+            ``next_cursor`` (pass it as ``cursor`` for the next page; None on the last page).
 
         Raises:
             SmartMemoryNotFoundError: 404, no such decision here (another workspace and a decision you
                 cannot read answer the same).
-            SmartMemoryValidationError: 400 ``invalid_before``, ``invalid_as_of``, or ``invalid_limit``.
+            SmartMemoryValidationError: 400 ``invalid_before``, ``invalid_as_of``, ``invalid_limit`` or
+                ``invalid_cursor`` (a cursor this history did not return).
         """
         return self._decision_view_get(
             f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/history",
-            params=_scoped_options(limit=limit, before=before, as_of=as_of) or None,
+            params=_scoped_options(
+                limit=limit, before=before, as_of=as_of, cursor=cursor
+            )
+            or None,
         )
 
     def get_decision_sites(
@@ -6050,7 +6072,10 @@ class SmartMemoryClient:
                 Omitted means now. An unparseable value is a 400 ``invalid_as_of``.
 
         Returns:
-            Dict with decision, reasoning_trace, evidence, superseded.
+            Dict with decision, reasoning_trace, evidence, superseded, superseded_by and
+            ``inherited_links`` (``smartmemory_client.models.InheritedLink``): the links this decision
+            inherits from the decisions it replaced, each naming ``inherited_from``; never listed in its
+            own ``evidence``. With ``as_of``, only links written by then.
         """
         return self._request(
             "GET",
@@ -6677,19 +6702,36 @@ class SmartMemoryClient:
             return None
         return result.get("value") if isinstance(result, dict) else None
 
-    def export_okf(self) -> bytes:
+    def export_okf(self, *, vectors: Optional[bool] = None) -> bytes:
         """Export this workspace as a gzipped OKF bundle.
 
-        Needs workspace admin or tenant admin: any other caller gets a 403.
+        Needs workspace admin or tenant admin: any other caller gets a 403. ``vectors`` (server default true) adds each
+        item's stored vector, so an import with the same embedder skips re-embedding; false gives a smaller file
+        (BUG-OKF-IMPORT-SLOW-1).
         """
-        response = self._request("GET", "/memory/okf/export", return_response=True)
+        params = (
+            None if vectors is None else {"vectors": "true" if vectors else "false"}
+        )
+        response = self._request(
+            "GET", "/memory/okf/export", params=params, return_response=True
+        )
         return response.content
 
-    def import_okf(self, archive: bytes) -> dict:
-        """Import a gzipped OKF bundle into this workspace."""
+    def import_okf(self, archive: bytes, *, background: bool = False) -> dict:
+        """Import a gzipped OKF bundle into this workspace.
+
+        The import merges into what is already there (BUG-EXPORT-CLEAR-IMPORT-DUPLICATE-DECISIONS-1). The result adds
+        ``created``, ``merged``, ``links_added``, ``replacements_restored`` and ``replacements_not_restored`` to
+        ``imported``, ``failed``, ``workspace_id`` and ``warnings``; ``imported`` = ``created`` + ``merged``. A file
+        with vectors adds ``vectors_in_file``, ``vectors_reused``, ``vectors_refused`` and ``vectors_sampled``.
+
+        ``background=True`` (BUG-OKF-IMPORT-SLOW-1) answers at once with ``run_id``, ``status``, ``total`` and
+        ``deadline_at`` and writes in the background; read progress and the result with ``okf_import_job(run_id)``.
+        """
         return self._request(
             "POST",
             "/memory/okf/import",
+            params={"background": "true"} if background else None,
             files={
                 "file": (
                     "smartmemory-okf-import.tar.gz",
@@ -6698,6 +6740,14 @@ class SmartMemoryClient:
                 )
             },
         )
+
+    def okf_import_job(self, run_id: str) -> dict:
+        """Progress and result of a background OKF import (BUG-OKF-IMPORT-SLOW-1).
+
+        ``status`` is ``queued``, ``running``, ``completed``, ``failed``, ``abandoned`` (importing the same file again
+        finishes it) or ``unknown_run_id``; ``done`` of ``total`` items are settled; ``result`` once completed.
+        """
+        return self._request("GET", f"/memory/okf/jobs/{quote(run_id, safe='')}")
 
     def import_chat_export(
         self,

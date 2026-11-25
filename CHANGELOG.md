@@ -2,6 +2,25 @@
 
 - TEST-TEARDOWN-1: Remove five source and census checks and one duplicate metadata-filter case from the Python SDK tests.
 
+## 2.0.7
+
+## Unreleased - BUG-DECISION-HISTORY-PAGE-TIE-1: history cursor (2026-11-23)
+
+- `get_decision_history(..., cursor=...)`: pass the previous page's `next_cursor`; entries recorded at one instant are no longer skipped. `before` is deprecated (lossy at ties) and still sent as before. 400 `invalid_cursor` surfaces as `SmartMemoryValidationError.error_code`. New `tests/integration/test_decision_history_cursor_walk.py` (note H2, real HTTP, needs `SM_DV_HISTORY_SEED`).
+
+## Unreleased - BUG-SUPERSEDE-ISOLATES-REPLACEMENT-1: typed link rows for neighbors and decision provenance (2026-11-23)
+
+- New `smartmemory_client.models.NeighborRow` and `InheritedLink` (TypedDict, typing only; the client still returns dicts). `get_neighbors` rows carry `link_class`, `inherited`, `inherited_from`, `inherited_depth`; `get_provenance_chain` carries `inherited_links`. Contract: `smart-memory-docs/docs/features/BUG-SUPERSEDE-ISOLATES-REPLACEMENT-1/inherited-links-contract.json`. Needs the service change of the same unit.
+## Unreleased - BUG-OKF-IMPORT-SLOW-1: background import and export vectors option (2026-11-23)
+
+- `import_okf(archive, background=True)`, new `okf_import_job(run_id)`, `export_okf(vectors=False)`.
+
+## Unreleased - BUG-EXPORT-CLEAR-IMPORT-DUPLICATE-DECISIONS-1: add without re-mined decisions, import merge counts (2026-11-23)
+
+- `add(..., extract_decisions=False)` (also `add_detailed`): adds the note with decision extraction off (`POST /memory/add` `extract_decisions`). Sent only when set.
+- `import_okf` docstring names the merge counts the service now returns: `created`, `merged`, `links_added`, `replacements_restored`, `replacements_not_restored`.
+- Tests: `tests/test_embed_control_and_supersede_link.py` (forwarded when set, omitted when not).
+
 ## 2.0.4
 
 ## Unreleased - BUG-FAIL-IF-CONFLICTED-SOURCE-DATE-1: a strict read that could not decide raises its own error (2026-11-21)
@@ -113,6 +132,7 @@ Version bump to 2.0.1, every SmartMemory repo reads the same version (REL-2.0-VE
 
 - Correct record declaration documentation to name the supported add() client method.
 
+
 - SDK-2.0-RETRY-SAFETY-1: Raise WriteOutcomeUnknown after one ambiguous add attempt instead of duplicating a possibly committed write.
 All notable changes to this project will be documented in this file.
 
@@ -215,6 +235,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `supersede_decision` accepts and forwards optional `rejected_alternatives`, `rationale`, and
   `constraints` using the canonical service field names.
 
+
 ### Documentation (2026-09-10) — decision belief reads (CORE-DECISION-BELIEF-SURFACE-1)
 
 - `get_decision`, `list_decisions` and `search_decisions` document the three Dempster-Shafer belief reads
@@ -224,6 +245,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and independent of the prior scalar `confidence`, and they separate a disputed decision (high `contest`)
   from one nothing has evidenced yet (high `ignorance`), which `stability` cannot do because it reads 0.5
   for both.
+
 
 ### Added (2026-09-06) — optional request correlation and per-call timing hooks (MAYA-ENDPOINT-VISIBILITY-1)
 
@@ -239,6 +261,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   request proceeds. An id that fails validation is dropped with a warning rather than sent.
 - Neither hook is called for a request that failed before a response (connect/timeout); those
   raise to the caller as before.
+
 
 ### Changed (2026-09-06) — `personalize()` and `ground()` document their 501 (CORE-PERSONALIZATION-CONTRACT-1, CORE-GROUND-ROUTE-CONTRACT-1)
 
@@ -268,6 +291,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   archived items were returned ranked like live ones. Callers who want them must
   now pass `include_archived=True`.
 
+
 ### Fixed (2026-09-27) — live client test setup
 
 - Require the existing service-availability fixture for the three live-service tests in `test_client.py`, so a missing service skips them instead of failing health or producing false-positive authentication checks.
@@ -283,11 +307,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Preserve nullable rerank_score, reason status, actual model identity and pool diagnostics through MemoryItem.from_dict/to_dict; missing legacy evidence stays unverified.
 
+
 ### Added (2026-09-07) — list grounding policy (PLAT-RETRIEVAL-POLICY-1 slice 1)
 
 - `list_memories(include_grounding=None)` inherits workspace then env defaults (OFF unless
   configured); explicit `False` and `True` are sent. The response retains the resolved
   `policy.include_grounding` and `policy.source` fields. No SDK version bump.
+
 
 - fix(memory): add optional memory_type to list_memories, composed with metadata filters and applied server-side before pagination/counting.
 
@@ -329,6 +355,7 @@ items_created, warnings}`.
 **Read `warnings`.** A non-empty list means something was capped, skipped, or degraded even
 though the call returned 200 — the import is synchronous and capped by default, so a
 partial import is a normal outcome, not an error.
+
 
 ### Changed — recommended wake-up budget ~200 -> ~300 (CORE-TOKEN-ESTIMATOR-UNDERCOUNT-1)
 
@@ -607,6 +634,7 @@ update. Published wheel-only.
 ### Changed (auto, lockstep) — track product version 1.4.25 (1.4.25)
 - Version copied from the smartmemory-core release (single-source lockstep).
 
+
 ### Deprecated (SEC-AUTH-REVOCATION-1 token-prefix, 2026-06-04) — raw-JWT api_key (0.7.8)
 
 - **`SmartMemoryClient(api_key="eyJ…")` now emits a `DeprecationWarning`.** A raw JWT in the
@@ -663,6 +691,7 @@ Source: `smart-memory-docs/docs/features/CORE-AGENT-2/report.md`. Contract: `sma
 ### Added (CORE-DECISION-PROVENANCE-LOOKUP-1, 2026-05-23) — `list_decisions(provenance_memory_id=...)`
 
 - **`list_decisions()`** gains an optional `provenance_memory_id` kwarg. When set, the SDK passes it through to `GET /memory/decisions?provenance_memory_id=<id>` and returns only active decisions whose provenance subgraph contains that memory. Other filters (`domain`, `decision_type`, `min_confidence`, `limit`) compose in-query — the SDK never sees a truncated-below-limit result. Backwards-compatible; existing callers see no behavior change.
+
 
 ### Changed (CORE-RECALL-LINEAGE-1 Phase 3, 2026-05-22) — SearchResponse envelope unwrap
 
