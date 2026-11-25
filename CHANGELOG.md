@@ -1,5 +1,6 @@
 ## Unreleased
 
+- TEST-TEARDOWN-1 fix round 1 (2026-11-25): put back `test_save_then_read_census.py::test_the_engine_is_pinned_by_its_hash` (it also checks that an engine edit changes the hash) and `test_client_conn_reuse.py::test_no_other_module_in_the_package_opens_connections` (recorded flip). Four removed, not six.
 - TEST-TEARDOWN-1: Remove five source and census checks and one duplicate metadata-filter case from the Python SDK tests.
 
 ## 2.0.7
