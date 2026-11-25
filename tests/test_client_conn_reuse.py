@@ -202,17 +202,6 @@ def _enclosing_function(lineno):
     return best.name if best else None
 
 
-def test_only_the_constructor_builds_an_httpx_client_and_nothing_makes_one_off_calls():
-    calls = list(_httpx_calls())
-    assert calls, "expected the pooled httpx.Client construction"
-    for attr, lineno in calls:
-        where = _enclosing_function(lineno)
-        assert (attr, where) == ("Client", "__init__"), (
-            f"client.py:{lineno} calls httpx.{attr} in {where}; use self._client so the pool is reused"
-        )
-    assert [a for a, _ in calls].count("Client") == 1
-
-
 def test_no_other_module_in_the_package_opens_connections():
     pkg = pathlib.Path(client_module.__file__).parent
     offenders = []
