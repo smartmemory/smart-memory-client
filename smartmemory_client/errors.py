@@ -62,6 +62,10 @@ class SmartMemoryValidationError(SmartMemoryClientError):
     """Raised on HTTP 400/409/422 — request shape or state was rejected."""
 
 
+class SmartMemoryRateLimitError(SmartMemoryClientError):
+    """Raised on HTTP 429 when a request exceeds the service budget."""
+
+
 class SmartMemoryRoutingConflictError(SmartMemoryValidationError):
     """Raised by ``set_routing_prefs`` on ``409 routing_prefs_version_conflict``: the
     prefs changed since they were read (WS-ROUTING-2b). Catch it, re-read with

@@ -1,0 +1,316 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "smart-memory-graph/contracts/decision-effects.json",
+  "title": "Decision effects, phase 1",
+  "$ref": "#/$defs/DecisionEffectsSnapshot",
+  "$defs": {
+    "Id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "Text": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "Date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "format": "date"
+    },
+    "Freshness": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "computed" }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    "EffectsNode": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "label": { "type": "string" },
+        "type": { "enum": ["decision", "note", "entity"] },
+        "hop": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "validFrom": { "$ref": "#/$defs/Date" },
+        "retiredAt": { "$ref": "#/$defs/Date" },
+        "retirement": { "enum": ["replaced", "retracted"] },
+        "reason": { "type": "string" },
+        "rejected": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "ruleKind": { "enum": ["must", "must-not"] },
+        "check": { "const": "unchecked" },
+        "importance": { "type": "number" }
+      },
+      "required": ["id", "label", "type", "hop", "validFrom"],
+      "additionalProperties": false
+    },
+    "EffectsEdge": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "source": { "$ref": "#/$defs/Id" },
+        "target": { "$ref": "#/$defs/Id" },
+        "type": { "enum": ["depends_on", "comes_from", "supersedes"] },
+        "derived": { "type": "boolean" },
+        "freshness": { "$ref": "#/$defs/Freshness" }
+      },
+      "required": ["id", "source", "target", "type"],
+      "additionalProperties": false
+    },
+    "EffectsGraphData": {
+      "type": "object",
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EffectsNode" }
+        },
+        "edges": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EffectsEdge" }
+        }
+      },
+      "required": ["nodes", "edges"],
+      "additionalProperties": false
+    },
+    "Settlement": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "choice": { "const": "replace" }
+          },
+          "required": ["choice"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "choice": { "const": "keep_both_scoped" },
+            "scope": { "$ref": "#/$defs/Text" }
+          },
+          "required": ["choice", "scope"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Resolution": {
+      "oneOf": [
+        { "$ref": "#/$defs/Settlement" },
+        {
+          "type": "object",
+          "properties": {
+            "choice": { "const": "cancel" }
+          },
+          "required": ["choice"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Conflict": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "why": { "$ref": "#/$defs/Text" },
+        "freshness": { "$ref": "#/$defs/Freshness" },
+        "resolution": { "$ref": "#/$defs/Settlement" }
+      },
+      "required": ["id", "why", "freshness"],
+      "additionalProperties": false
+    },
+    "Review": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "via": { "$ref": "#/$defs/Id" },
+        "hop": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "state": { "enum": ["preview", "flagged"] },
+        "freshness": { "$ref": "#/$defs/Freshness" }
+      },
+      "required": ["id", "via", "hop", "state", "freshness"],
+      "additionalProperties": false
+    },
+    "Counts": {
+      "type": "object",
+      "properties": {
+        "conflicts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "replaced": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "to_review": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["conflicts", "replaced", "to_review"],
+      "additionalProperties": false,
+      "description": "Totals before display limits. Exclude wording-only matches."
+    },
+    "Related": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" },
+        "label": { "type": "string" }
+      },
+      "required": ["id", "label"],
+      "additionalProperties": false
+    },
+    "Overflow": {
+      "type": "object",
+      "properties": {
+        "date": { "$ref": "#/$defs/Date" },
+        "hop": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "branchId": { "$ref": "#/$defs/Id" }
+      },
+      "required": ["date", "hop", "count", "branchId"],
+      "additionalProperties": false,
+      "description": "Actual number omitted from data for this date, hop and refocus branch."
+    },
+    "DecisionEffectsSnapshot": {
+      "type": "object",
+      "properties": {
+        "data": { "$ref": "#/$defs/EffectsGraphData" },
+        "focus": { "$ref": "#/$defs/Id" },
+        "today": { "$ref": "#/$defs/Date" },
+        "revision": { "type": "string" },
+        "phase": { "enum": ["draft", "standing", "held"] },
+        "policy": { "enum": ["save", "propose"] },
+        "replaces": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Id" },
+          "uniqueItems": true
+        },
+        "conflicts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Conflict" }
+        },
+        "review": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Review" }
+        },
+        "freshness": { "$ref": "#/$defs/Freshness" },
+        "whyPaths": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/Id" },
+          "additionalProperties": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/Id" },
+            "minItems": 2,
+            "maxItems": 6
+          }
+        },
+        "counts": { "$ref": "#/$defs/Counts" },
+        "possibly_related": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Related" }
+        },
+        "overflow": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Overflow" }
+        }
+      },
+      "required": ["data", "focus", "today", "phase", "replaces", "conflicts", "review", "freshness", "counts", "possibly_related", "overflow"],
+      "additionalProperties": false
+    },
+    "EffectsRequest": {
+      "type": "object",
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" }
+      },
+      "required": ["id"],
+      "additionalProperties": false,
+      "description": "Path parameters. No request body."
+    },
+    "PreviewRequest": {
+      "type": "object",
+      "properties": {
+        "text": { "$ref": "#/$defs/Text" },
+        "as_of": {
+          "$ref": "#/$defs/Date",
+          "description": "Defaults to today in the workspace calendar. Reject any other date."
+        }
+      },
+      "required": ["text"],
+      "additionalProperties": false
+    },
+    "CommitRequest": {
+      "type": "object",
+      "properties": {
+        "text": { "$ref": "#/$defs/Text" },
+        "resolutions": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/Id" },
+          "additionalProperties": { "$ref": "#/$defs/Resolution" }
+        }
+      },
+      "required": ["text", "resolutions"],
+      "additionalProperties": false,
+      "description": "Recompute the authoritative conflict set under the caller scope before writing. Require exactly one entry for each conflict id. For missing entries return 409 naming the missing ids and write nothing. An empty map settles a conflict-free draft. Any cancel aborts the whole write."
+    },
+    "UnsettledConflict": {
+      "type": "object",
+      "properties": {
+        "conflict_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Id" },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": ["conflict_ids"],
+      "additionalProperties": false
+    },
+    "CommitReply": {
+      "oneOf": [
+        { "$ref": "#/$defs/DecisionEffectsSnapshot" },
+        {
+          "type": "object",
+          "properties": {
+            "status": { "const": "cancelled" }
+          },
+          "required": ["status"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "DependsOnRequest": {
+      "type": "object",
+      "properties": {
+        "target_id": { "$ref": "#/$defs/Id" }
+      },
+      "required": ["target_id"],
+      "additionalProperties": false,
+      "description": "Body. The path id is the dependent decision."
+    },
+    "DependsOnReply": {
+      "type": "object",
+      "properties": {
+        "source": { "$ref": "#/$defs/Id" },
+        "target": { "$ref": "#/$defs/Id" },
+        "type": { "const": "depends_on" }
+      },
+      "required": ["source", "target", "type"],
+      "additionalProperties": false
+    }
+  }
+}
