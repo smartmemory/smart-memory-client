@@ -5799,33 +5799,50 @@ class SmartMemoryClient:
         body = {"text": text}
         if as_of is not None:
             body["as_of"] = as_of
-        return self._request("POST", "/memory/decisions/effects/preview", json_body=body)
+        return self._request(
+            "POST", "/memory/decisions/effects/preview", json_body=body
+        )
 
     def commit_decision_effects(
         self, text: str, resolutions: Dict[str, Dict[str, str]]
     ) -> Dict[str, Any]:
         """Commit with a choice for each conflict ID. An unsettled conflict raises a 409 validation error."""
         return self._request(
-            "POST", "/memory/decisions/effects/commit",
+            "POST",
+            "/memory/decisions/effects/commit",
             json_body={"text": text, "resolutions": resolutions},
         )
 
-    def add_decision_depends_on(self, decision_id: str, target_id: str) -> Dict[str, Any]:
+    def add_decision_depends_on(
+        self, decision_id: str, target_id: str
+    ) -> Dict[str, Any]:
         """Record that decision_id depends on target_id."""
         source = path_id(decision_id, under="/memory/decisions/")
-        return self._request("POST", f"/memory/decisions/{source}/depends-on", json_body={"target_id": target_id})
+        return self._request(
+            "POST",
+            f"/memory/decisions/{source}/depends-on",
+            json_body={"target_id": target_id},
+        )
 
-    def confirm_decision_depends_on(self, decision_id: str, target_id: str) -> Optional[Dict[str, Any]]:
+    def confirm_decision_depends_on(
+        self, decision_id: str, target_id: str
+    ) -> Optional[Dict[str, Any]]:
         """Confirm a suggested dependency."""
         source = path_id(decision_id, under="/memory/decisions/")
         target = path_id(target_id, under="/depends-on/")
-        return self._request("POST", f"/memory/decisions/{source}/depends-on/{target}/confirm")
+        return self._request(
+            "POST", f"/memory/decisions/{source}/depends-on/{target}/confirm"
+        )
 
-    def remove_decision_depends_on(self, decision_id: str, target_id: str) -> Optional[Dict[str, Any]]:
+    def remove_decision_depends_on(
+        self, decision_id: str, target_id: str
+    ) -> Optional[Dict[str, Any]]:
         """Remove a dependency from the decision."""
         source = path_id(decision_id, under="/memory/decisions/")
         target = path_id(target_id, under="/depends-on/")
-        return self._request("DELETE", f"/memory/decisions/{source}/depends-on/{target}")
+        return self._request(
+            "DELETE", f"/memory/decisions/{source}/depends-on/{target}"
+        )
 
     def _decision_view_get(
         self, path: str, *, params: Optional[Dict[str, Any]]
