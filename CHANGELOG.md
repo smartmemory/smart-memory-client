@@ -1,5 +1,7 @@
 ## Unreleased
 
+- `ask` documents two new response fields from the hosted API (SAME-ANSWER-U4): `decision`, the current decision that matches the question (rule, what it replaced, the reason), and `lanes_failed`, the search lanes that failed for the answer.
+
 ## Unreleased - Decision effects
 
 - Read, preview and commit decision effects with per-conflict resolutions. Add, confirm and remove dependencies. HTTP 429 raises `SmartMemoryRateLimitError`, a subclass of `SmartMemoryClientError`.

@@ -6943,7 +6943,10 @@ class SmartMemoryClient:
             ``{"answer": str, "reasoning": str,
             "evidence": [{"item_id", "content", "memory_type", "created_at"}],
             "relations": [{"source", "type", "target", "source_id", "target_id"}],
-            "used_evidence_ids": [str], "grounded": bool}``
+            "used_evidence_ids": [str], "grounded": bool,
+            "decision": {"decision_id", "content", "status", "effective_at",
+            "replaced": [{"decision_id", "content", "reason"}], "reason", "match"} | None,
+            "lanes_failed": [str]}``
             — see the DIST-LITE-9 ask contract. Relation rows carry both display
             labels and graph node ids, so a UI can focus the edge that was used.
             ``used_evidence_ids`` are the evidence ids the answer cites, in
@@ -6951,6 +6954,12 @@ class SmartMemoryClient:
             ``answer`` is "No stored record matches this question."; when the model
             cites none of its evidence, it is "The answer could not be tied to a
             stored record." In both cases ``grounded`` is False.
+            ``decision`` (hosted, SAME-ANSWER-U4) is the current decision that
+            matches the question, built from the stored record (the rule, what it
+            replaced, the recorded reason); it is also evidence item 1, and None
+            when no current decision matches. ``lanes_failed`` names the search
+            lanes that failed for this answer (``decision-match`` when the
+            decision match could not be read); non-empty means it may be partial.
 
         Raises:
             SmartMemoryValidationError: blank question or an out-of-range limit.
