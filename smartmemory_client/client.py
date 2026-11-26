@@ -53,6 +53,7 @@ from smartmemory_client.errors import (  # noqa: F401  (re-exported: the classes
     SmartMemoryClientError,
     SmartMemoryNotFoundError,
     SmartMemoryPermissionError,
+    SmartMemoryRateLimitError,
     SmartMemoryRoutingConflictError,
     RecallConflictError,
     ConflictCheckUndecidedError,
@@ -155,6 +156,8 @@ def _exception_for_status(
             return ConflictCheckUndecidedError
         if _body_error_code(detail) == DecisionHistoryProtectedError.error_code:
             return DecisionHistoryProtectedError
+    if status == 429:
+        return SmartMemoryRateLimitError
     if status == 404:
         return SmartMemoryNotFoundError
     if status in (401, 403):
@@ -5782,6 +5785,63 @@ class SmartMemoryClient:
             "POST",
             f"/memory/decisions/{path_id(decision_id, under='/memory/decisions/')}/restore",
             json_body={"reason": reason},
+        )
+
+    def get_decision_effects(self, decision_id: str) -> Dict[str, Any]:
+        """Read the standing effects snapshot, including suggested links when supplied."""
+        source = path_id(decision_id, under="/memory/decisions/")
+        return self._request("GET", f"/memory/decisions/{source}/effects")
+
+    def preview_decision_effects(
+        self, text: str, *, as_of: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Preview an unsaved draft. An explicit ISO date must be today in the workspace."""
+        body = {"text": text}
+        if as_of is not None:
+            body["as_of"] = as_of
+        return self._request(
+            "POST", "/memory/decisions/effects/preview", json_body=body
+        )
+
+    def commit_decision_effects(
+        self, text: str, resolutions: Dict[str, Dict[str, str]]
+    ) -> Dict[str, Any]:
+        """Commit with a choice for each conflict ID. An unsettled conflict raises a 409 validation error."""
+        return self._request(
+            "POST",
+            "/memory/decisions/effects/commit",
+            json_body={"text": text, "resolutions": resolutions},
+        )
+
+    def add_decision_depends_on(
+        self, decision_id: str, target_id: str
+    ) -> Dict[str, Any]:
+        """Record that decision_id depends on target_id."""
+        source = path_id(decision_id, under="/memory/decisions/")
+        return self._request(
+            "POST",
+            f"/memory/decisions/{source}/depends-on",
+            json_body={"target_id": target_id},
+        )
+
+    def confirm_decision_depends_on(
+        self, decision_id: str, target_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Confirm a suggested dependency."""
+        source = path_id(decision_id, under="/memory/decisions/")
+        target = path_id(target_id, under="/depends-on/")
+        return self._request(
+            "POST", f"/memory/decisions/{source}/depends-on/{target}/confirm"
+        )
+
+    def remove_decision_depends_on(
+        self, decision_id: str, target_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Remove a dependency from the decision."""
+        source = path_id(decision_id, under="/memory/decisions/")
+        target = path_id(target_id, under="/depends-on/")
+        return self._request(
+            "DELETE", f"/memory/decisions/{source}/depends-on/{target}"
         )
 
     def _decision_view_get(

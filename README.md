@@ -347,6 +347,29 @@ result = client.feedback(
 # result == {"updated": N, "edges_strengthened": M, "outcome": "helpful"}
 ```
 
+### Decision effects
+
+Read a standing decision with `client.get_decision_effects(decision_id)`. Preview a draft before choosing how to settle each conflict.
+
+```python
+draft = "Use the Frankfurt vendor for all transactional email."
+preview = client.preview_decision_effects(draft)
+if not preview["conflicts"]:
+    result = client.commit_decision_effects(draft, resolutions={})
+```
+
+For a draft with conflicts, pass one resolution per conflict ID. Each choice is
+`{"choice": "replace"}`, `{"choice": "keep_both_scoped", "scope": "..."}`, or
+`{"choice": "cancel"}`. Cancellation applies to the whole commit. If a conflict
+is unsettled, the service returns 409 and the SDK raises `SmartMemoryValidationError`.
+Budget exhaustion raises `SmartMemoryRateLimitError` (429).
+
+Use `add_decision_depends_on(decision_id, target_id)` on the client to record which
+decision the first one depends on. Use `confirm_decision_depends_on` or
+`remove_decision_depends_on` with the same IDs to act on a suggestion.
+Snapshot dictionaries preserve suggested links, including edge `suggested` and
+node `viaSuggested` flags supplied by the service.
+
 ### Decision history and sites
 
 ```python

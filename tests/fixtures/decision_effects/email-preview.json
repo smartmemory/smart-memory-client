@@ -1,0 +1,174 @@
+{
+  "data": {
+    "nodes": [
+      {
+        "id": "eu",
+        "validFrom": "2026-03-04",
+        "label": "Customer data stays in the EU region",
+        "reason": "Most customers are in the EU and our contracts promise EU storage.",
+        "rejected": [
+          "Store data wherever hosting is cheapest",
+          "Let each customer pick a region"
+        ],
+        "type": "decision",
+        "ruleKind": "must",
+        "hop": 1
+      },
+      {
+        "id": "vendor",
+        "validFrom": "2026-03-18",
+        "label": "Use the Frankfurt vendor for email",
+        "reason": "The only shortlisted vendor that keeps all processing inside the EU.",
+        "rejected": [
+          "The US vendor (cheaper, but data leaves the EU)",
+          "Run our own mail servers"
+        ],
+        "type": "decision",
+        "hop": 1
+      },
+      {
+        "id": "support",
+        "validFrom": "2026-04-09",
+        "label": "Support may export tickets for analysis",
+        "reason": "Trend reviews need raw ticket text, which lives with the email vendor.",
+        "type": "decision",
+        "hop": 2
+      },
+      {
+        "id": "growth",
+        "validFrom": "2026-04-22",
+        "label": "Email templates are owned by the growth team",
+        "reason": "Templates live in the vendor's editor and growth edits them daily.",
+        "type": "decision",
+        "hop": 2
+      },
+      {
+        "id": "exports",
+        "validFrom": "2026-06-10",
+        "label": "Ticket exports are anonymised before sharing",
+        "reason": "Exports left the support team twice in May.",
+        "type": "decision",
+        "hop": 3
+      },
+      {
+        "id": "legal",
+        "validFrom": "2026-03-02",
+        "label": "Legal review note",
+        "type": "note",
+        "hop": 2
+      },
+      {
+        "id": "A",
+        "validFrom": "2026-11-24",
+        "label": "Move email to the US vendor to cut cost",
+        "type": "decision",
+        "hop": 0
+      }
+    ],
+    "edges": [
+      {
+        "id": "eu-legal",
+        "source": "eu",
+        "target": "legal",
+        "type": "comes_from"
+      },
+      {
+        "id": "vendor-eu",
+        "source": "vendor",
+        "target": "eu",
+        "type": "depends_on"
+      },
+      {
+        "id": "support-vendor",
+        "source": "support",
+        "target": "vendor",
+        "type": "depends_on"
+      },
+      {
+        "id": "growth-vendor",
+        "source": "growth",
+        "target": "vendor",
+        "type": "depends_on"
+      },
+      {
+        "id": "exports-support",
+        "source": "exports",
+        "target": "support",
+        "type": "depends_on"
+      }
+    ]
+  },
+  "focus": "A",
+  "phase": "draft",
+  "today": "2026-11-24",
+  "policy": "save",
+  "freshness": {
+    "kind": "computed"
+  },
+  "replaces": [
+    "vendor"
+  ],
+  "conflicts": [
+    {
+      "id": "eu",
+      "why": "The US vendor would store and process customer email addresses outside the EU.",
+      "freshness": {
+        "kind": "computed"
+      }
+    }
+  ],
+  "review": [
+    {
+      "id": "support",
+      "via": "vendor",
+      "hop": 1,
+      "state": "preview",
+      "freshness": {
+        "kind": "computed"
+      }
+    },
+    {
+      "id": "growth",
+      "via": "vendor",
+      "hop": 1,
+      "state": "preview",
+      "freshness": {
+        "kind": "computed"
+      }
+    },
+    {
+      "id": "exports",
+      "via": "support",
+      "hop": 2,
+      "state": "preview",
+      "freshness": {
+        "kind": "computed"
+      }
+    }
+  ],
+  "counts": {
+    "conflicts": 1,
+    "replaced": 1,
+    "to_review": 3
+  },
+  "possibly_related": [
+    {
+      "id": "mention",
+      "label": "Meeting note mentioning EU"
+    }
+  ],
+  "overflow": [],
+  "whyPaths": {
+    "exports": [
+      "legal",
+      "eu",
+      "vendor",
+      "support",
+      "exports"
+    ],
+    "eu": [
+      "legal",
+      "eu"
+    ]
+  }
+}

@@ -18,6 +18,7 @@ from urllib.parse import quote
 #: the MCP list for the same prefixes). ``tests/test_decision_path_guard.py`` pins it to the MCP copy's values.
 RESERVED_SEGMENTS: dict[str, frozenset[str]] = {
     "/memory/decisions/": frozenset({"create", "pending", "search", "auto-changes"}),
+    "/depends-on/": frozenset(),  # No static siblings at the target ID position.
     "/memory/decisions/pending/": frozenset({"create"}),
 }
 
