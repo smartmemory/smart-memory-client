@@ -1,3 +1,5 @@
+## 2.0.9
+
 ## Unreleased
 
 - `ask` documents two new response fields from the hosted API (SAME-ANSWER-U4): `decision`, the current decision that matches the question (rule, what it replaced, the reason), and `lanes_failed`, the search lanes that failed for the answer.
